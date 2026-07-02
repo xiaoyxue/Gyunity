@@ -1,5 +1,5 @@
 cd external
-cmake -S . -B ./build
-cd build
-msbuild ext_build.sln /property:Configuration=Debug
-msbuild ext_build.sln /property:Configuration=Release
+if exist build rmdir /s /q build
+cmake -S . -B ./build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+cmake --build ./build --config Debug
+cmake --build ./build --config Release

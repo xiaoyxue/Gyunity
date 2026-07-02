@@ -1351,3 +1351,10 @@ namespace type
 }
 
 GYT_NAMESPACE_END
+
+// fmt (v9+) no longer formats types via their std::ostream operator<< implicitly.
+// Opt Vector types in explicitly so fmt::print / GYT_Print can format them.
+FMT_BEGIN_NAMESPACE
+template <int dim, typename T, Gyunity::IntrinsicSet ISE>
+struct formatter<Gyunity::Vector<dim, T, ISE>> : ostream_formatter {};
+FMT_END_NAMESPACE
