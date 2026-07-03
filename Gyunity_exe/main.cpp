@@ -736,7 +736,7 @@ void TestPathTracing2(int argc, char* argv[]) {
 	scene->SetAccelerator(accelerator);
 
 	scene->Initialize();
-	film->SetFileName("CornellBoxPT10.bmp");
+	film->SetFileName("D:\\Code\\Test\\Gyunity\\Results\\CameraMovementCornellBoxFrame_0.png");
 	std::shared_ptr<Renderer> renderer = std::shared_ptr<Renderer>(new Renderer(scene, camera, integrator, film));
 	clock_t begin = clock();
 	renderer->Render();
@@ -793,14 +793,121 @@ void TestLightTracing(int argc, char* argv[]) {
 }
 
 
+void CameraMovement(int argc, char* argv[]) {
+
+	int resX = 1920, resY = 1080;
+
+	// Camera intrinsics (kept identical to the original single-frame setup).
+	Vec3 lookAt(0, 0, 0);
+	Vec3 up(0, 1, 0);
+	real filmDis = 1;
+	real fovy = 53.13010235415597f;
+
+	// The Cornell box occupies [-1, 1] on each axis (see CornellBoxEmpty::SetScene).
+	// Fly-through waypoints, all outside the box on +z until the final dolly-in:
+	//   A(-1, 0, 3): aligned with the left  wall of the box
+	//   B( 1, 0, 3): aligned with the right wall of the box
+	//   C( 0, 0, 3): centered (this is the original camera position)
+	//   D( 0, 0, 1): centered, on the near (front) edge of the box along z
+	const Vec3 leftPos  (-1, 0, 3);
+	const Vec3 rightPos ( 1, 0, 3);
+	const Vec3 centerPos( 0, 0, 3);
+	const Vec3 edgePos  ( 0, 0, 1);
+
+	// Animation timing: 10 s at 25 fps => 250 frames total.
+	// Frames are distributed proportionally to segment length so the camera
+	// moves at a uniform speed along the whole path.
+	// Total path length = 2 (left->right) + 1 (right->center) + 2 (center->edge) = 5 units,
+	// so we get 50 frames per unit of travel:
+	//   framesLeftToRight   = 100  (2 units)
+	//   framesRightToCenter =  50  (1 unit)
+	//   framesCenterToEdge  =  99  (2 units)  + 1 final endpoint frame at edgePos = 100
+	//   ------------------------------------------
+	//   total               = 250  frames  (10 s @ 25 fps)
+	const int framesLeftToRight   = 100;
+	const int framesRightToCenter = 50;
+	const int framesCenterToEdge  = 99;
+
+	// Per-frame path tracing settings, matching the original single-frame values.
+	const int spp = 512;
+	const int maxDepth = 10;
+
+	struct Segment { Vec3 start; Vec3 end; int frames; };
+	const Segment segments[] = {
+		{ leftPos,   rightPos,  framesLeftToRight   },
+		{ rightPos,  centerPos, framesRightToCenter },
+		{ centerPos, edgePos,   framesCenterToEdge  },
+	};
+
+	fprintf(stderr, "Load Scene ...\n");
+
+	// The scene (and its BVH) is built once and reused across every frame.
+	std::shared_ptr<Scene> scene = std::shared_ptr<Scene>(new Scene);
+	//CornellBoxMesh::SetScene(scene);
+	//CornellBoxTriangle2::SetScene(scene);
+	//EnvironmentMapScene::SetScene(scene);
+	//CornellBoxHeartSurface::SetScene(scene);
+	//HeartSurfaceEnvironmentMapScene::SetScene(scene);
+	CornellBoxEmpty::SetScene(scene);
+	std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BVHAccel(scene->GetPrimitives()));
+	scene->SetAccelerator(accelerator);
+	scene->Initialize();
+
+	int totalFrames = 1; // + 1 for the final endpoint frame at edgePos
+	for (const Segment& seg : segments) totalFrames += seg.frames;
+
+	clock_t begin = clock();
+	int frameIndex = 0;
+
+	auto renderFrame = [&](const Vec3& camPos) {
+		// Film accumulates samples and has no reset, so we build fresh per-frame
+		// Film / Camera / Sampler / Integrator / Renderer instances.
+		std::shared_ptr<Film> film = std::shared_ptr<Film>(new Film(resX, resY, new BoxFilter()));
+		std::shared_ptr<Camera> camera = std::shared_ptr<Camera>(new PinHoleCamera(film, camPos, lookAt, up, fovy, filmDis));
+		std::shared_ptr<Sampler> randomSampler = std::shared_ptr<Sampler>(new RandomSampler(123));
+		std::shared_ptr<SamplerEnum> samplerEnum = std::shared_ptr<SamplerEnum>(new SamplerEnum());
+		std::shared_ptr<Integrator> integrator = std::shared_ptr<Integrator>(new PathTracing(spp, maxDepth, randomSampler, samplerEnum));
+
+		char filename[512];
+		std::snprintf(filename, sizeof(filename),
+			"D:\\Code\\Test\\Gyunity\\Results\\CameraMovement\\CornellBoxFrame_%d.png", frameIndex);
+		film->SetFileName(filename);
+
+		std::shared_ptr<Renderer> renderer = std::shared_ptr<Renderer>(new Renderer(scene, camera, integrator, film));
+
+		fprintf(stderr, "Rendering frame %d/%d at position (%.3f, %.3f, %.3f)\n",
+			frameIndex + 1, totalFrames,
+			(float)camPos.x, (float)camPos.y, (float)camPos.z);
+		renderer->Render();
+		++frameIndex;
+	};
+
+	// Emit t = 0, 1/N, ..., (N-1)/N for each segment so waypoints are not rendered twice.
+	for (const Segment& seg : segments) {
+		for (int i = 0; i < seg.frames; ++i) {
+			real t = (real)i / (real)seg.frames;
+			Vec3 camPos = seg.start * (1 - t) + seg.end * t;
+			renderFrame(camPos);
+		}
+	}
+	// Final endpoint (t = 1 of the last segment) so the animation ends exactly at edgePos.
+	renderFrame(edgePos);
+
+	clock_t end = clock();
+	std::cout << "cost time: " << (end - begin) / 1000.0 / 60.0 << " min" << std::endl;
+}
+
+
 int main(int argc, char *argv[]) {
 	//AABB aabb;
 	//aabb = Union(Union(aabb, Vec3(-1, -2, -2)), Vec3(1, 2, 3));
 	//std::cout << aabb << std::endl;
 
-	std::cout << GGXDistribution::RoughnessToAlpha(0.118) << std::endl;
+	//std::cout << GGXDistribution::RoughnessToAlpha(0.118) << std::endl;
 
-	TestLightTracing(argc, argv);
+	CameraMovement(argc, argv);
+
+	//TestLightTracing(argc, argv);
 	//TestPathTracing2(argc, argv);
 	//TestSPPM6(argc, argv);
 	//TestPathTracing2(argc, argv);

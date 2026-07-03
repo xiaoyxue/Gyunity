@@ -60,8 +60,14 @@ void ProjectiveCamera::Initialize() {
 
 
 ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& cz, const Vec3& cx, const Vec3& cy, real pFovy, real filmDis)
-	: Camera(pFilm, position, cx, cy, cz, pFovy, filmDis)
+	: Camera(pFilm, position, cz, cx, cy, pFovy, filmDis)
 {
+	// Initialize() derives mCx/mCy/mCz from mLookAt/mUp, so synthesize them from
+	// the supplied axes. Without this, mLookAt and mUp default to (0,0,0), which
+	// causes Cross(mUp, mCz).Norm() to divide by zero and produce NaNs throughout
+	// the camera basis (RasterToWorld, We(), PdfDir(), film corners, ...).
+	mLookAt = position + cz;
+	mUp = cy;
 	Initialize();
 }
 
