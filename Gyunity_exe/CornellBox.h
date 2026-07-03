@@ -1901,6 +1901,38 @@ public:
 			scene->AddPrimitive(botomTriangle1);
 			scene->AddPrimitive(botomTriangle2);
 
+			//Wave-textured quad on the bottom plane.
+			//The Cornell box spans [-1, 1] on each axis (width = 2). The texture
+			//wave.jpg is 2048 x 1365 (aspect ratio ~= 3:2), so the quad is sized
+			//1.2 (X) x 0.8 (Z) - same 3:2 aspect ratio as the image so it is
+			//displayed without stretching. It stays centered on the bottom plane
+			//and is offset slightly above the floor to avoid z-fighting with the
+			//bottom wall triangles above.
+			//UVs: U (0->1, image horizontal, 2048 px) maps to X (the longer side, 1.2),
+			//     V (0->1, image vertical,   1365 px) maps to Z (the shorter side, 0.8).
+			const real waveHalfWidth  = 0.6f; // half of 1.2 along X (image U)
+			const real waveHalfDepth  = 0.4f; // half of 0.8 along Z (image V)
+			const real waveYOffset    = -1.0f + 1e-3f;
+			Vec3 waveP0(-waveHalfWidth, waveYOffset,  waveHalfDepth); // front-left
+			Vec3 waveP1(-waveHalfWidth, waveYOffset, -waveHalfDepth); // back-left
+			Vec3 waveP2( waveHalfWidth, waveYOffset, -waveHalfDepth); // back-right
+			Vec3 waveP3( waveHalfWidth, waveYOffset,  waveHalfDepth); // front-right
+			static Vec2 waveUvs1[3] = { Vec2(0, 0), Vec2(1, 0), Vec2(1, 1) };
+			static Vec2 waveUvs2[3] = { Vec2(0, 0), Vec2(1, 1), Vec2(0, 1) };
+			std::shared_ptr<Texture<Vec3>> waveTexture =
+				std::shared_ptr<Texture<Vec3>>(new ImageTexture<Vec3>("..\\resources\\texture_images\\wave.jpg"));
+			std::shared_ptr<Shape> waveShape1 =
+				std::shared_ptr<Shape>(new Triangle(Transform(), Transform(), waveP0, waveP3, waveP2, normalBotom, &waveUvs1[0]));
+			std::shared_ptr<Shape> waveShape2 =
+				std::shared_ptr<Shape>(new Triangle(Transform(), Transform(), waveP0, waveP2, waveP1, normalBotom, &waveUvs2[0]));
+			std::shared_ptr<Material> waveMaterial = std::shared_ptr<Material>(new DiffuseMaterial(waveTexture));
+			std::shared_ptr<Primitive> waveTriangle1 =
+				std::shared_ptr<Primitive>(new GeometryPrimitive(waveShape1, waveMaterial));
+			std::shared_ptr<Primitive> waveTriangle2 =
+				std::shared_ptr<Primitive>(new GeometryPrimitive(waveShape2, waveMaterial));
+			scene->AddPrimitive(waveTriangle1);
+			scene->AddPrimitive(waveTriangle2);
+
 			//Top
 			Vec3 normalTop = Vec3(0, -1, 0);
 			std::shared_ptr<Shape> topShape1 =

@@ -12,6 +12,8 @@
 #include <iostream>
 #include <fstream>
 #include <string.h>
+#include <direct.h>
+#include <errno.h>
 #include "common/Platform.h"
 #include "common/Core.h"
 #include "sampler\Sampler.h"
@@ -804,39 +806,43 @@ void CameraMovement(int argc, char* argv[]) {
 	real fovy = 53.13010235415597f;
 
 	// The Cornell box occupies [-1, 1] on each axis (see CornellBoxEmpty::SetScene).
-	// Fly-through waypoints, all outside the box on +z until the final dolly-in:
+	// Fly-through waypoints, all outside the box on +z (the camera never enters it):
 	//   A(-1, 0, 3): aligned with the left  wall of the box
 	//   B( 1, 0, 3): aligned with the right wall of the box
-	//   C( 0, 0, 3): centered (this is the original camera position)
-	//   D( 0, 0, 1): centered, on the near (front) edge of the box along z
-	const Vec3 leftPos  (-1, 0, 3);
-	const Vec3 rightPos ( 1, 0, 3);
-	const Vec3 centerPos( 0, 0, 3);
-	const Vec3 edgePos  ( 0, 0, 1);
+	//   C( 0, 0, 3): centered (this is the original camera position and the final pose)
+	//   D( 0, 0, 2): centered, one unit forward toward the box (a gentle peek-in;
+	//                does NOT enter the box, whose front face is at z = 1)
+	const Vec3 leftPos   (-1, 0, 3);
+	const Vec3 rightPos  ( 1, 0, 3);
+	const Vec3 centerPos ( 0, 0, 3);
+	const Vec3 forwardPos( 0, 0, 2);
 
 	// Animation timing: 10 s at 25 fps => 250 frames total.
 	// Frames are distributed proportionally to segment length so the camera
 	// moves at a uniform speed along the whole path.
-	// Total path length = 2 (left->right) + 1 (right->center) + 2 (center->edge) = 5 units,
-	// so we get 50 frames per unit of travel:
-	//   framesLeftToRight   = 100  (2 units)
-	//   framesRightToCenter =  50  (1 unit)
-	//   framesCenterToEdge  =  99  (2 units)  + 1 final endpoint frame at edgePos = 100
+	// Total path length = 2 (left->right) + 1 (right->center) + 1 (center->forward)
+	//                    + 1 (forward->center) = 5 units, i.e. 50 frames per unit:
+	//   framesLeftToRight    = 100  (2 units)
+	//   framesRightToCenter  =  50  (1 unit)
+	//   framesCenterToForward=  50  (1 unit)
+	//   framesForwardToCenter=  49  (1 unit)  + 1 final endpoint frame at centerPos = 50
 	//   ------------------------------------------
-	//   total               = 250  frames  (10 s @ 25 fps)
-	const int framesLeftToRight   = 100;
-	const int framesRightToCenter = 50;
-	const int framesCenterToEdge  = 99;
+	//   total                = 250  frames  (10 s @ 25 fps)
+	const int framesLeftToRight     = 100;
+	const int framesRightToCenter   = 50;
+	const int framesCenterToForward = 50;
+	const int framesForwardToCenter = 49;
 
 	// Per-frame path tracing settings, matching the original single-frame values.
 	const int spp = 512;
-	const int maxDepth = 10;
+	const int maxDepth = 8;
 
 	struct Segment { Vec3 start; Vec3 end; int frames; };
 	const Segment segments[] = {
-		{ leftPos,   rightPos,  framesLeftToRight   },
-		{ rightPos,  centerPos, framesRightToCenter },
-		{ centerPos, edgePos,   framesCenterToEdge  },
+		{ leftPos,    rightPos,   framesLeftToRight     },
+		{ rightPos,   centerPos,  framesRightToCenter   },
+		{ centerPos,  forwardPos, framesCenterToForward },
+		{ forwardPos, centerPos,  framesForwardToCenter },
 	};
 
 	fprintf(stderr, "Load Scene ...\n");
@@ -853,8 +859,20 @@ void CameraMovement(int argc, char* argv[]) {
 	scene->SetAccelerator(accelerator);
 	scene->Initialize();
 
-	int totalFrames = 1; // + 1 for the final endpoint frame at edgePos
+	int totalFrames = 1; // + 1 for the final endpoint frame at centerPos
 	for (const Segment& seg : segments) totalFrames += seg.frames;
+
+	// Output directory (relative to the current working directory).
+	// Create it up-front so per-frame writes don't silently fail when it's missing.
+	// _mkdir only creates one level at a time and returns -1 with errno == EEXIST
+	// if the directory already exists, which we treat as success.
+	auto ensureDir = [](const char* path) {
+		if (_mkdir(path) != 0 && errno != EEXIST) {
+			fprintf(stderr, "Warning: failed to create directory '%s' (errno=%d)\n", path, errno);
+		}
+	};
+	ensureDir("Results");
+	ensureDir("Results\\CameraMovement");
 
 	clock_t begin = clock();
 	int frameIndex = 0;
@@ -869,8 +887,11 @@ void CameraMovement(int argc, char* argv[]) {
 		std::shared_ptr<Integrator> integrator = std::shared_ptr<Integrator>(new PathTracing(spp, maxDepth, randomSampler, samplerEnum));
 
 		char filename[512];
+		// Zero-padded, sequential naming (frame_0000.png, frame_0001.png, ...)
+		// so it works out-of-the-box with:
+		//   ffmpeg -framerate 25 -i frame_%04d.png -c:v libx264 -pix_fmt yuv420p out.mp4
 		std::snprintf(filename, sizeof(filename),
-			"D:\\Code\\Test\\Gyunity\\Results\\CameraMovement\\CornellBoxFrame_%d.png", frameIndex);
+			"Results\\CameraMovement\\frame_%04d.png", frameIndex);
 		film->SetFileName(filename);
 
 		std::shared_ptr<Renderer> renderer = std::shared_ptr<Renderer>(new Renderer(scene, camera, integrator, film));
@@ -890,8 +911,9 @@ void CameraMovement(int argc, char* argv[]) {
 			renderFrame(camPos);
 		}
 	}
-	// Final endpoint (t = 1 of the last segment) so the animation ends exactly at edgePos.
-	renderFrame(edgePos);
+	// Final endpoint (t = 1 of the last segment) so the animation ends exactly
+	// back at the original camera position centerPos (0, 0, 3).
+	renderFrame(centerPos);
 
 	clock_t end = clock();
 	std::cout << "cost time: " << (end - begin) / 1000.0 / 60.0 << " min" << std::endl;
