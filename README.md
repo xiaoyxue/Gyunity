@@ -50,8 +50,8 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 </div>
 
 ## Build
-```bash
-1. git clone --recursive https://github.com/xiaoyxue/Gyunity.git
-2. In Developer Command Prompt for VS to run init.cmd
-3. Open Gyunity.sln and build the solution
-```
+Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
+
+1. Clone the repository: `git clone --recursive https://github.com/xiaoyxue/Gyunity.git`
+2. From the repository directory, run `.\init.ps1` in Developer PowerShell for VS, or `init.cmd` in Developer Command Prompt for VS. This recreates `external\build` and builds the dependencies in Debug and Release.
+3. Open `Gyunity.sln` and build the solution.
