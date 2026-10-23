@@ -19,35 +19,35 @@ public:
 	HaltonEnum(uint32 width, uint32 height);
 
 	// Return how many samples per pixel can be queried before sample index overflow occurs.
-	uint64 get_max_samples_per_pixel() const { return ~0ull / mIncrement; }
+	uint64 GetMaxSamplesPerPixel() const { return ~0ull / mIncrement; }
 
 	// Return the index of the i-th sample falling into the given pixel (x, y) within the
 	// previously given resolution bounds. i must be smaller than the value returned by
-	// get_max_samples_per_pixel.
-	uint64 get_index(uint64 i, uint32 x, uint32 y) const;
+	// GetMaxSamplesPerPixel.
+	uint64 ComputeIndex(uint64 i, uint32 x, uint32 y) const;
 
 	// Scale the x-component of a sample in [0,1) to [0,width).
-	real scale_x(real x) const;
+	real ScaleX(real x) const;
 
 	// Scale the y-component of a sample in [0,1) to [0,height).
-	real scale_y(real y) const;
+	real ScaleY(real y) const;
 
 	uint64 GetIndex(uint32 sampleNum, uint32 x, uint32 y) const override {
-		return get_index(sampleNum, x, y);
+		return ComputeIndex(sampleNum, x, y);
 	}
 
 	real SampleX(uint32 x, real u) const override {
-		return scale_x(u) - (real)x;
+		return ScaleX(u) - (real)x;
 	}
 
 	real SampleY(uint32 y, real v) const override {
-		return scale_y(v) - (real)y;
+		return ScaleY(v) - (real)y;
 	}
 
 private:
-	static std::pair<int, int> extended_euclid(int a, int b);
-	static uint64 halton2_inverse(uint64 i, uint32 digits);
-	static uint64 halton3_inverse(uint64 i, uint32 digits);
+	static std::pair<int, int> ExtendedEuclid(int a, int b);
+	static uint64 Halton2Inverse(uint64 i, uint32 digits);
+	static uint64 Halton3Inverse(uint64 i, uint32 digits);
 
 	uint32 mP2; // Smallest integer with 2^mP2 >= width.
 	uint32 mP3; // Smallest integer with 3^mP3 >= height.
@@ -83,7 +83,7 @@ inline HaltonEnum::HaltonEnum(uint32 width, uint32 height) : SamplerEnum(width, 
 	mIncrement = w * h; // There's exactly one sample per pixel.
 
 	// Determine the multiplicative inverses.
-	const std::pair<int, int> inv = extended_euclid(static_cast<int>(h), static_cast<int>(w));
+	const std::pair<int, int> inv = ExtendedEuclid(static_cast<int>(h), static_cast<int>(w));
 	const uint32 inv2 = (inv.first < 0) ? (inv.first + w) : (inv.first % w);
 	const uint32 inv3 = (inv.second < 0) ? (inv.second + h) : (inv.second % h);
 	assert((!inv2 && w == 1) || (inv2 > 0 && (h * inv2) % w == 1));
@@ -92,43 +92,43 @@ inline HaltonEnum::HaltonEnum(uint32 width, uint32 height) : SamplerEnum(width, 
 	mY = w * inv3;
 }
 
-inline uint64 HaltonEnum::get_index(const uint64 i, const uint32 x, const uint32 y) const
+inline uint64 HaltonEnum::ComputeIndex(const uint64 i, const uint32 x, const uint32 y) const
 {
 	// Promote to 64 bits to avoid overflow.
-	const uint64 hx = halton2_inverse(x, mP2);
-	const uint64 hy = halton3_inverse(y, mP3);
+	const uint64 hx = Halton2Inverse(x, mP2);
+	const uint64 hy = Halton3Inverse(y, mP3);
 	// Apply Chinese remainder theorem.
 	const uint64  offset = (hx * mX + hy * mY) % mIncrement;
 	return offset + i * mIncrement;
 }
 
-inline real HaltonEnum::scale_x(const real x) const
+inline real HaltonEnum::ScaleX(const real x) const
 {
 	return x * mScaleX;
 }
 
-inline real HaltonEnum::scale_y(const real y) const
+inline real HaltonEnum::ScaleY(const real y) const
 {
 	return y * mScaleY;
 }
 
-inline std::pair<int, int> HaltonEnum::extended_euclid(const int a, const int b)
+inline std::pair<int, int> HaltonEnum::ExtendedEuclid(const int a, const int b)
 {
 	if (!b)
 		return std::make_pair(1u, 0u);
 	const int q = a / b;
 	const int r = a % b;
-	const std::pair<int, int> st = extended_euclid(b, r);
+	const std::pair<int, int> st = ExtendedEuclid(b, r);
 	return std::make_pair(st.second, st.first - q * st.second);
 }
 
-inline uint64 HaltonEnum::halton2_inverse(uint64 index, const uint32 digits)
+inline uint64 HaltonEnum::Halton2Inverse(uint64 index, const uint32 digits)
 {
-	index = reverse_bit64(index);
+	index = ReverseBit64(index);
 	return index >> (64 - digits);
 }
 
-inline uint64 HaltonEnum::halton3_inverse(uint64 index, const uint32 digits)
+inline uint64 HaltonEnum::Halton3Inverse(uint64 index, const uint32 digits)
 {
 	uint32 result = 0;
 	for (uint32 d = 0; d < digits; ++d)

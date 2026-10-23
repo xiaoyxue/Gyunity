@@ -16,9 +16,9 @@ void ImageIO::WritePngFile(const std::string& filename, const std::vector<Vec3>&
 		for (size_t i = 0; i < resX; ++i) {
 			size_t index = 3 * j * resX + 3 * i;
 			size_t imageBufferIndex = j * resX + i;
-			pngImage[index] = (byte)(toInt(image[imageBufferIndex].x, gamma));
-			pngImage[index + 1] = (byte)(toInt(image[imageBufferIndex].y, gamma));
-			pngImage[index + 2] = (byte)(toInt(image[imageBufferIndex].z, gamma));
+			pngImage[index] = (byte)(ToInt(image[imageBufferIndex].x, gamma));
+			pngImage[index + 1] = (byte)(ToInt(image[imageBufferIndex].y, gamma));
+			pngImage[index + 2] = (byte)(ToInt(image[imageBufferIndex].z, gamma));
 		}
 	}
 	svpng(f, resX, resY, pngImage, 0);
@@ -54,16 +54,16 @@ void ImageIO::WriteBmpFile(const std::string& filename, const std::vector<Vec3>&
 			const Vec3& rgbF = image[x + (resY - y - 1) * resX];
 			typedef unsigned char byte;
 			byte bgrB[3];
-			bgrB[0] = byte(toInt(rgbF.z, gamma));
-			bgrB[1] = byte(toInt(rgbF.y, gamma));
-			bgrB[2] = byte(toInt(rgbF.x, gamma));
+			bgrB[0] = byte(ToInt(rgbF.z, gamma));
+			bgrB[1] = byte(ToInt(rgbF.y, gamma));
+			bgrB[2] = byte(ToInt(rgbF.x, gamma));
 
 			bmp.write((char*)&bgrB, sizeof(bgrB));
 		}
 	}
 }
 
-int ImageIO::toInt(real x, real gamma) {
+int ImageIO::ToInt(real x, real gamma) {
 	return int(pow(Clamp(x, 0.f, 1.f), 1 / gamma) * 255 + .5f);
 }
 
@@ -135,7 +135,7 @@ void ImageIO::WriteImage(const std::string& filename, const std::vector<Vec3>& i
 			for (int x = 0; x < resX; ++x) {
 				for (int k = 0; k < channels; ++k) {
 					int idx = y * resX + x;
-					dataToWrite[idx * channels + k] = unsigned char(toInt(image[idx][k]));
+					dataToWrite[idx * channels + k] = unsigned char(ToInt(image[idx][k]));
 				}
 			}
 		}

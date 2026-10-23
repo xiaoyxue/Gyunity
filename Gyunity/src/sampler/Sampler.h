@@ -28,7 +28,7 @@ public:
 		return mCursor;
 	}
 	/*
-	void assert_cursor_pos(int cursor) const {
+	void AssertCursorPos(int cursor) const {
 		assert_info(
 			this->cursor == cursor,
 			std::string("Cursor position should be " + std::to_string(cursor) +

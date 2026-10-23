@@ -19,7 +19,7 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		Vec3 wi;
 		Intersection lightPoint;
 		real pdf;
-		Vec3 Li = light->Sample_Li(isect, &wi, &pdf, &lightPoint, u);
+		Vec3 Li = light->SampleLi(isect, &wi, &pdf, &lightPoint, u);
 		real scatteringPdf;
 		Vec3 f;
 		real cosTheta = 1;
@@ -69,7 +69,7 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		}
 		else {
 			const MediumIntersection& mi = (const MediumIntersection&)isect;
-			real p = mi.mPhase->Sample_p(mi.mOutDir, &wi, Vec2(v[0], v[1]));
+			real p = mi.mPhase->SampleP(mi.mOutDir, &wi, Vec2(v[0], v[1]));
 			f = Vec3(p);
 			pdf = p;
 		}
@@ -77,7 +77,7 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		Intersection intersection;
 
 		if (pdf != 0 && f != Vec3()) {
-			real lightPdf = light->Pdf_Li(isect, wi);
+			real lightPdf = light->PdfLi(isect, wi);
 			if (lightPdf == 0) {
 				weight2 = 0;
 			}

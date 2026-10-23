@@ -15,7 +15,7 @@ bool AABB::Intersect(const Ray& ray, real* hitt0, real* hitt1) const {
 		if (tNear > tFar) std::swap(tNear, tFar);
 
 		// Update _tFar_ to ensure robust ray--bounds intersection
-		tFar *= 1 + 2 * gamma(3);
+		tFar *= 1 + 2 * Gamma(3);
 		t0 = tNear > t0 ? tNear : t0;
 		t1 = tFar < t1 ? tFar : t1;
 		if (t0 > t1) return false;

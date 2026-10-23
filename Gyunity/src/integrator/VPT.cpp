@@ -35,13 +35,13 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 			if (mUseEquiAngularSample) {
 				L += throughput * ConnectToLight(scene, rand, mi, eqLightPoint, eqLightLe, eqLightPdf) / eqLightProb;
 				Vec3 wi;
-				mi.mPhase->Sample_p(-ray.mDir, &wi, Vec2(rand(), rand()));
+				mi.mPhase->SampleP(-ray.mDir, &wi, Vec2(rand(), rand()));
 				ray = mi.SpawnRay(wi);
 				deltaBoundEvent = false;
 				
 				//L += throughput * DirectIllumination(scene, mi, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand, true);
 				//Vec3 wi;
-				//mi.phase->Sample_p(-ray.d, &wi, Vec2(rand(), rand()));
+				//mi.phase->SampleP(-ray.d, &wi, Vec2(rand(), rand()));
 				//ray = mi.SpawnRay(wi);
 				//deltaBoundEvent = false;
 
@@ -50,7 +50,7 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 				//if (intersect) scene.QueryIntersectionInfo(ray, &isect);
 				L += throughput * DirectIllumination(scene, mi, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand, true);
 				Vec3 wi;
-				mi.mPhase->Sample_p(-ray.mDir, &wi, Vec2(rand(), rand()));
+				mi.mPhase->SampleP(-ray.mDir, &wi, Vec2(rand(), rand()));
 				ray = mi.SpawnRay(wi);
 				deltaBoundEvent = false;
 			}
@@ -147,7 +147,7 @@ Vec3 VolPathTracing::ConnectToLight(const Scene &scene, StateSequence &rand,
 	//{
 	//	const MediumIntersection& mi = (const MediumIntersection&)isect;
 	//	Vec3 wi;
-	//	real p = mi.phase->Sample_p(mi.wo, &wi, Vec2(rand(), rand()));
+	//	real p = mi.phase->SampleP(mi.wo, &wi, Vec2(rand(), rand()));
 	//	real pdf = p;
 	//	Vec3 f = Vec3(p);
 	//	Ray shadowRay = isect.SpawnRay(wi);
@@ -156,7 +156,7 @@ Vec3 VolPathTracing::ConnectToLight(const Scene &scene, StateSequence &rand,
 	//	if (scene.IntersectTr(shadowRay, rand, &lightIt, &Tr)) {
 	//		if (lightIt.primitive->IsLight()) {
 	//			scene.QueryIntersectionInfo(shadowRay, &lightIt);
-	//			lightPdf = lightIt.primitive->light->Pdf_Li(isect, wi);
+	//			lightPdf = lightIt.primitive->light->PdfLi(isect, wi);
 	//			Vec3 dir = isect.hit - lightPoint.hit;
 	//			real geomTerm = std::abs(Dot(dir.Norm(), lightIt.n)) / dir.Length2();
 	//			real scatteringPdfA = pdf * geomTerm;
