@@ -45,11 +45,11 @@ static const real OneMinusEpsilon = FloatOneMinusEpsilon;
 #define PCG32_DEFAULT_STATE 0x853c49e6748fea9bULL
 #define PCG32_DEFAULT_STREAM 0xda3e39cb94b95bdbULL
 #define PCG32_MULT 0x5851f42d4c957f2dULL
-class RNG {
+class Pcg32 {
   public:
-    // RNG Public Methods
-    RNG();
-    RNG(uint64 sequenceIndex) { SetSequence(sequenceIndex); }
+    // Pcg32 Public Methods
+    Pcg32();
+    Pcg32(uint64 sequenceIndex) { SetSequence(sequenceIndex); }
     void SetSequence(uint64 sequenceIndex);
     uint32_t UniformUInt32();
     uint32_t UniformUInt32(uint32_t b) {
@@ -87,7 +87,7 @@ class RNG {
         }
         mState = acc_mult * mState + acc_plus;
     }
-    int64_t operator-(const RNG &other) const {
+    int64_t operator-(const Pcg32 &other) const {
         uint64 cur_mult = PCG32_MULT, cur_plus = mInc, cur_state = other.mState,
                  the_bit = 1u, distance = 0u;
         while (mState != cur_state) {
@@ -103,13 +103,13 @@ class RNG {
     }
 
   private:
-    // RNG Private Data
+    // Pcg32 Private Data
     uint64 mState, mInc;
 };
 
-// RNG Inline Method Definitions
-inline RNG::RNG() : mState(PCG32_DEFAULT_STATE), mInc(PCG32_DEFAULT_STREAM) {}
-inline void RNG::SetSequence(uint64 initseq) {
+// Pcg32 Inline Method Definitions
+inline Pcg32::Pcg32() : mState(PCG32_DEFAULT_STATE), mInc(PCG32_DEFAULT_STREAM) {}
+inline void Pcg32::SetSequence(uint64 initseq) {
     mState = 0u;
     mInc = (initseq << 1u) | 1u;
     UniformUInt32();
@@ -117,7 +117,7 @@ inline void RNG::SetSequence(uint64 initseq) {
     UniformUInt32();
 }
 
-inline uint32_t RNG::UniformUInt32() {
+inline uint32_t Pcg32::UniformUInt32() {
     uint64 oldstate = mState;
     mState = oldstate * PCG32_MULT + mInc;
     uint32_t xorshifted = (uint32_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
