@@ -15,7 +15,7 @@ struct Ray {
 	}
 
 	Ray(Vec3 orig, Vec3 dir, real tmax = INF, real tmin = 0.f, const Medium* medium = nullptr) 
-		: mOrig(orig + dir * RAY_EPS), mDir(dir), mTmax(tmax), mTmin(tmin), mMedium(medium) 
+		: mOrig(orig), mDir(dir), mTmax(tmax), mTmin(tmin), mMedium(medium) 
 	{}
 
 	Vec3 operator()(real t) const 
