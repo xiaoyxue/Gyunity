@@ -486,8 +486,6 @@ void TestSPPM5(int argc, char* argv[]) {
 	//CornellBoxWater::SetScene(scene);
 	//CornellBoxTriangle2::SetScene(scene);
 	//EnvironmentMapScene::SetScene(scene);
-	//CornellBoxHeartSurface::SetScene(scene);
-	//HeartSurfaceEnvironmentMapScene::SetScene(scene);
 
 	//std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BruteForce());
 	//std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new KdTreeAccel(scene->GetPrimitives()));
@@ -573,8 +571,6 @@ void TestPathTracing(int argc, char* argv[]) {
 	//CornellBoxMesh::SetScene(scene);
 	//CornellBoxTriangle2::SetScene(scene);
 	EnvironmentMapScene::SetScene(scene);
-	//CornellBoxHeartSurface::SetScene(scene);
-	//HeartSurfaceEnvironmentMapScene::SetScene(scene);
 
 	std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BVHAccel(scene->GetPrimitives()));
 	scene->SetAccelerator(accelerator);
@@ -618,8 +614,6 @@ void TestSPPM6(int argc, char* argv[]) {
 	//CornellBoxWater::SetScene(scene);
 	//CornellBoxTriangle2::SetScene(scene);
 	//EnvironmentMapScene::SetScene(scene);
-	//CornellBoxHeartSurface::SetScene(scene);
-	//HeartSurfaceEnvironmentMapScene::SetScene(scene);
 
 	std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BVHAccel(scene->GetPrimitives()));
 	scene->SetAccelerator(accelerator);
@@ -662,8 +656,6 @@ void TestVolPathTracing(int argc, char* argv[]) {
 	//CornellBoxMesh::SetScene(scene);
 	//CornellBoxTriangle2::SetScene(scene);
 	//EnvironmentMapScene::SetScene(scene);
-	//CornellBoxHeartSurface::SetScene(scene);
-	//HeartSurfaceEnvironmentMapScene::SetScene(scene);
 	CornellBoxMedium::SetScene(scene);
 
 	std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BVHAccel(scene->GetPrimitives()));
@@ -729,8 +721,6 @@ void TestPathTracing2(int argc, char* argv[]) {
 	//CornellBoxDiffuseBunny::SetScene(scene);
 	//CornellBoxTriangle2::SetScene(scene);
 	//EnvironmentMapScene::SetScene(scene);
-	//CornellBoxHeartSurface::SetScene(scene);
-	//HeartSurfaceEnvironmentMapScene::SetScene(scene);
 
 	std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BVHAccel(scene->GetPrimitives()));
 	scene->SetAccelerator(accelerator);
