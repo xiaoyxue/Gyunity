@@ -15,8 +15,8 @@ private:
 	std::shared_ptr<Shape> mShape;
 	Vec3 mLemit;
 public:
-	AreaLight(const std::shared_ptr<Shape>& pShape) : mShape(pShape) {}
-	AreaLight(const std::shared_ptr<Shape>& pShape, const Vec3 & Lemit) : mShape(pShape), mLemit(Lemit) {}
+	AreaLight(const std::shared_ptr<Shape>& shape) : mShape(shape) {}
+	AreaLight(const std::shared_ptr<Shape>& shape, const Vec3 & Lemit) : mShape(shape), mLemit(Lemit) {}
 
 	Vec3 SampleLi(const Intersection &isect, Vec3 *wi, real *pdf, Intersection *lightPoint, const Vec2 &u) const override 
 	{

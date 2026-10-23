@@ -136,7 +136,7 @@ public:
 		return mFrame.LocalToWorld(v);
 	}
 	~BSDF(){}
-	void Add(BxDF* bsdf);
+	void Add(BxDF* bxdf);
 	real Pdf(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
 	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0), ScatterEventType flags = BSDF_ALL) const;
 	Vec3 Evaluate(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;

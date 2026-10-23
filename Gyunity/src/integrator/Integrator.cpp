@@ -90,8 +90,8 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 					if (intersection.mPrimitive->IsLight() && intersection.mPrimitive->GetLight() == light) {
 						//std::cout << lightPdf << std::endl;
 						scene.QueryIntersectionInfo(ray, &intersection);
-						const Light* emissionShape = intersection.mPrimitive->GetLight();
-						L2 = emissionShape->Emission(intersection, -wi) * f * Tr * cosTheta / pdf;
+						const Light* emitter = intersection.mPrimitive->GetLight();
+						L2 = emitter->Emission(intersection, -wi) * f * Tr * cosTheta / pdf;
 					}
 				}
 				else if (scene.GetEnvironmentLight() == light) {

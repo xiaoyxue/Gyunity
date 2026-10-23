@@ -25,8 +25,8 @@ protected:
 
 public:
 	TiledIntegrator() = default;
-	TiledIntegrator(int samplePerPixel, const std::shared_ptr<Sampler> &pSampler, const std::shared_ptr<SamplerEnum> &pSamplerEnum): 
-		mSpp(samplePerPixel), mSampler(pSampler), mSamplerEnum(pSamplerEnum) 
+	TiledIntegrator(int samplePerPixel, const std::shared_ptr<Sampler> &sampler, const std::shared_ptr<SamplerEnum> &samplerEnum): 
+		mSpp(samplePerPixel), mSampler(sampler), mSamplerEnum(samplerEnum) 
 	{
 	}
 	virtual ~TiledIntegrator(){}

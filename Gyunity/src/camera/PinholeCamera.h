@@ -7,14 +7,14 @@ GYT_NAMESPACE_BEGIN
 class PinHoleCamera : public ProjectiveCamera 
 {
 public:
-	PinHoleCamera(std::shared_ptr<Film> pFilm, const Vec3 &position, const Vec3 &cz, const Vec3 &cx, const Vec3 &cy, real fovy, real dis) 
-		: ProjectiveCamera(pFilm, position, cz, cx, cy, fovy, dis) 
+	PinHoleCamera(std::shared_ptr<Film> film, const Vec3 &position, const Vec3 &cz, const Vec3 &cx, const Vec3 &cy, real fovy, real dis) 
+		: ProjectiveCamera(film, position, cz, cx, cy, fovy, dis) 
 	{
 
 	}
 
-	PinHoleCamera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real dis)
-		: ProjectiveCamera(pFilm, position, lookAt, up, fovy, dis)
+	PinHoleCamera(std::shared_ptr<Film> film, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real dis)
+		: ProjectiveCamera(film, position, lookAt, up, fovy, dis)
 	{
 
 	}

@@ -13,9 +13,9 @@ private:
 	std::shared_ptr<Film> mFilm;
 	std::shared_ptr<Camera> mCamera;
 public:
-	Renderer(const std::shared_ptr<Scene> &pScene, const std::shared_ptr<Camera> &pCamera, 
-		const std::shared_ptr<Integrator> &pIntegrator, const std::shared_ptr<Film> &pFilm) 
-		: mScene(pScene), mIntegrator(pIntegrator), mFilm(pFilm), mCamera(pCamera) 
+	Renderer(const std::shared_ptr<Scene> &scene, const std::shared_ptr<Camera> &camera, 
+		const std::shared_ptr<Integrator> &pIntegrator, const std::shared_ptr<Film> &film) 
+		: mScene(scene), mIntegrator(pIntegrator), mFilm(film), mCamera(camera) 
 	{
 
 	}

@@ -51,9 +51,9 @@ Vec3 FrConductor(real cosThetaI, const Vec3& etai, const Vec3& etat, const Vec3&
 	return 0.5 * (Rp + Rs);
 }
 
-void BSDF::Add(BxDF* bsdf) {
-	mBxdfs[mBsdfCnt++] = bsdf;
-	mIsDelta |= (bsdf->mScatterEventType & BSDF_SPECULAR);
+void BSDF::Add(BxDF* bxdf) {
+	mBxdfs[mBsdfCnt++] = bxdf;
+	mIsDelta |= (bxdf->mScatterEventType & BSDF_SPECULAR);
 }
 
 real BSDF::Pdf(const Vec3& wo, const Vec3& wi, ScatterEventType flag) const {

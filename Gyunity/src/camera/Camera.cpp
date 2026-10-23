@@ -59,14 +59,14 @@ void ProjectiveCamera::Initialize() {
 }
 
 
-ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& cz, const Vec3& cx, const Vec3& cy, real pFovy, real filmDis)
-	: Camera(pFilm, position, cx, cy, cz, pFovy, filmDis)
+ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> film, const Vec3& position, const Vec3& cz, const Vec3& cx, const Vec3& cy, real pFovy, real filmDis)
+	: Camera(film, position, cx, cy, cz, pFovy, filmDis)
 {
 	Initialize();
 }
 
-ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis)
-	: Camera(pFilm, position, lookAt, up,fovy, filmDis)
+ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> film, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis)
+	: Camera(film, position, lookAt, up,fovy, filmDis)
 {
 	Initialize();
 }

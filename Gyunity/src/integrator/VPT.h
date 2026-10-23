@@ -9,9 +9,9 @@ private:
 	int mMaxDepth;
 	bool mUseEquiAngularSample;
 public:
-	VolPathTracing(int samplePerPixel, int maxDepth, const std::shared_ptr<Sampler>& pSampler, 
-		const std::shared_ptr<SamplerEnum>& pSamplerEnum, bool equalAngular = true) :
-		TiledIntegrator(samplePerPixel, pSampler, pSamplerEnum), 
+	VolPathTracing(int samplePerPixel, int maxDepth, const std::shared_ptr<Sampler>& sampler, 
+		const std::shared_ptr<SamplerEnum>& samplerEnum, bool equalAngular = true) :
+		TiledIntegrator(samplePerPixel, sampler, samplerEnum), 
 		mMaxDepth(maxDepth), mUseEquiAngularSample(equalAngular)
 	{
 

@@ -97,7 +97,7 @@ public:
 
 
 #define GYT_FACTORY_NAME(T) Factory_##T
-#define GYT_IMPLEMENTATION_NAME(T) Impementation_##T##_Injector
+#define GYT_IMPLEMENTATION_NAME(T) Implementation_##T##_Injector
 
 #define GYT_INTERFACE_DEF(BaseClassName)													\
 class GYT_FACTORY_NAME(BaseClassName) : public FactoryBase<BaseClassName>					\
@@ -149,7 +149,7 @@ public:																						\
 		auto factory = GYT_FACTORY_NAME(BaseClassName)::GetInstancePtr();					\
 		factory->Register<ClassName>(Alias);												\
 	}																						\
-} Impementation_##BaseClassName##_##ClassName##_Instance;
+} Implementation_##BaseClassName##_##ClassName##_Instance;
 
 
 GYT_NAMESPACE_END
