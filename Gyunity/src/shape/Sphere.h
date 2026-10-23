@@ -34,9 +34,9 @@ public:
 
 		r = mWorldToObject(ray);
 
-		Vec3 po = r.mOrig - mCenter;
-		real vd = po.Dot(r.mDir), d2 = r.mDir.Dot(r.mDir), po2 = po.Dot(po);
-		real det = vd * vd - d2 * po2 + d2 * mRad * mRad;
+		Vec3 offset = r.mOrig - mCenter;
+		real offsetDotDir = offset.Dot(r.mDir), dirLength2 = r.mDir.Dot(r.mDir), offsetLength2 = offset.Dot(offset);
+		real det = offsetDotDir * offsetDotDir - dirLength2 * offsetLength2 + dirLength2 * mRad * mRad;
 
 
 		if (det < 0) {
@@ -47,9 +47,9 @@ public:
 			det = std::sqrt(det);
 		}
 
-		tHit = (-vd - det) / d2;
+		tHit = (-offsetDotDir - det) / dirLength2;
 		if (tHit <= 0 || tHit > r.mTmax) {
-			tHit = (-vd + det) / d2;
+			tHit = (-offsetDotDir + det) / dirLength2;
 			if (tHit <= 0 || tHit > r.mTmax) {
 				return false;
 			}
@@ -133,10 +133,9 @@ public:
 
 		r = mWorldToObject(ray);
 
-		Vec3 op = mCenter - r.mOrig;
-		Vec3 v = r.mOrig - mCenter;
-		real vd = v.Dot(r.mDir), d2 = r.mDir.Dot(r.mDir), v2 = v.Dot(v);
-		real det = vd * vd - d2 * v.Dot(v) + d2 * mRad * mRad;
+		Vec3 offset = r.mOrig - mCenter;
+		real offsetDotDir = offset.Dot(r.mDir), dirLength2 = r.mDir.Dot(r.mDir), offsetLength2 = offset.Dot(offset);
+		real det = offsetDotDir * offsetDotDir - dirLength2 * offset.Dot(offset) + dirLength2 * mRad * mRad;
 
 		if (det < 0) {
 			return false;
@@ -144,9 +143,9 @@ public:
 		else {
 			det = sqrt(det);
 		}
-		tHit = (-vd - det) / d2;
+		tHit = (-offsetDotDir - det) / dirLength2;
 		if (tHit <= 0 || tHit > r.mTmax) {
-			tHit = (-vd + det) / d2;
+			tHit = (-offsetDotDir + det) / dirLength2;
 			if (tHit <= 0 || tHit > r.mTmax) {
 				return false;
 			}

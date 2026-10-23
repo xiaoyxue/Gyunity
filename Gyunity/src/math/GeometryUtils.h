@@ -38,29 +38,29 @@ GYT_FORCE_INLINE bool SameHemisphere(const Vec3& w, const Vec3& wp) {
 
 GYT_FORCE_INLINE Vec3 OffsetRayOrigin(const Vec3 &pos, const Vec3 &pError,
 	const Vec3 &normal, const Vec3 &w) {
-	real d = Dot(Abs(normal), pError);
+	real offsetDist = Dot(Abs(normal), pError);
 #ifdef GYT_USING_DOUBLE
 	// We have tons of precision; for now bump up the offset a bunch just
 	// to be extra sure that we start on the right side of the surface
 	// (In case of any bugs in the epsilons code...)
-	d *= 1024.;
+	offsetDist *= 1024.;
 #endif
-	Vec3 offset = d * normal;// +normal * 1e-4f;
+	Vec3 offset = offsetDist * normal;// +normal * 1e-4f;
 
 	if (Dot(w, normal) < 0) {
 		offset = -offset;
 	}
-	Vec3 po = pos + offset;
+	Vec3 offsetPos = pos + offset;
 
 	// Round offset point _po_ away from _p_
 	for (int i = 0; i < 3; ++i) {
 		if (offset[i] > 0)
-			po[i] = NextFloatUp(po[i]);
+			offsetPos[i] = NextFloatUp(offsetPos[i]);
 		else if (offset[i] < 0)
-			po[i] = NextFloatDown(po[i]);
+			offsetPos[i] = NextFloatDown(offsetPos[i]);
 	}
 
-	return po;
+	return offsetPos;
 }
 
 GYT_FORCE_INLINE Vec3 Faceforward(const Vec3& v, const Vec3& v2) {

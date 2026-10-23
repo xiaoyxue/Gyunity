@@ -115,7 +115,7 @@ class RegularHaltonSampler : public Sampler {
 public:
 	real Sample(unsigned int d, unsigned long long i) override {
 		GYT_DEBUG_ASSERT(d < (unsigned)primeList.GetPrimesNum());
-		real val = hal(d, i + 1);  // The first one is evil...
+		real val = ReversedRadicalInverse(d, i + 1);  // The first one is evil...
 		return val;
 	}
 
@@ -124,15 +124,15 @@ public:
 	}
 
 private:
-	inline int rev(const int i, const int p) const {
+	inline int ReverseDigit(const int i, const int p) const {
 		return i == 0 ? i : p - i;
 	}
 
-	real hal(const int d, long long j) const {
+	real ReversedRadicalInverse(const int d, long long j) const {
 		const int p = primeList.GetPrime(d);
 		real h = 0.f, f = 1.f / p, fct = f;
 		while (j > 0) {
-			h += rev(j % p, p) * fct;
+			h += ReverseDigit(j % p, p) * fct;
 			j /= p;
 			fct *= f;
 		}

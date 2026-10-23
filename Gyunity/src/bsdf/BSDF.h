@@ -277,7 +277,7 @@ public:
 		return Vec3();
 	}
 
-	real Fresnell(const Vec3 &wo, const Vec3 &td, const Vec3 &normal, const Vec3 &absNormal) const 
+	real FresnelSchlick(const Vec3 &wo, const Vec3 &td, const Vec3 &normal, const Vec3 &absNormal) const 
 	{
 		bool into = (normal.Dot(absNormal) > 0.0);
 		real nnt = into ? mNc / mNt : mNt / mNc, ddn = (-1 * wo).Dot(absNormal);//, cos2t;
