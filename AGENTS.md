@@ -6,7 +6,7 @@ Do not edit files in the main checkout. Create a git worktree under `.worktree/`
 
 ```powershell
 git fetch origin
-git worktree add .worktree/<topic> -b user/<alias>/<topic> origin/master
+git worktree add .worktree/<topic> -b user/<alias>/<topic> origin/main
 cd .worktree/<topic>
 git submodule update --init --recursive
 .\init.ps1
