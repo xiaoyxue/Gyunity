@@ -32,7 +32,7 @@ public:
 	real mWidth, mHeight;
 	real mAspectRatio;
 	real mArea;
-	Vec3 mLL, mLU, mRL, mRU;
+	Vec3 mLowerLeft, mUpperLeft, mLowerRight, mUpperRight;
 
 public:
 	Film(int w, int h, Filter* pFilter = nullptr) 

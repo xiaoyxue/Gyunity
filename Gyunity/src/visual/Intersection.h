@@ -14,7 +14,7 @@ public:
 	Vec3 mPos, mNormal, mAbsNormal, mGeometryNormal, mOutDir;
 	Vec3 mDpDu, mDpDv;
 	Vec3 mShadingDpDu, mShadingDpDv;
-	Vec2 mUV;
+	Vec2 mUv;
 	real mRayEps = 0;
 	Vec3 mPointError;
 	real mB1, mB2;

@@ -159,20 +159,20 @@ public:
 
 	//	Vec3 screenCenter = camera.mPos + camera.mFilmDistance * camera.mCz;
 	//	Vec3 centerToPoint = screenPoint - screenCenter;
-	//	if (std::abs(centerToPoint.Dot(camera.mCx)) > (camera.GetFilm()->mLU - camera.GetFilm()->mRU).Length() / 2.f ||
-	//		std::abs(centerToPoint.Dot(camera.mCy)) > (camera.GetFilm()->mLL - camera.GetFilm()->mLU).Length() / 2.f) {
+	//	if (std::abs(centerToPoint.Dot(camera.mCx)) > (camera.GetFilm()->mUpperLeft - camera.GetFilm()->mUpperRight).Length() / 2.f ||
+	//		std::abs(centerToPoint.Dot(camera.mCy)) > (camera.GetFilm()->mLowerLeft - camera.GetFilm()->mUpperLeft).Length() / 2.f) {
 	//		*inScreen = false;
 	//		return Vec3(-1, -1, -1); //out of screen
 	//	}
 
-	//	Vec3 pointLU = screenPoint - camera.GetFilm()->mLU;
+	//	Vec3 pointLU = screenPoint - camera.GetFilm()->mUpperLeft;
 	//	real disLUP = pointLU.Length();
-	//	real cosTheta = (camera.GetFilm()->mLL - camera.GetFilm()->mLU).Norm().Dot(pointLU.Norm());
+	//	real cosTheta = (camera.GetFilm()->mLowerLeft - camera.GetFilm()->mUpperLeft).Norm().Dot(pointLU.Norm());
 	//	real sinTheta = std::sqrt(1 - cosTheta * cosTheta);
 	//	real pH = disLUP * cosTheta;
 	//	real pW = disLUP * sinTheta;
-	//	real alpha = pW / (camera.GetFilm()->mRU - camera.GetFilm()->mLU).Length();
-	//	real beta = pH / (camera.GetFilm()->mLL - camera.GetFilm()->mLU).Length();
+	//	real alpha = pW / (camera.GetFilm()->mUpperRight - camera.GetFilm()->mUpperLeft).Length();
+	//	real beta = pH / (camera.GetFilm()->mLowerLeft - camera.GetFilm()->mUpperLeft).Length();
 
 	//	int px = (int)(camera.GetFilm()->mResX * alpha);
 	//	int py = (int)(camera.GetFilm()->mResX * beta);

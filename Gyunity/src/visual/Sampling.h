@@ -9,8 +9,8 @@ struct Distribution1D
 {
 private:
 	friend struct Distribution2D;
-	//real* mFunc, * mCDF;
-	std::vector<real> mFunc, mCDF;
+	//real* mFunc, * mCdf;
+	std::vector<real> mFunc, mCdf;
 	real mFuncInt;
 	int mCount;
 
@@ -20,59 +20,59 @@ public:
 		mCount = n;
 		//mFunc = new real[n];
 		//memcpy(mFunc, f, n * sizeof(real));
-		//mCDF = new real[n + 1];
+		//mCdf = new real[n + 1];
 		mFunc.resize(n);
 		memcpy(&mFunc[0], f, n * sizeof(real));
-		mCDF.resize(n + 1);
+		mCdf.resize(n + 1);
 
 		// Compute integral of step function at $x_i$
-		mCDF[0] = 0.;
+		mCdf[0] = 0.;
 		for (int i = 1; i < mCount + 1; ++i)
-			mCDF[i] = mCDF[i - 1] + mFunc[i - 1] / n;
+			mCdf[i] = mCdf[i - 1] + mFunc[i - 1] / n;
 
 		// Transform step function integral into CDF
-		mFuncInt = mCDF[mCount];
+		mFuncInt = mCdf[mCount];
 		if (mFuncInt == 0.f)
 		{
 			for (int i = 1; i < n + 1; ++i)
-				mCDF[i] = real(i) / real(n);
+				mCdf[i] = real(i) / real(n);
 		}
 		else
 		{
 			for (int i = 1; i < n + 1; ++i)
-				mCDF[i] /= mFuncInt;
+				mCdf[i] /= mFuncInt;
 		}
 	}
 
 	~Distribution1D()
 	{
 		//delete[] mFunc;
-		//delete[] mCDF;
+		//delete[] mCdf;
 	}
 
 	real SampleContinuous(real u, real *pdf, int *off = NULL) const
 	{
 		// Find surrounding CDF segments and _offset_
-		//real *ptr = std::upper_bound(mCDF, mCDF + count + 1, u);
-		//int offset = Clamp(int(ptr - mCDF - 1), 0, count - 1);
-		auto it = std::upper_bound(mCDF.begin(), mCDF.begin() + mCount + 1, u);
-		int offset = Clamp(int(std::distance(mCDF.begin(), it) - 1), 0, mCount - 1);
+		//real *ptr = std::upper_bound(mCdf, mCdf + count + 1, u);
+		//int offset = Clamp(int(ptr - mCdf - 1), 0, count - 1);
+		auto it = std::upper_bound(mCdf.begin(), mCdf.begin() + mCount + 1, u);
+		int offset = Clamp(int(std::distance(mCdf.begin(), it) - 1), 0, mCount - 1);
 		if (off) *off = offset;
 		ASSERT(offset < mCount);
-		ASSERT(u >= mCDF[offset] && (u < mCDF[offset + 1] || u == 1));
+		ASSERT(u >= mCdf[offset] && (u < mCdf[offset + 1] || u == 1));
 
 		// Fix the case when func ends with zeros
-		if (mCDF[offset] == mCDF[offset + 1])
+		if (mCdf[offset] == mCdf[offset + 1])
 		{
 			ASSERT(u == 1.0f);
 
-			do { offset--; } while (mCDF[offset] == mCDF[offset + 1] && offset > 0);
+			do { offset--; } while (mCdf[offset] == mCdf[offset + 1] && offset > 0);
 
-			ASSERT(mCDF[offset] != mCDF[offset + 1]);
+			ASSERT(mCdf[offset] != mCdf[offset + 1]);
 		}
 
 		// Compute offset along CDF segment
-		real du = (u - mCDF[offset]) / (mCDF[offset + 1] - mCDF[offset]);
+		real du = (u - mCdf[offset]) / (mCdf[offset + 1] - mCdf[offset]);
 		ASSERT(!std::isnan(du));
 
 		// Compute PDF for sampled offset
@@ -86,12 +86,12 @@ public:
 	int SampleDiscrete(real u, real *pdf) const
 	{
 		// Find surrounding CDF segments and _offset_
-		//real *ptr = std::upper_bound(mCDF, mCDF + count + 1, u);
-		//int offset = std::max(0, int(ptr - mCDF - 1));
-		auto it = std::upper_bound(mCDF.begin(), mCDF.begin() + mCount + 1, u);
-		int offset = std::max(0, int(std::distance(mCDF.begin(), it)) - 1);
+		//real *ptr = std::upper_bound(mCdf, mCdf + count + 1, u);
+		//int offset = std::max(0, int(ptr - mCdf - 1));
+		auto it = std::upper_bound(mCdf.begin(), mCdf.begin() + mCount + 1, u);
+		int offset = std::max(0, int(std::distance(mCdf.begin(), it)) - 1);
 		ASSERT(offset < mCount);
-		ASSERT(u >= mCDF[offset] && u < mCDF[offset + 1]);
+		ASSERT(u >= mCdf[offset] && u < mCdf[offset + 1]);
 		if (pdf) *pdf = mFunc[offset] / (mFuncInt * mCount);
 		return offset;
 	}

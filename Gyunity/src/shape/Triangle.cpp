@@ -41,7 +41,7 @@ void Triangle::QueryIntersectionInfo(const Ray& ray, Intersection* isect) const 
 
 	
 	//isect->hit = b0 * p0 + b1 * p1 + b2 * p2;
-	isect->mUV = Vec2(u, v);
+	isect->mUv = Vec2(u, v);
 	isect->mGeometryNormal = (Dot(faceNormal, ns) < 0) ? -faceNormal : faceNormal;
 	isect->mAbsNormal = isect->mGeometryNormal.Dot(ray.mDir) < 0 ? isect->mGeometryNormal : isect->mGeometryNormal * -1;
 	isect->mDpDu = dpdu;
