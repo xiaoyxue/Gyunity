@@ -60,5 +60,5 @@ Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
 | Project | What it is |
 |---|---|
 | `Gyunity` | The renderer itself, built as a static library: integrators, BSDFs and materials, lights, shapes, accelerators, samplers and math. |
-| `GyunityRender` | The command-line app that sets up a scene, renders it and writes the image (`x64\<Config>\GyunityRender.exe`). Scenes are defined in `GyunityRender\CornellBox.h`, and `main.cpp` chooses the scene, camera and integrator. Run it from the `GyunityRender` folder so the `..\resources` paths resolve. |
+| `GyunityApp` | The application that sets up a scene, renders it and writes the image (`x64\<Config>\GyunityApp.exe`). Scenes are defined in `GyunityApp\CornellBox.h`, and `main.cpp` chooses the scene, camera and integrator. Run it from the `GyunityApp` folder so the `..\resources` paths resolve. |
 | `GyunityTest` | Unit tests (googletest). |

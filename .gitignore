@@ -16,8 +16,8 @@ ipch/
 *.db
 *.filters
 *.user
-GyunityRender/*.bmp
-GyunityRender/*.png
-GyunityRender/Result/
+GyunityApp/*.bmp
+GyunityApp/*.png
+GyunityApp/Result/
 packages/
 .worktree/
