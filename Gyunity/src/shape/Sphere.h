@@ -13,7 +13,7 @@ private:
 	real mRad;
 	Vec3 mPos;
 	bool mInside;
-	AABB mBBox;
+	AABB mBbox;
 	const real mThetaMin = 0;
 	const real mThetaMax = PI;
 	const real mPhiMax = 2 * PI;
@@ -23,7 +23,7 @@ public:
 		real radius, Vec3 position, bool inside = false) :
 		Shape(ObjectToWorld, WorldToObject), mRad(radius), mPos(position), mInside(inside) {
 
-		mBBox = AABB(mPos - Vec3(mRad, mRad, mRad), mPos + Vec3(mRad, mRad, mRad));
+		mBbox = AABB(mPos - Vec3(mRad, mRad, mRad), mPos + Vec3(mRad, mRad, mRad));
 	}
 
 	bool Intersect(const Ray &ray, Intersection *isect, real *t) const override {
@@ -116,7 +116,7 @@ public:
 
 		ObjectToWorld(it);
 
-		isect->mUV = Vec2(u, v);
+		isect->mUv = Vec2(u, v);
 		isect->mShapeId = mShapeId;
 		*t = tHit;
 
@@ -345,7 +345,7 @@ public:
 	}
 
 	AABB ObjectBound() const override {
-		return mBBox;
+		return mBbox;
 	}
 };
 

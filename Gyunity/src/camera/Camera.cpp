@@ -45,16 +45,16 @@ void ProjectiveCamera::Initialize() {
 
 
 	Vec3 filmCenter = mPos + mCz * mFilmDistance;
-	mFilm->mLU = filmCenter + mCy * mFilm->mHeight * 0.5 - mCx * mFilm->mWidth * 0.5;
-	mFilm->mLL = filmCenter - mCy * mFilm->mHeight * 0.5 - mCx * mFilm->mWidth * 0.5;
-	mFilm->mRU = filmCenter + mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
-	mFilm->mRL = filmCenter - mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
+	mFilm->mUpperLeft = filmCenter + mCy * mFilm->mHeight * 0.5 - mCx * mFilm->mWidth * 0.5;
+	mFilm->mLowerLeft = filmCenter - mCy * mFilm->mHeight * 0.5 - mCx * mFilm->mWidth * 0.5;
+	mFilm->mUpperRight = filmCenter + mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
+	mFilm->mLowerRight = filmCenter - mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
 
 	GYT_Print("Film center: {}\n", filmCenter);
-	GYT_Print("LL: {} \n", mFilm->mLL);
-	GYT_Print("LU: {} \n", mFilm->mLU);
-	GYT_Print("RL: {} \n", mFilm->mRL);
-	GYT_Print("RU: {} \n", mFilm->mRU);
+	GYT_Print("LL: {} \n", mFilm->mLowerLeft);
+	GYT_Print("LU: {} \n", mFilm->mUpperLeft);
+	GYT_Print("RL: {} \n", mFilm->mLowerRight);
+	GYT_Print("RU: {} \n", mFilm->mUpperRight);
 
 }
 

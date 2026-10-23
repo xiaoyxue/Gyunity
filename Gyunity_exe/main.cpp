@@ -402,7 +402,7 @@ void TestProjection() {
 	//ndc to camera
 	{
 		std::cout << "ndc to camera:" << std::endl;
-		Vec3 cameraPoint = camera->WorldToCamera(camera->GetFilm()->mLU);
+		Vec3 cameraPoint = camera->WorldToCamera(camera->GetFilm()->mUpperLeft);
 		//cameraPoint.z = 1000;
 		std::cout << cameraPoint << std::endl;
 		Vec3 cameraToNDC = camera->CameraToNDC(cameraPoint);
