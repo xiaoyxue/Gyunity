@@ -49,10 +49,10 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 		Vec3 estimation = f * std::abs(Dot(isect.mNormal, wi)) / pdf;
 		specularBounce = bsdf->IsDelta();
 
-		real p = std::min((real)1.0, (estimation * throughput).Y() / throughput.Y());
-		if (p < 1 && i > 5) {
-			if (rand() < p) {
-				throughput = throughput / p;
+		real survivalProb = std::min((real)1.0, (estimation * throughput).Y() / throughput.Y());
+		if (survivalProb < 1 && i > 5) {
+			if (rand() < survivalProb) {
+				throughput = throughput / survivalProb;
 			}
 			else {
 				break;

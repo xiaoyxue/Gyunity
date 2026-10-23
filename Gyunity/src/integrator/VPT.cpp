@@ -91,10 +91,10 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 			throughput = throughput * estimation;
 			ray = isect.SpawnRay(wi);
 		}
-		real p = std::min((real)1.0, (throughput).Y() / throughput.Y());
-		if (p < 1 && i > 5) {
-			if (rand() < p) {
-				throughput = throughput / p;
+		real survivalProb = std::min((real)1.0, (throughput).Y() / throughput.Y());
+		if (survivalProb < 1 && i > 5) {
+			if (rand() < survivalProb) {
+				throughput = throughput / survivalProb;
 			}
 			else {
 				break;
@@ -120,7 +120,7 @@ Vec3 VolPathTracing::ConnectToLight(const Scene &scene, StateSequence &rand,
 	//}
 	//VisibilityTester visibilityTester(isect, lightPoint);
 	//const MediumIntersection& mi = (const MediumIntersection&)isect;
-	//real p = mi.phase->p(mi.wo, wi);
+	//real p = mi.phase->Evaluate(mi.wo, wi);
 	//f = Vec3(p);
 	//return Le * f * visibilityTester.Tr(scene, rand) * cosTheta / dir.Length2() / lightPdf;
 
@@ -137,10 +137,10 @@ Vec3 VolPathTracing::ConnectToLight(const Scene &scene, StateSequence &rand,
 		}
 		VisibilityTester visibilityTester(isect, lightPoint);
 		const MediumIntersection& mi = (const MediumIntersection&)isect;
-		real p = mi.mPhase->p(mi.mOutDir, wi);
-		f = Vec3(p);
+		real phase = mi.mPhase->Evaluate(mi.mOutDir, wi);
+		f = Vec3(phase);
 		real geomTerm = std::abs(cosTheta) / dir.Length2();
-		real pdfPhase = p * geomTerm;
+		real pdfPhase = phase * geomTerm;
 		weight1 = (lightPoint.mNormal != Vec3()) ? PowerHeuristic(1, lightPdf, 1, pdfPhase) : 1;
 		L1 = Le * f * visibilityTester.Tr(scene, rand) * cosTheta / dir.Length2() / lightPdf;
 	}

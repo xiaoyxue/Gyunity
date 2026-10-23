@@ -98,8 +98,8 @@ public:
 	}
 
 	std::vector<T>& GetGrid(const Vec3 &point) {
-		Vec3 hh = (point - mHitPointsBBox.minPoint) * mInvHashCellSize;
-		int ix = std::abs(int(hh.x)), iy = std::abs(int(hh.y)), iz = std::abs(int(hh.z));
+		Vec3 cellCoord = (point - mHitPointsBBox.minPoint) * mInvHashCellSize;
+		int ix = std::abs(int(cellCoord.x)), iy = std::abs(int(cellCoord.y)), iz = std::abs(int(cellCoord.z));
 		return mHashGrid[Hash(ix, iy, iz)];
 	}
 

@@ -152,10 +152,10 @@ void SPPM::TracePhoton(const Scene& scene, StateSequence& rand, const Ray& ray, 
 			}
 		}
 		//real p = estimation.maxValue();
-		real p = std::min((real)1.0, (estimation * photonFlux).Y() / photonFlux.Y());
-		if (p < 1) {
-			if (rand() < p) {
-				photonFlux = photonFlux / p;
+		real survivalProb = std::min((real)1.0, (estimation * photonFlux).Y() / photonFlux.Y());
+		if (survivalProb < 1) {
+			if (rand() < survivalProb) {
+				photonFlux = photonFlux / survivalProb;
 			}
 			else {
 				break;
