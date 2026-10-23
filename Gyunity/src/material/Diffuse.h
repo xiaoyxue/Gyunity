@@ -10,7 +10,7 @@ GYT_NAMESPACE_BEGIN
 
 class DiffuseMaterial: public Material{
 public:
-	DiffuseMaterial(const std::shared_ptr<Texture<Vec3>> &kd) : kd(kd) {
+	DiffuseMaterial(const std::shared_ptr<Texture<Vec3>> &kd) : mKd(kd) {
 
 	}
 	//void ComputeScatteringFunction(Intersection* isect,
@@ -26,11 +26,11 @@ public:
 	//}
 	void ComputeScatteringFunction(Intersection* isect, MemoryPool& arena,
 		TransportMode mode = TransportMode::Radiance) const {
-		isect->mpBSDF = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
-		isect->mpBSDF->Add(MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(kd->Sample(*isect)));
+		isect->mBsdf = GYT_MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
+		isect->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(mKd->Sample(*isect)));
 	}
 private:
-	std::shared_ptr<Texture<Vec3>> kd;
+	std::shared_ptr<Texture<Vec3>> mKd;
 };
 
 GYT_NAMESPACE_END

@@ -190,8 +190,8 @@
     <ClCompile Include="src\integrator\Integrator.cpp" />
     <ClCompile Include="src\visual\Intersection.cpp" />
     <ClCompile Include="src\accelerator\KdTreeAccel.cpp" />
-    <ClCompile Include="src\math\Linagl.cpp" />
-    <ClCompile Include="src\math\LowDiscrepency.cpp" />
+    <ClCompile Include="src\math\Linalg.cpp" />
+    <ClCompile Include="src\math\LowDiscrepancy.cpp" />
     <ClCompile Include="src\visual\Medium.cpp" />
     <ClCompile Include="src\system\Memory.cpp" />
     <ClCompile Include="src\mesh\Mesh.cpp" />
@@ -259,8 +259,8 @@
     <ClInclude Include="src\visual\Intersection.h" />
     <ClInclude Include="src\accelerator\KdTreeAccel.h" />
     <ClInclude Include="src\light\Light.h" />
-    <ClInclude Include="src\math\Linagl.h" />
-    <ClInclude Include="src\math\LowDiscrepency.h" />
+    <ClInclude Include="src\math\Linalg.h" />
+    <ClInclude Include="src\math\LowDiscrepancy.h" />
     <ClInclude Include="src\material\Material.h" />
     <ClInclude Include="src\math\MathUtils.h" />
     <ClInclude Include="src\visual\Medium.h" />

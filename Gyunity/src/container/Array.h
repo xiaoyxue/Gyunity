@@ -14,34 +14,34 @@ template<typename T>
 class ArrayND<2, T> {
 public:
 	ArrayND() {}
-	ArrayND(const Vec2i &res) : res(res) {}
-	ArrayND(int row, int col) : data(row* col) {
-		res[0] = row;
-		res[1] = col;
+	ArrayND(const Vec2i &res) : mRes(res) {}
+	ArrayND(int row, int col) : mData(row* col) {
+		mRes[0] = row;
+		mRes[1] = col;
 	}
-	ArrayND(const std::vector<T>& data, int row, int col) : data(data) {
-		res[0] = row;
-		res[1] = col;
+	ArrayND(const std::vector<T>& data, int row, int col) : mData(data) {
+		mRes[0] = row;
+		mRes[1] = col;
 	}
 	T& operator()(int x, int y) {
-		return data[x * res[1] + y];
+		return mData[x * mRes[1] + y];
 	}
 	const T* operator[](int i) const {
-		return &data[0] + i * res[1];
+		return &mData[0] + i * mRes[1];
 	}
 	T* operator[](int i) {
-		return &data[0] + i * res[1];
+		return &mData[0] + i * mRes[1];
 	}
 	const T& operator[](Vec2i i) const {
-		return data[i.x * res[1] + i.y];
+		return mData[i.x * mRes[1] + i.y];
 	}
 	T& operator[](Vec2i i) {
-		return data[i.x * res[1] + i.y];
+		return mData[i.x * mRes[1] + i.y];
 	}
 public:
-	Vec2i res;
+	Vec2i mRes;
 private:
-	std::vector<T> data;
+	std::vector<T> mData;
 };
 
 template <typename T>

@@ -13,7 +13,7 @@ private:
 	real mRad;
 	Vec3 mPos;
 	bool mInside;
-	AABB mBBox;
+	AABB mBbox;
 	const real mThetaMin = 0;
 	const real mThetaMax = PI;
 	const real mPhiMax = 2 * PI;
@@ -23,7 +23,7 @@ public:
 		real radius, Vec3 position, bool inside = false) :
 		Shape(ObjectToWorld, WorldToObject), mRad(radius), mPos(position), mInside(inside) {
 
-		mBBox = AABB(mPos - Vec3(mRad, mRad, mRad), mPos + Vec3(mRad, mRad, mRad));
+		mBbox = AABB(mPos - Vec3(mRad, mRad, mRad), mPos + Vec3(mRad, mRad, mRad));
 	}
 
 	bool Intersect(const Ray &ray, Intersection *isect, real *t) const override {
@@ -32,7 +32,7 @@ public:
 		Ray r;
 		real tHit;
 
-		r = WorldToObject(ray);
+		r = mWorldToObject(ray);
 
 		Vec3 po = r.mOrig - mPos;
 		real vd = po.Dot(r.mDir), d2 = r.mDir.Dot(r.mDir), po2 = po.Dot(po);
@@ -48,14 +48,14 @@ public:
 		}
 
 		tHit = (-vd - det) / d2;
-		if (tHit < r.m_tMin || tHit > r.m_tMax) {
+		if (tHit < r.mTmin || tHit > r.mTmax) {
 			tHit = (-vd + det) / d2;
-			if (tHit < r.m_tMin || tHit > r.m_tMax) {
+			if (tHit < r.mTmin || tHit > r.mTmax) {
 				return false;
 			}
 		}
 
-		//DEBUG_PIXEL_IF() {
+		//GYT_DEBUG_PIXEL_IF() {
 		//	std::cout << "Intersection function: tmax: " << r.tMax << " tHit: " << tHit << std::endl;
 		//}
 
@@ -73,7 +73,7 @@ public:
 		Vec3 n = GetNorm(hit);
 		Vec3 nl = n.Dot(r.mDir) < 0 ? n : n * -1;
 		Vec3 wo = -1 * r.mDir;
-		Vec3 pError = Abs(mPos) * gamma(1) + Abs(scaledDir) * gamma(6);
+		Vec3 pError = Abs(mPos) * Gamma(1) + Abs(scaledDir) * Gamma(6);
 
 		//Compute dpdu, dpdv
 		//Vec3 pHit = hit - p;
@@ -114,9 +114,9 @@ public:
 		Vec3 dpdvs = Cross(n, dpdus).Norm();
 		it.SetShading(n, dpdus, dpdvs);
 
-		ObjectToWorld(it);
+		mObjectToWorld(it);
 
-		isect->mUV = Vec2(u, v);
+		isect->mUv = Vec2(u, v);
 		isect->mShapeId = mShapeId;
 		*t = tHit;
 
@@ -131,7 +131,7 @@ public:
 		Ray r;
 		real tHit;
 
-		WorldToObject(ray);
+		mWorldToObject(ray);
 
 		Vec3 op = mPos - r.mOrig;
 		Vec3 v = r.mOrig - mPos;
@@ -145,9 +145,9 @@ public:
 			det = sqrt(det);
 		}
 		tHit = (-vd - det) / d2;
-		if (tHit < r.m_tMin || tHit > r.m_tMax) {
+		if (tHit < r.mTmin || tHit > r.mTmax) {
 			tHit = (-vd + det) / d2;
-			if (tHit < r.m_tMin || tHit > r.m_tMax) {
+			if (tHit < r.mTmin || tHit > r.mTmax) {
 				return false;
 			}
 		}
@@ -177,10 +177,10 @@ public:
 		Vec3 hit = mPos + scaledDir;
 		Vec3 n = GetNorm(hit);
 		Vec3 nl = isect.mNormal;
-		Vec3 pError = Abs(mPos) * gamma(1) + Abs(scaledDir) * gamma(6);
+		Vec3 pError = Abs(mPos) * Gamma(1) + Abs(scaledDir) * Gamma(6);
 
-		isect.mPos = ObjectToWorld(hit, pError, &isect.mPointError);
-		isect.mNormal = ObjectToWorld.TransformNormal(n).Norm();
+		isect.mPos = mObjectToWorld(hit, pError, &isect.mPointError);
+		isect.mNormal = mObjectToWorld.TransformNormal(n).Norm();
 
 		isect.mAbsNormal = nl;
 		isect.mShapeId = mShapeId;
@@ -245,7 +245,7 @@ public:
 		
 		Vec3 pCenter;
 
-		pCenter = ObjectToWorld(mPos);
+		pCenter = mObjectToWorld(mPos);
 
 		if ((pCenter - isect.mPos).Length2() <= mRad * mRad) {
 			Intersection lightPoint = Sample(pdf, u);
@@ -288,7 +288,7 @@ public:
 		ret.mNormal = nWorld;
 		ret.mAbsNormal = ret.mNormal;
 		//ret.pError = gamma(6) * Abs(pWorld) + gamma(6) * Abs(scaledDir);
-		ret.mPointError = gamma(5) * Abs(pWorld);
+		ret.mPointError = Gamma(5) * Abs(pWorld);
 		ret.mShapeId = mShapeId;
 		return ret;
 
@@ -345,7 +345,7 @@ public:
 	}
 
 	AABB ObjectBound() const override {
-		return mBBox;
+		return mBbox;
 	}
 };
 

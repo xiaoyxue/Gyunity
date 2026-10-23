@@ -19,14 +19,14 @@ struct Tile {
 class TiledIntegrator : public Integrator
 {
 protected:
-	int spp;
-	std::shared_ptr<Sampler> mpSampler;
-	std::shared_ptr<SamplerEnum> mpSamplerEnum;
+	int mSpp;
+	std::shared_ptr<Sampler> mSampler;
+	std::shared_ptr<SamplerEnum> mSamplerEnum;
 
 public:
 	TiledIntegrator() = default;
 	TiledIntegrator(int samplePerPixel, const std::shared_ptr<Sampler> &pSampler, const std::shared_ptr<SamplerEnum> &pSamplerEnum): 
-		spp(samplePerPixel), mpSampler(pSampler), mpSamplerEnum(pSamplerEnum) 
+		mSpp(samplePerPixel), mSampler(pSampler), mSamplerEnum(pSamplerEnum) 
 	{
 	}
 	virtual ~TiledIntegrator(){}

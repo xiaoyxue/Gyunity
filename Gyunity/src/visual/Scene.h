@@ -17,7 +17,7 @@ class Scene
 private:
 	std::vector<std::shared_ptr<Primitive>> mPrimitives;
 	std::vector<std::shared_ptr<Light>> mLights;
-	std::shared_ptr<Light> mpEnvLight = nullptr;
+	std::shared_ptr<Light> mEnvLight = nullptr;
 	std::unique_ptr<Distribution1D> mLightPowerDistribution;
 	std::shared_ptr<Accelerator> mAccelerator;
 	int64 mShapeNum;
@@ -60,24 +60,24 @@ public:
 	void AddLight(std::shared_ptr<Light> light) {
 		mLights.push_back(light);
 		if (light->IsEnvironmentLight()) {
-			mpEnvLight = light;
+			mEnvLight = light;
 		}
 	}
 
 
 	void AddMesh(Mesh &mesh, const Transform &transform) {
-		for (int i = 0; i < mesh.untransformedTriangles.size(); ++i) {
+		for (int i = 0; i < mesh.mUntransformedTriangles.size(); ++i) {
 			Triangle* triangle = new Triangle();
 			//*triangle = mesh.untransformedTriangles[i];
-			auto pTriangle = std::make_shared<Triangle>(mesh.untransformedTriangles[i]);
+			auto pTriangle = std::make_shared<Triangle>(mesh.mUntransformedTriangles[i]);
 			pTriangle->SetTransform(transform);
 			std::shared_ptr<Shape> shape = std::shared_ptr<Shape>(pTriangle);
-			AddPrimitive(shape, mesh.material, mesh.mediumInterface);
+			AddPrimitive(shape, mesh.mMaterial, mesh.mMediumInterface);
 		}
 	}
 
 	const Light* GetEnvironmentLight() const {
-		return mpEnvLight.get();
+		return mEnvLight.get();
 	}
 
 	bool Intersect(const Ray& r, Intersection* isect) const {

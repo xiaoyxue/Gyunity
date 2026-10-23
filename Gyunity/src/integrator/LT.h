@@ -12,7 +12,7 @@ class LightTracing : public Integrator {
 
 public:
 	LightTracing(std::shared_ptr<Sampler> pSampler, int maxDepth, int spp) :
-		mpSampler(pSampler), mSpp(spp), mMaxDepth(maxDepth) { }
+		mSampler(pSampler), mSpp(spp), mMaxDepth(maxDepth) { }
 
 	void Render(const Scene& scene, const Camera& camera) override {
 
@@ -24,7 +24,7 @@ public:
 		int64 resY = camera.GetFilm()->mResY;
 		std::vector<MemoryPool> memoryArenas(ThreadsNumber());
 		ParallelFor(int64(0), resY, [&](int64 y) {
-			std::shared_ptr<Sampler> clonedSampler = mpSampler->Clone(y);
+			std::shared_ptr<Sampler> clonedSampler = mSampler->Clone(y);
 			MemoryPool& arena = memoryArenas[ThreadIndex()];
 			for (int64 x = 0; x < resX; ++x) {
 				for (int p = 0; p < mSpp; ++p) {
@@ -50,7 +50,7 @@ public:
 		});
 
 
-		//RandomStateSequence rand(mpSampler, 123);
+		//RandomStateSequence rand(mSampler, 123);
 		//MemoryPool arena;
 		//for (int p = 0; p < totalPhotons; ++p) {
 		//	std::vector<PathVertex> lightPath(mMaxDepth + 1);
@@ -86,7 +86,7 @@ public:
 			scene.QueryIntersectionInfo(ray, &isect);
 			isect.ComputeScatteringFunction(arena, TransportMode::Importance);
 
-			lightPath[bounce].mIsDelta = isect.mpBSDF->IsDelta();
+			lightPath[bounce].mIsDelta = isect.mBsdf->IsDelta();
 			lightPath[bounce].mPdfFwd = pdfDir;
 			lightPath[bounce].mThroughput = throughput;
 
@@ -94,8 +94,8 @@ public:
 			if (bounce >= mMaxDepth) break;
 
 			Vec3 wi;
-			Vec3 f = isect.mpBSDF->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()));
-			ray = Ray(isect.mPos + wi * RayEps, wi);
+			Vec3 f = isect.mBsdf->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()));
+			ray = Ray(isect.mPos + wi * RAY_EPS, wi);
 
 			throughput = throughput * f * std::abs(Dot(wi, isect.mNormal)) / pdfDir;
 
@@ -127,7 +127,7 @@ public:
 		lightPath[0].mIsDelta = light->IsDeltaLight();
 		real cosTheta = std::abs(Dot(isect.mNormal, dir));
 		Vec3 throughput = Le * cosTheta / pdfLight / pdfA / pdfDir;
-		Ray ray(isect.mPos + dir * RayEps, dir);
+		Ray ray(isect.mPos + dir * RAY_EPS, dir);
 
 		int nVertices = Trace(scene, camera, ray, arena, rand, 1, throughput, pdfDir, lightPath);
 		
@@ -137,7 +137,7 @@ public:
 	}
 
 	Vec3 WorldToScreen(const Camera& camera, const Vec3& point, bool* inScreen) const {
-		Transform World2Raster = camera.CameraToRaster * camera.WorldToCamera;
+		Transform World2Raster = camera.mCameraToRaster * camera.mWorldToCamera;
 		Vec3 rasterPoint = World2Raster(point);
 		Vec2i rasterPointPrim = Vec2i(int(rasterPoint.x), int(rasterPoint.y));
 		if (rasterPointPrim.x >= 0 && rasterPointPrim.x <= camera.GetFilm()->mResX &&
@@ -159,20 +159,20 @@ public:
 
 	//	Vec3 screenCenter = camera.mPos + camera.mFilmDistance * camera.mCz;
 	//	Vec3 centerToPoint = screenPoint - screenCenter;
-	//	if (std::abs(centerToPoint.Dot(camera.mCx)) > (camera.GetFilm()->mLU - camera.GetFilm()->mRU).Length() / 2.f ||
-	//		std::abs(centerToPoint.Dot(camera.mCy)) > (camera.GetFilm()->mLL - camera.GetFilm()->mLU).Length() / 2.f) {
+	//	if (std::abs(centerToPoint.Dot(camera.mCx)) > (camera.GetFilm()->mUpperLeft - camera.GetFilm()->mUpperRight).Length() / 2.f ||
+	//		std::abs(centerToPoint.Dot(camera.mCy)) > (camera.GetFilm()->mLowerLeft - camera.GetFilm()->mUpperLeft).Length() / 2.f) {
 	//		*inScreen = false;
 	//		return Vec3(-1, -1, -1); //out of screen
 	//	}
 
-	//	Vec3 pointLU = screenPoint - camera.GetFilm()->mLU;
+	//	Vec3 pointLU = screenPoint - camera.GetFilm()->mUpperLeft;
 	//	real disLUP = pointLU.Length();
-	//	real cosTheta = (camera.GetFilm()->mLL - camera.GetFilm()->mLU).Norm().Dot(pointLU.Norm());
+	//	real cosTheta = (camera.GetFilm()->mLowerLeft - camera.GetFilm()->mUpperLeft).Norm().Dot(pointLU.Norm());
 	//	real sinTheta = std::sqrt(1 - cosTheta * cosTheta);
 	//	real pH = disLUP * cosTheta;
 	//	real pW = disLUP * sinTheta;
-	//	real alpha = pW / (camera.GetFilm()->mRU - camera.GetFilm()->mLU).Length();
-	//	real beta = pH / (camera.GetFilm()->mLL - camera.GetFilm()->mLU).Length();
+	//	real alpha = pW / (camera.GetFilm()->mUpperRight - camera.GetFilm()->mUpperLeft).Length();
+	//	real beta = pH / (camera.GetFilm()->mLowerLeft - camera.GetFilm()->mUpperLeft).Length();
 
 	//	int px = (int)(camera.GetFilm()->mResX * alpha);
 	//	int py = (int)(camera.GetFilm()->mResX * beta);
@@ -194,11 +194,11 @@ public:
 		*pRaster = WorldToScreen(camera, pos, inScreen);
 
 		
-		//DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 428, 926, 563, 977, ThreadIndex());
-		DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 429, 640, 565, 644, ThreadIndex());
+		//GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 428, 926, 563, 977, ThreadIndex());
+		GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 429, 640, 565, 644, ThreadIndex());
 		
 
-		//Ray ray(pos + hitToCameraDir * RayEps, hitToCameraDir, hitToCamLength);
+		//Ray ray(pos + hitToCameraDir * RAY_EPS, hitToCameraDir, hitToCamLength);
 		Ray ray(pos, hitToCameraDir, hitToCamLength);
 		if (scene.Intersect(ray))
 		{
@@ -211,20 +211,20 @@ public:
 
 		real pdfW;
 		Vec3 wi;
-		Vec3 We = camera.Sample_Wi(vertex.mIsect, &pdfW, &wi, Vec3(rand(), rand(), rand()));
-		Vec3 f = vertex.mIsect.mpBSDF->Evaluate(vertex.mIsect.mOutDir, wi);
+		Vec3 We = camera.SampleWi(vertex.mIsect, &pdfW, &wi, Vec3(rand(), rand(), rand()));
+		Vec3 f = vertex.mIsect.mBsdf->Evaluate(vertex.mIsect.mOutDir, wi);
 		Vec3 L = We * f * vertex.mThroughput * std::abs(Dot(wi, vertex.mIsect.mNormal)) / pdfW;
 
 		//{
 		//	std::lock_guard<std::mutex> lock(mMutex);
-		//	DEBUG_PIXEL_IF(ThreadIndex()) {
-		//		GYT_Print("---------------------------------------------------s: {}--------------------------------------------------------\n", s);
-		//		GYT_Print("--------------------------------------------------Raster: {}----------------------------------------------------\n", *pRaster);
+		//	GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
+		//		GYT_PRINT("---------------------------------------------------s: {}--------------------------------------------------------\n", s);
+		//		GYT_PRINT("--------------------------------------------------Raster: {}----------------------------------------------------\n", *pRaster);
 		//		const PathVertex& v = vertex;
 		//		real cos = std::abs(Dot(wi, vertex.mIsect.mNormal));
-		//		GYT_Print("Throughput: {}, pdfFwd: {}, pos: {}, normal: {}, f: {}, We: {}, pdfW: {}, cos: {}, mOutDir: {}\n",
+		//		GYT_PRINT("Throughput: {}, pdfFwd: {}, pos: {}, normal: {}, f: {}, We: {}, pdfW: {}, cos: {}, mOutDir: {}\n",
 		//			v.mThroughput, v.mPdfFwd, v.mIsect.mPos, v.mIsect.mNormal, f, We, pdfW, cos, v.mIsect.mOutDir);
-		//		GYT_Print("L: {}\n", L);
+		//		GYT_PRINT("L: {}\n", L);
 		//	}
 		//}
 
@@ -233,7 +233,7 @@ public:
 
 private:
 	int mSpp, mMaxDepth;
-	std::shared_ptr<Sampler> mpSampler;
+	std::shared_ptr<Sampler> mSampler;
 
 	//debug
 	mutable std::mutex mMutex;

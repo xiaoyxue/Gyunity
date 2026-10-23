@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/Core.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "Integrator.h"
 #include "sampler/SamplerEnum.h"
 #include "sampler/Sampler.h"
@@ -27,8 +27,8 @@ class SPPM : public Integrator
 {
 private:
 	HashGrid<HPoint*> mHashGrid;
-	std::shared_ptr<Sampler> mpSampler;
-	std::shared_ptr<SamplerEnum> mpSamplerEnum;
+	std::shared_ptr<Sampler> mSampler;
+	std::shared_ptr<SamplerEnum> mSamplerEnum;
 	std::vector<real> mRadius2;
 	std::vector<real> mPhotonNums;
 	std::vector<Vec3> mFlux;

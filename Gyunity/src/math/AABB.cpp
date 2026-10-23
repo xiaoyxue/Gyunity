@@ -4,7 +4,7 @@
 GYT_NAMESPACE_BEGIN
 
 bool AABB::Intersect(const Ray& ray, real* hitt0, real* hitt1) const {
-	real t0 = 0, t1 = ray.m_tMax;
+	real t0 = 0, t1 = ray.mTmax;
 	for (int i = 0; i < 3; ++i) {
 		// Update interval for _i_th bounding box slab
 		real invRayDir = 1 / ray.mDir[i];
@@ -15,7 +15,7 @@ bool AABB::Intersect(const Ray& ray, real* hitt0, real* hitt1) const {
 		if (tNear > tFar) std::swap(tNear, tFar);
 
 		// Update _tFar_ to ensure robust ray--bounds intersection
-		tFar *= 1 + 2 * gamma(3);
+		tFar *= 1 + 2 * Gamma(3);
 		t0 = tNear > t0 ? tNear : t0;
 		t1 = tFar < t1 ? tFar : t1;
 		if (t0 > t1) return false;

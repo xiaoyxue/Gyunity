@@ -20,7 +20,7 @@
 #include "sampler\SamplerEnum.h"
 #include "sampler\HaltonEnum.h"
 #include "sampler\SobolEnum.h"
-#include "math\Linagl.h"
+#include "math\Linalg.h"
 #include "visual\Scene.h"
 #include "visual\Film.h"
 #include "shape\sphere.h"
@@ -53,13 +53,13 @@ using namespace Gyunity;
 
 //const real ALPHA = 0.66666667;
 const real ALPHA = 0.75;
-const int64  render_stage_number = 300000;
+const int64  RENDER_STAGE_NUMBER = 300000;
 
 void TestSppm(int argc, char* argv[]) {
 	//clock_t begin = clock();
 
 	//int w = 1024, h = 768;
-	//int nIterations = (argc == 2) ? atol(argv[1]) : 256; //(argc == 2) ? std::max(atoll(argv[1]) / render_stage_number, (int64)1) : render_stage_number;
+	//int nIterations = (argc == 2) ? atol(argv[1]) : 256; //(argc == 2) ? std::max(atoll(argv[1]) / RENDER_STAGE_NUMBER, (int64)1) : RENDER_STAGE_NUMBER;
 
 	//std::shared_ptr<Film> film = std::shared_ptr<Film>(new Film(w, h));
 
@@ -87,7 +87,7 @@ void TestSppm(int argc, char* argv[]) {
 	//std::shared_ptr<SamplerEnum> samplerEnum = std::shared_ptr<SamplerEnum>(new SamplerEnum());
 	//std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)w, (unsigned)h));
 	//std::shared_ptr<Integrator> integrator =
-	//	std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
+	//	std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
 	//fprintf(stderr, "Load Scene ...\n");
 	////scene->SetCamera(cam, cx, cy);
 	//scene->SetCamera(camera);
@@ -136,7 +136,7 @@ void TestSPPM2(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> samplerEnum = std::shared_ptr<SamplerEnum>(new SamplerEnum());
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)w, (unsigned)h));
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
 	fprintf(stderr, "Load Scene ...\n");
 
 	std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BruteForce());
@@ -247,7 +247,7 @@ void TestSPPM3(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> samplerEnum = std::shared_ptr<SamplerEnum>(new SamplerEnum());
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)w, (unsigned)h));
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
 	fprintf(stderr, "Load Scene ...\n");
 
 	CornellBoxSphere::SetScene(scene);
@@ -395,20 +395,20 @@ void TestProjection() {
 	{
 		std::cout << "raster to ndc:" << std::endl;
 		Vec3 rasterPoint(0, 0, 0.5);
-		Vec3 rasterToNDC = camera->RasterToNDC(rasterPoint);
+		Vec3 rasterToNDC = camera->mRasterToNdc(rasterPoint);
 		std::cout << rasterToNDC << std::endl;
 	}
 
 	//ndc to camera
 	{
 		std::cout << "ndc to camera:" << std::endl;
-		Vec3 cameraPoint = camera->WorldToCamera(camera->GetFilm()->mLU);
+		Vec3 cameraPoint = camera->mWorldToCamera(camera->GetFilm()->mUpperLeft);
 		//cameraPoint.z = 1000;
 		std::cout << cameraPoint << std::endl;
-		Vec3 cameraToNDC = camera->CameraToNDC(cameraPoint);
+		Vec3 cameraToNDC = camera->mCameraToNdc(cameraPoint);
 		std::cout << cameraToNDC << std::endl;
 
-		Vec3 ndcToCamera = camera->NDCToCamera(Vec3(-1, 1, -1));
+		Vec3 ndcToCamera = camera->mNdcToCamera(Vec3(-1, 1, -1));
 		std::cout << ndcToCamera << std::endl;
 	}
 
@@ -437,7 +437,7 @@ void TestSPPM4(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)resX, (unsigned)resY));
 	real alpha = 0.66666667;
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 0.05, alpha, true, haltonSampler, haltonSamplerEnum));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 0.05, alpha, true, haltonSampler, haltonSamplerEnum));
 	fprintf(stderr, "Load Scene ...\n");
 
 	CornellBoxTriangle2::SetScene(scene);
@@ -479,7 +479,7 @@ void TestSPPM5(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)resX, (unsigned)resY));
 	real alpha = 0.66666667;
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
 	fprintf(stderr, "Load Scene ...\n");
 
 	CornellBoxMesh::SetScene(scene);
@@ -515,7 +515,7 @@ void TestHashGrid() {
 	for (int i = 0; i < points.size(); ++i) {
 		hashGrid.AddPoint(std::move(std::pair<Vec3, int>(points[i], i)), 0.15f);
 	}
-	hashGrid.BuildHashGrid(searchRadius + Eps);
+	hashGrid.BuildHashGrid(searchRadius + EPS);
 	Vec3 testPoint = Vec3(0.12f, 0.34f, 0.56f);
 
 
@@ -610,9 +610,9 @@ void TestSPPM6(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)resX, (unsigned)resY));
 	real alpha = 0.66666667;
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
 
-	GYT_Print("Load Scene ...\n");
+	GYT_PRINT("Load Scene ...\n");
 
 	CornellBoxMesh::SetScene(scene);
 	//CornellBoxWater::SetScene(scene);
@@ -722,7 +722,7 @@ void TestPathTracing2(int argc, char* argv[]) {
 	std::shared_ptr<Integrator> integrator = std::shared_ptr<Integrator>(new PathTracing(100, 1, randomSampler, samplerEnum));
 
 	//fprintf(stderr, "Load Scene ...\n");
-	GYT_Print("Load Scene ...\n");
+	GYT_PRINT("Load Scene ...\n");
 	//CornellBoxMesh::SetScene(scene);
 	//CornellBoxMeshEmpty::SetScene(scene);
 	CornellBoxMeshWithSlope::SetScene(scene);
@@ -742,7 +742,7 @@ void TestPathTracing2(int argc, char* argv[]) {
 	renderer->Render();
 	clock_t end = clock();
 
-	GYT_Print("\nCost time: {:.6f} min\n", (end - begin) / 1000.0 / 60.0);
+	GYT_PRINT("\nCost time: {:.6f} min\n", (end - begin) / 1000.0 / 60.0);
 }
 
 
@@ -769,7 +769,7 @@ void TestLightTracing(int argc, char* argv[]) {
 
 	std::shared_ptr<Integrator> integrator = std::shared_ptr<Integrator>(new LightTracing(randomSampler, 15, 512));
 
-	GYT_Print("Load Scene ...\n");
+	GYT_PRINT("Load Scene ...\n");
 	CornellBoxMesh::SetScene(scene);
 	//CornellBoxMeshEmpty::SetScene(scene);
 	//CornellBoxDiffuseBunny::SetScene(scene);

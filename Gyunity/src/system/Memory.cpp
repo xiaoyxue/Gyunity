@@ -5,7 +5,7 @@ GYT_NAMESPACE_BEGIN
 
 void* AllocAligned(size_t size) {
 
-    return _aligned_malloc(size, L1_CACHE_LINE_SIZE);
+    return _aligned_malloc(size, GYT_L1_CACHE_LINE_SIZE);
 
 }
 

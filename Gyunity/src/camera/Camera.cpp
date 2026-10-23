@@ -9,7 +9,7 @@ void ProjectiveCamera::Initialize() {
 	mCx = -Cross(mUp, mCz).Norm();
 	mCy = -Cross(mCz, mCx);
 
-	CameraToWorld =
+	mCameraToWorld =
 		Transform(mCx.x, mCy.x, mCz.x, mPos.x,
 			mCx.y, mCy.y, mCz.y, mPos.y,
 			mCx.z, mCy.z, mCz.z, mPos.z,
@@ -18,43 +18,43 @@ void ProjectiveCamera::Initialize() {
 	//Should get the same result
 	//CameraToWorld = Transform::LookAt(mPos, mLookAt, mUp);
 
-	WorldToCamera = Inverse(CameraToWorld);
+	mWorldToCamera = Inverse(mCameraToWorld);
 
-	CameraToNDC = Transform::Perspective(mFovy, mpFilm->mAspectRatio, mFilmDistance, mFilmDistance, 100000.f);
+	mCameraToNdc = Transform::Perspective(mFovy, mFilm->mAspectRatio, mFilmDistance, mFilmDistance, 100000.f);
 
-	NDCToCamera = Inverse(CameraToNDC);
+	mNdcToCamera = Inverse(mCameraToNdc);
 
-	NDCToRaster =
-		Transform::Scale(real(mpFilm->mResX), real(mpFilm->mResY), 1) *
+	mNdcToRaster =
+		Transform::Scale(real(mFilm->mResX), real(mFilm->mResY), 1) *
 		Transform::Scale(0.5f, -0.5f, 1) *
 		Transform::Translate(Vec3(1, -1, 0));
 
-	RasterToNDC = Inverse(NDCToRaster);
+	mRasterToNdc = Inverse(mNdcToRaster);
 
-	CameraToRaster = NDCToRaster * CameraToNDC;
+	mCameraToRaster = mNdcToRaster * mCameraToNdc;
 
-	RasterToCamera = NDCToCamera * RasterToNDC;
+	mRasterToCamera = mNdcToCamera * mRasterToNdc;
 
-	RasterToWorld = CameraToWorld * RasterToCamera;
+	mRasterToWorld = mCameraToWorld * mRasterToCamera;
 
 
 	
-	mpFilm->mHeight = mFilmDistance * std::tan(mFovy * 0.5f * PI / 180) * 2.f;
-	mpFilm->mWidth = mpFilm->mHeight * mpFilm->mAspectRatio;
-	mpFilm->mArea = mpFilm->mWidth * mpFilm->mHeight;
+	mFilm->mHeight = mFilmDistance * std::tan(mFovy * 0.5f * PI / 180) * 2.f;
+	mFilm->mWidth = mFilm->mHeight * mFilm->mAspectRatio;
+	mFilm->mArea = mFilm->mWidth * mFilm->mHeight;
 
 
 	Vec3 filmCenter = mPos + mCz * mFilmDistance;
-	mpFilm->mLU = filmCenter + mCy * mpFilm->mHeight * 0.5 - mCx * mpFilm->mWidth * 0.5;
-	mpFilm->mLL = filmCenter - mCy * mpFilm->mHeight * 0.5 - mCx * mpFilm->mWidth * 0.5;
-	mpFilm->mRU = filmCenter + mCy * mpFilm->mHeight * 0.5 + mCx * mpFilm->mWidth * 0.5;
-	mpFilm->mRL = filmCenter - mCy * mpFilm->mHeight * 0.5 + mCx * mpFilm->mWidth * 0.5;
+	mFilm->mUpperLeft = filmCenter + mCy * mFilm->mHeight * 0.5 - mCx * mFilm->mWidth * 0.5;
+	mFilm->mLowerLeft = filmCenter - mCy * mFilm->mHeight * 0.5 - mCx * mFilm->mWidth * 0.5;
+	mFilm->mUpperRight = filmCenter + mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
+	mFilm->mLowerRight = filmCenter - mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
 
-	GYT_Print("Film center: {}\n", filmCenter);
-	GYT_Print("LL: {} \n", mpFilm->mLL);
-	GYT_Print("LU: {} \n", mpFilm->mLU);
-	GYT_Print("RL: {} \n", mpFilm->mRL);
-	GYT_Print("RU: {} \n", mpFilm->mRU);
+	GYT_PRINT("Film center: {}\n", filmCenter);
+	GYT_PRINT("LL: {} \n", mFilm->mLowerLeft);
+	GYT_PRINT("LU: {} \n", mFilm->mUpperLeft);
+	GYT_PRINT("RL: {} \n", mFilm->mLowerRight);
+	GYT_PRINT("RU: {} \n", mFilm->mUpperRight);
 
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 #include "common/Core.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include <map>
 #include <sstream>
 
@@ -262,7 +262,7 @@ inline bool Config::Get<bool>(const std::string& key) const
 	if (dict.find(str) == dict.end())
 	{
 		GYT_ERROR("Token is not recognized.");
-		ASSERT(false);
+		GYT_DEBUG_ASSERT(false);
 	}
 	return dict.find(str)->second;
 

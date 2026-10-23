@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <random>
-#include "math/LowDiscrepency.h"
+#include "math/LowDiscrepancy.h"
 #include "visual/Rng.h"
 
 GYT_NAMESPACE_BEGIN
@@ -28,7 +28,7 @@ public:
 		return mCursor;
 	}
 	/*
-	void assert_cursor_pos(int cursor) const {
+	void AssertCursorPos(int cursor) const {
 		assert_info(
 			this->cursor == cursor,
 			std::string("Cursor position should be " + std::to_string(cursor) +
@@ -41,18 +41,18 @@ public:
 
 class RandomStateSequence : public StateSequence {
 private:
-	std::shared_ptr<Sampler> mpSampler;
+	std::shared_ptr<Sampler> mSampler;
 	int64 mInstance;
 
 public:
 	RandomStateSequence(std::shared_ptr<Sampler> sampler, int64 instance)
-		: mpSampler(sampler), mInstance(instance) 
+		: mSampler(sampler), mInstance(instance) 
 	{
 	}
 
 	real Sample() override {
 		//assert_info(sampler != nullptr, "null sampler");
-		real ret = mpSampler->Sample(mCursor++, mInstance);
+		real ret = mSampler->Sample(mCursor++, mInstance);
 		//assert_info(ret >= 0, "sampler output should be non-neg");
 		if (ret > 1 + 1e-5f) {
 			printf("Warning: sampler returns value > 1: [%f]", ret);
@@ -67,24 +67,24 @@ public:
 
 class RandomSampler : public Sampler {
 public:
-	RandomSampler(int seed) : rng(seed), pbrtRng(seed) {
+	RandomSampler(int seed) : mRng(seed), mPcg32(seed) {
 
 	}
 
 	real Sample(unsigned int d, unsigned long long i) {
-		return uniform(rng);
+		return mUniform(mRng);
 		//return pbrtRng.UniformFloat();
 	}
 
 	std::shared_ptr<Sampler> Clone(uint32 seed) override {
 		RandomSampler* newSampler = new RandomSampler(seed);
-		newSampler->pbrtRng.SetSequence(seed);
+		newSampler->mPcg32.SetSequence(seed);
 		return std::shared_ptr<Sampler>(newSampler);
 	}
 private:
-	std::mt19937_64 rng;
-	std::uniform_real_distribution<real> uniform;
-	RNG pbrtRng;
+	std::mt19937_64 mRng;
+	std::uniform_real_distribution<real> mUniform;
+	Pcg32 mPcg32;
 };
 
 class PrimeList {
@@ -92,29 +92,29 @@ public:
 	PrimeList() {
 		for (int i = 2; i <= 10000; i++) {
 			if (IsPrime(i)) {
-				primes.push_back(i);
+				mPrimes.push_back(i);
 			}
 		}
-		ASSERT(primes.size() == 1229);
+		GYT_DEBUG_ASSERT(mPrimes.size() == 1229);
 	}
 
 	int GetPrime(int i) {
-		return primes[i];
+		return mPrimes[i];
 	}
 
 	int GetPrimesNum() {
-		return (int)primes.size();
+		return (int)mPrimes.size();
 	}
 
 private:
-	std::vector<int> primes;
+	std::vector<int> mPrimes;
 };
 
 
 class RegularHaltonSampler : public Sampler {
 public:
 	real Sample(unsigned int d, unsigned long long i) override {
-		ASSERT(d < (unsigned)primeList.GetPrimesNum());
+		GYT_DEBUG_ASSERT(d < (unsigned)primeList.GetPrimesNum());
 		real val = hal(d, i + 1);  // The first one is evil...
 		return val;
 	}

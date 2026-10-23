@@ -18,13 +18,13 @@ enum class TensorType {
 	MATRIX
 };
 
-#if defined ISE_NONE
-constexpr IntrinsicSet defaultInstructionSet = IntrinsicSet::None;
-#elif defined ISE_SSE
-constexpr IntrinsicSet defaultInstructionSet = IntrinsicSet::SSE;
-#define USING_SIMD
-#elif defined ISE_AVX
-#define USING_SIMD
+#if defined GYT_ISE_NONE
+constexpr IntrinsicSet DEFAULT_INSTRUCTION_SET = IntrinsicSet::None;
+#elif defined GYT_ISE_SSE
+constexpr IntrinsicSet DEFAULT_INSTRUCTION_SET = IntrinsicSet::SSE;
+#define GYT_USING_SIMD
+#elif defined GYT_ISE_AVX
+#define GYT_USING_SIMD
 #endif
 
 template<int dim, typename T, IntrinsicSet ISE, class Enable = void>
@@ -118,7 +118,7 @@ struct GYT_ALIGNED(16) VectorBase < 4, float32, ISE, std::enable_if_t<ISE >= Int
 };
 
 
-template<int dim_, typename T, IntrinsicSet ISE = defaultInstructionSet>
+template<int dim_, typename T, IntrinsicSet ISE = DEFAULT_INSTRUCTION_SET>
 struct Vector : public VectorBase<dim_, T, ISE> {
 	static constexpr int dim = dim_;
 	static constexpr int elements = dim_;
@@ -675,20 +675,20 @@ GYT_FORCE_INLINE Vector<dim, T, ISE> Exp(const Vector<dim, T, ISE>& a) {
 	return ret;
 }
 
-using Vector2 = Vector<2, real, defaultInstructionSet>;
-using Vector2i = Vector<2, int, defaultInstructionSet>;
-using Vector2f = Vector<2, float, defaultInstructionSet>;
-using Vector2d = Vector<2, double, defaultInstructionSet>;
+using Vector2 = Vector<2, real, DEFAULT_INSTRUCTION_SET>;
+using Vector2i = Vector<2, int, DEFAULT_INSTRUCTION_SET>;
+using Vector2f = Vector<2, float, DEFAULT_INSTRUCTION_SET>;
+using Vector2d = Vector<2, double, DEFAULT_INSTRUCTION_SET>;
 
-using Vector3 = Vector<3, real, defaultInstructionSet>;
-using Vector3i = Vector<3, int, defaultInstructionSet>;
-using Vector3f = Vector<3, float, defaultInstructionSet>;
-using Vector3d = Vector<3, double, defaultInstructionSet>;
+using Vector3 = Vector<3, real, DEFAULT_INSTRUCTION_SET>;
+using Vector3i = Vector<3, int, DEFAULT_INSTRUCTION_SET>;
+using Vector3f = Vector<3, float, DEFAULT_INSTRUCTION_SET>;
+using Vector3d = Vector<3, double, DEFAULT_INSTRUCTION_SET>;
 
-using Vector4 = Vector<4, real, defaultInstructionSet>;
-using Vector4i = Vector<4, int, defaultInstructionSet>;
-using Vector4f = Vector<4, float, defaultInstructionSet>;
-using Vector4d = Vector<4, double, defaultInstructionSet>;
+using Vector4 = Vector<4, real, DEFAULT_INSTRUCTION_SET>;
+using Vector4i = Vector<4, int, DEFAULT_INSTRUCTION_SET>;
+using Vector4f = Vector<4, float, DEFAULT_INSTRUCTION_SET>;
+using Vector4d = Vector<4, double, DEFAULT_INSTRUCTION_SET>;
 
 using Vec3 = Vector3;
 using Vec2 = Vector2;
@@ -698,13 +698,13 @@ using Vec2f = Vector2f;
 
 // FMA: a * b + c
 template <typename T>
-GYT_FORCE_INLINE typename std::enable_if<T::simd && (defaultInstructionSet >= IntrinsicSet::AVX), T>::type
+GYT_FORCE_INLINE typename std::enable_if<T::simd && (DEFAULT_INSTRUCTION_SET >= IntrinsicSet::AVX), T>::type
 fused_mul_add(const T &a, const T &b, const T &c) {
 	return T(_mm_fmadd_ps(a, b, c));
 }
 
 template <typename T>
-GYT_FORCE_INLINE typename std::enable_if<!T::simd || (defaultInstructionSet < IntrinsicSet::AVX), T>::type
+GYT_FORCE_INLINE typename std::enable_if<!T::simd || (DEFAULT_INSTRUCTION_SET < IntrinsicSet::AVX), T>::type
 fused_mul_add(const T &a, const T &b, const T &c) {
 	return a * b + c;
 }
@@ -1323,17 +1323,17 @@ GYT_FORCE_INLINE Matrix<dim, T, ISE> Inverse(const Matrix<dim, T, ISE> &m) {
 	return Inversed(m);
 }
 
-using Matrix2 = Matrix<2, real, defaultInstructionSet>;
-using Matrix3 = Matrix<3, real, defaultInstructionSet>;
-using Matrix4 = Matrix<4, real, defaultInstructionSet>;
+using Matrix2 = Matrix<2, real, DEFAULT_INSTRUCTION_SET>;
+using Matrix3 = Matrix<3, real, DEFAULT_INSTRUCTION_SET>;
+using Matrix4 = Matrix<4, real, DEFAULT_INSTRUCTION_SET>;
 
-using Matrix2f = Matrix<2, float32, defaultInstructionSet>;
-using Matrix3f = Matrix<3, float32, defaultInstructionSet>;
-using Matrix4f = Matrix<4, float32, defaultInstructionSet>;
+using Matrix2f = Matrix<2, float32, DEFAULT_INSTRUCTION_SET>;
+using Matrix3f = Matrix<3, float32, DEFAULT_INSTRUCTION_SET>;
+using Matrix4f = Matrix<4, float32, DEFAULT_INSTRUCTION_SET>;
 
-using Matrix2d = Matrix<2, float64, defaultInstructionSet>;
-using Matrix3d = Matrix<3, float64, defaultInstructionSet>;
-using Matrix4d = Matrix<4, float64, defaultInstructionSet>;
+using Matrix2d = Matrix<2, float64, DEFAULT_INSTRUCTION_SET>;
+using Matrix3d = Matrix<3, float64, DEFAULT_INSTRUCTION_SET>;
+using Matrix4d = Matrix<4, float64, DEFAULT_INSTRUCTION_SET>;
 
 namespace type
 {
@@ -1353,7 +1353,7 @@ namespace type
 GYT_NAMESPACE_END
 
 // fmt (v9+) no longer formats types via their std::ostream operator<< implicitly.
-// Opt Vector types in explicitly so fmt::print / GYT_Print can format them.
+// Opt Vector types in explicitly so fmt::print / GYT_PRINT can format them.
 FMT_BEGIN_NAMESPACE
 template <int dim, typename T, Gyunity::IntrinsicSet ISE>
 struct formatter<Gyunity::Vector<dim, T, ISE>> : ostream_formatter {};

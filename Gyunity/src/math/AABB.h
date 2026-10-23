@@ -1,7 +1,7 @@
 #pragma once
 
 #include <algorithm>
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/Ray.h"
 
 GYT_NAMESPACE_BEGIN
@@ -9,8 +9,8 @@ GYT_NAMESPACE_BEGIN
 struct AABB {
 	Vec3 minPoint, maxPoint; // axis aligned bounding box
 	AABB() {
-		minPoint = Vec3(Inf, Inf, Inf);
-		maxPoint = Vec3(-Inf, -Inf, -Inf);
+		minPoint = Vec3(INF, INF, INF);
+		maxPoint = Vec3(-INF, -INF, -INF);
 	}
 	AABB(const Vec3 &p0, const Vec3 &p1) {
 		minPoint = Vec3(std::min(p0.x, p1.x), std::min(p0.y, p1.y), std::min(p0.z, p1.z));
@@ -36,8 +36,8 @@ struct AABB {
 		maxPoint.z = std::max(p.z, maxPoint.z);
 	}
 	GYT_FORCE_INLINE void Reset() {
-		minPoint = Vec3(Inf, Inf, Inf);
-		maxPoint = Vec3(-Inf, -Inf, -Inf);
+		minPoint = Vec3(INF, INF, INF);
+		maxPoint = Vec3(-INF, -INF, -INF);
 	}
 
 	GYT_FORCE_INLINE Vec3 Diagonal() const { return maxPoint - minPoint; }

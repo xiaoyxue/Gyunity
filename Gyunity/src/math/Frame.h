@@ -1,6 +1,6 @@
 #pragma once
 #include "common/Core.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/GeometryUtils.h"
 
 GYT_NAMESPACE_BEGIN

@@ -2,7 +2,7 @@
 
 #include <utility>
 #include <cassert>
-#include "math/LowDiscrepency.h"
+#include "math/LowDiscrepancy.h"
 
 GYT_NAMESPACE_BEGIN
 

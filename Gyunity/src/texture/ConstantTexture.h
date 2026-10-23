@@ -6,22 +6,22 @@ GYT_NAMESPACE_BEGIN
 template<typename T>
 class ConstantTexture : public Texture<T> {
 public:
-	ConstantTexture(T value) : value(value) {}
+	ConstantTexture(T value) : mValue(value) {}
 
 	T Sample(const Vec3 &coord) const override {
-		return value;
+		return mValue;
 	}
 
 	T Sample(const Vec2 &coord) const override {
-		return value;
+		return mValue;
 	}
 
 	T Sample(const Intersection &coord) const override {
-		return value;
+		return mValue;
 	}
 
 private:
-	T value;
+	T mValue;
 };
 
 GYT_NAMESPACE_END

@@ -20,14 +20,14 @@ bool HeartSurface::BinarySearch(real left, real right, const Ray &ray, real *t) 
 }
 
 bool HeartSurface::Intersect(const Ray& r, Intersection* isect, real* t) const {
-	Ray ray = WorldToObject(r);
+	Ray ray = mWorldToObject(r);
 
 	real t0, t1;
-	if (!bounding.Intersect(ray, &t0, &t1)) return false;
+	if (!mBounding.Intersect(ray, &t0, &t1)) return false;
 
 
-	real segmentStart = std::max(ray.m_tMin, t0) - 1e-3;
-	real segmentEnd = std::min(ray.m_tMax, t1) + 1e-3;
+	real segmentStart = std::max(ray.mTmin, t0) - 1e-3;
+	real segmentEnd = std::min(ray.mTmax, t1) + 1e-3;
 	if (segmentStart > segmentEnd) return false;
 
 
@@ -47,7 +47,7 @@ bool HeartSurface::Intersect(const Ray& r, Intersection* isect, real* t) const {
 	if (!BinarySearch(segmentPoint0, segmentPoint1, ray, t)) return false;
 
 	isect->mPos = ray(*t);
-	isect->mPos = ObjectToWorld.TransformPoint(ray(*t));
+	isect->mPos = mObjectToWorld.TransformPoint(ray(*t));
 
 	isect->mRayEps = 5e-3;
 	//std::cout << isect->rayEps << std::endl;
@@ -56,13 +56,13 @@ bool HeartSurface::Intersect(const Ray& r, Intersection* isect, real* t) const {
 }
 
 bool HeartSurface::Intersect(const Ray& r) const {
-	Ray ray = WorldToObject(r);
+	Ray ray = mWorldToObject(r);
 
 	real t0, t1;
-	if (!bounding.Intersect(ray, &t0, &t1)) return false;
+	if (!mBounding.Intersect(ray, &t0, &t1)) return false;
 
-	real segmentStart = std::max(ray.m_tMin, t0) - 1e-3;
-	real segmentEnd = std::min(ray.m_tMax, t1) + 1e-3;
+	real segmentStart = std::max(ray.mTmin, t0) - 1e-3;
+	real segmentEnd = std::min(ray.mTmax, t1) + 1e-3;
 	if (segmentStart > segmentEnd) return false;
 
 	real step = (segmentEnd - segmentStart) / 10;
@@ -85,11 +85,11 @@ bool HeartSurface::Intersect(const Ray& r) const {
 }
 
 void HeartSurface::QueryIntersectionInfo(const Ray& ray, Intersection* isect) const {
-	Vec3 p = WorldToObject(isect->mPos);
+	Vec3 p = mWorldToObject(isect->mPos);
 
 	Vec3 normal = Gradient(p);
 
-	normal = ObjectToWorld.TransformNormal(normal).Norm();
+	normal = mObjectToWorld.TransformNormal(normal).Norm();
 
 	Vec3 dpdu, dpdv;
 	CoordinateSystem(normal, &dpdu, &dpdv);

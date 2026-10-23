@@ -11,19 +11,19 @@ void EnvironmentLight::Initialize(const Scene& scene)
 Vec3 EnvironmentLight::Emission(const Ray& ray) const
 {
 	Vec3 w = ray.mDir.Norm();
-	return mpEnvMap->Lookup(w);
+	return mEnvMap->Lookup(w);
 }
 
 Vec3 EnvironmentLight::Emission(const Vec3& dir, const Vec3 &normal) const 
 {
-	return mpEnvMap->Lookup(dir.Norm());
+	return mEnvMap->Lookup(dir.Norm());
 }
 
 Vec3 EnvironmentLight::SampleLight(Intersection* isect, Vec3* dir, real* pdfPos,
 	real* pdfDir, const Vec2& u, const Vec2& v) const 
 {
 	Vec3 sampledDir;
-	Vec3 radiance = mpEnvMap->Sample(&sampledDir, pdfDir, u);
+	Vec3 radiance = mEnvMap->Sample(&sampledDir, pdfDir, u);
 	*dir = -sampledDir;
 	isect->mNormal = *dir;
 
@@ -39,26 +39,26 @@ Vec3 EnvironmentLight::SampleLight(Intersection* isect, Vec3* dir, real* pdfPos,
 }
 
 
-Vec3 EnvironmentLight::Sample_Li(const Intersection& isect, Vec3* wi, real* pdf,
+Vec3 EnvironmentLight::SampleLi(const Intersection& isect, Vec3* wi, real* pdf,
 	Intersection* lightPoint, const Vec2& u) const 
 {
 	Vec3 sampledDir;
-	Vec3 radiance = mpEnvMap->Sample(&sampledDir, pdf, u);
+	Vec3 radiance = mEnvMap->Sample(&sampledDir, pdf, u);
 	*wi = sampledDir.Norm();
 	lightPoint->mPos = isect.mPos + *wi * (2 * mRadius);
 	lightPoint->mNormal = lightPoint->mAbsNormal = lightPoint->mGeometryNormal = *wi;
 	return radiance;
 }
 
-real EnvironmentLight::Pdf_Li(const Intersection& isect, const Vec3& wi) const 
+real EnvironmentLight::PdfLi(const Intersection& isect, const Vec3& wi) const 
 {
-	return mpEnvMap->PdfDir(wi);
+	return mEnvMap->PdfDir(wi);
 }
 
 
 Vec3 EnvironmentLight::Power() const 
 {
-	return mpEnvMap->LookupRadiance(0.5, 0.5) * PI * mRadius * mRadius;
+	return mEnvMap->LookupRadiance(0.5, 0.5) * PI * mRadius * mRadius;
 }
 
 

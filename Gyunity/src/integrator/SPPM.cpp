@@ -57,7 +57,7 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 		}
 		scene.QueryIntersectionInfo(r, &isect);
 		isect.ComputeScatteringFunction(arena);
-		BSDF* bsdf = isect.mpBSDF;
+		BSDF* bsdf = isect.mBsdf;
 		Vec3 wi;
 		real pdf;
 
@@ -67,7 +67,7 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			importance = f * std::abs(wi.Dot(isect.mNormal)) * importance / pdf;
 			//r.o = isect.hit + wi * rayeps + wi.Dot(isect.n) * nEps * isect.n;
 			//r.d = wi;
-			//r = Ray(isect.hit, wi, Inf, isect.rayEps);
+			//r = Ray(isect.hit, wi, INF, isect.rayEps);
 			r = isect.SpawnRay(wi);
 			deltaBoundEvent = true;
 		}
@@ -92,8 +92,8 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			hp.pix = pixel;
 			hp.outDir = -1 * r.mDir;
 			mHitPoints[pixel] = hp;
-			if ((i == 0 || deltaBoundEvent) && isect.mpPrimitive->IsLight()) {
-				const Light* emissionShape = isect.mpPrimitive->GetLight();
+			if ((i == 0 || deltaBoundEvent) && isect.mPrimitive->IsLight()) {
+				const Light* emissionShape = isect.mPrimitive->GetLight();
 				mDirectillum[hp.pix] = mDirectillum[hp.pix] + importance * emissionShape->Emission(isect, isect.mOutDir);
 				
 			}
@@ -114,7 +114,7 @@ void SPPM::TracePhoton(const Scene& scene, StateSequence& rand, const Ray& ray, 
 		if (!scene.Intersect(r, &isect)) return;
 		scene.QueryIntersectionInfo(r, &isect);
 		isect.ComputeScatteringFunction(arena, TransportMode::Importance);
-		BSDF* bsdf = isect.mpBSDF;
+		BSDF* bsdf = isect.mBsdf;
 
 		Vec3 wi;
 		real pdf;
@@ -170,7 +170,7 @@ void SPPM::GenerateRadiusImage(const Scene& scene, const Camera &camera) {
 	int resX = camera.GetFilm()->mResX;
 	int resY = camera.GetFilm()->mResY;
 	std::vector<Vec3> radImg((int64)resX * resY);
-	real minRadius2 = Inf, maxRadius2 = 0.0, avgRadius = 0.0;
+	real minRadius2 = INF, maxRadius2 = 0.0, avgRadius = 0.0;
 	for (int y = 0; y < resY; ++y) {
 		for (int x = 0; x < resX; ++x) {
 			int index = x + y * resX;
@@ -197,7 +197,7 @@ void SPPM::GenerateRadiusImage(const Scene& scene, const Camera &camera) {
 
 void SPPM::Render(const Scene& scene, const Camera &camera) {
 	//fprintf(stderr, "Rendering ...\n");
-	GYT_Print("Rendering ...\n");
+	GYT_PRINT("Rendering ...\n");
 	int resX = camera.GetFilm()->mResX;
 	int resY = camera.GetFilm()->mResY;
 	Initialize(resX, resY);
@@ -209,10 +209,10 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 				MemoryPool& arena = memoryArenas[ThreadIndex()];
 				int pixel = x + y * resX;
 				mHitPoints[pixel].used = false;
-				uint64 instance = mpSamplerEnum->GetIndex(iter, x, y);
-				RandomStateSequence rand(mpSampler, instance);
-				real u = mpSamplerEnum->SampleX(x, rand());
-				real v = mpSamplerEnum->SampleY(y, rand());
+				uint64 instance = mSamplerEnum->GetIndex(iter, x, y);
+				RandomStateSequence rand(mSampler, instance);
+				real u = mSamplerEnum->SampleX(x, rand());
+				real v = mSamplerEnum->SampleY(y, rand());
 				Vec2 pixelSample(u, v);
 				Ray ray = camera.GenerateRay(x, y, pixelSample);
 				TraceEyePath(scene, rand, ray, pixel, arena);
@@ -228,14 +228,14 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 				mHashGrid.AddPoint(std::move(std::pair<Vec3, HPoint*>(hp.pos, &hp)), std::sqrt(mRadius2[i]));
 			}
 		}
-		mHashGrid.BuildHashGrid(std::sqrt(maxRadius2) + Eps);
+		mHashGrid.BuildHashGrid(std::sqrt(maxRadius2) + EPS);
 
 		//Trace photon
 		ParallelFor((int64)0, mPhotonsPerRenderStage, [&](int64 j) {
 			MemoryPool& arena = memoryArenas[ThreadIndex()];
 			Ray ray;
 			Vec3 photonFlux;
-			RandomStateSequence rand(mpSampler, iter * mPhotonsPerRenderStage + j);
+			RandomStateSequence rand(mSampler, iter * mPhotonsPerRenderStage + j);
 			GeneratePhoton(scene, &ray, &photonFlux, rand(), Vec2(rand(), rand()), Vec2(rand(), rand()));
 			TracePhoton(scene, rand, ray, photonFlux, arena);
 			arena.Reset();
@@ -261,7 +261,7 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 
 		real percentage = 100.f * (iter + 1) / mIterations;
 		//fprintf(stderr, "\rIterations: %5.2f%%", percentage);
-		GYT_Print("\rIterations: {:5.2f}%", percentage);
+		GYT_PRINT("\rIterations: {:5.2f}%", percentage);
 	}
 
 	// density estimation
@@ -278,7 +278,7 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 
 SPPM::SPPM(int iterations, int nPhotonsPerStage, int maxDepth, real initialRadius, real alpha, bool batchShrink, const std::shared_ptr<Sampler>& pSampler, const std::shared_ptr<SamplerEnum>& pSmplerEnum, bool traceGlossyRay /*= false*/)
 	: mIterations(iterations), mPhotonsPerRenderStage(nPhotonsPerStage), mBatchShrink(batchShrink),
-	mMaxDepth(maxDepth), mInitialRadius(initialRadius), mAlpha(alpha), mpSampler(pSampler), mpSamplerEnum(pSmplerEnum), mTraceGlossyRay(traceGlossyRay)
+	mMaxDepth(maxDepth), mInitialRadius(initialRadius), mAlpha(alpha), mSampler(pSampler), mSamplerEnum(pSmplerEnum), mTraceGlossyRay(traceGlossyRay)
 {
 
 }

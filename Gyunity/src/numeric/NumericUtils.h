@@ -46,8 +46,8 @@ GYT_FORCE_INLINE real NextFloatDown(real v) {
 	return BitsToFloat(ui);
 }
 
-GYT_FORCE_INLINE real gamma(int n) {
-	return (n * MachineEps) / (1 - n * MachineEps);
+GYT_FORCE_INLINE real Gamma(int n) {
+	return (n * MACHINE_EPS) / (1 - n * MACHINE_EPS);
 }
 
 

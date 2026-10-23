@@ -23,7 +23,7 @@
 #include <map>
 #include <list>
 
-#define ISE_SSE
+#define GYT_ISE_SSE
 
 GYT_NAMESPACE_BEGIN
 
@@ -45,7 +45,7 @@ using uint64 = uint64_t;
 using float32 = float;
 using float64 = double;
 
-#ifdef USING_DOUBLE
+#ifdef GYT_USING_DOUBLE
 using real = double;
 using real_bit = uint64;
 #else
@@ -56,7 +56,7 @@ using real_bit = uint32;
 #if defined(GYT_PLATFORM_WINDOWS)
 #define GYT_FORCE_INLINE __forceinline
 #else
-#define FORCE_INLINE inline __attribute__((always_inline))
+#define GYT_FORCE_INLINE inline __attribute__((always_inline))
 #endif
 
 #if defined(GYT_COMPILER_MSVC)
@@ -103,15 +103,15 @@ inline std::string TrimString(const std::string& s)
 inline std::vector<std::string> SplitString(const std::string& s, const std::string& seperators) 
 {
 	std::vector<std::string> ret;
-	bool isSeperator[256] = { false };
+	bool isSeparator[256] = { false };
 	for (auto& ch : seperators) 
 	{
-		isSeperator[(unsigned int)ch] = true;
+		isSeparator[(unsigned int)ch] = true;
 	}
 	int begin = 0;
 	for (int i = 0; i <= (int)s.size(); i++) 
 	{
-		if (isSeperator[(uint8)s[i]] || i == (int)s.size()) 
+		if (isSeparator[(uint8)s[i]] || i == (int)s.size()) 
 		{
 			ret.push_back(std::string(s.begin() + begin, s.begin() + i));
 			begin = i + 1;
@@ -140,27 +140,27 @@ inline bool StartsWith(std::string const& str, std::string const& ending)
 /****************** Logging *********************/
 #define GYT_UNREACHABLE __assume(0);
 
-#define GYT_Print(...) fmt::print(__VA_ARGS__)
+#define GYT_PRINT(...) fmt::print(__VA_ARGS__)
 
-#define SPD_LOG(X, ...) Gyunity::GetDefaultLogger()->X(fmt::format(__VA_ARGS__))
+#define GYT_LOG(X, ...) Gyunity::GetDefaultLogger()->X(fmt::format(__VA_ARGS__))
 
-#define SPD_INFO_LOG(X, ...) Gyunity::GetInfoLogger()->X(fmt::format(__VA_ARGS__))
+#define GYT_INFO_LOG(X, ...) Gyunity::GetInfoLogger()->X(fmt::format(__VA_ARGS__))
 
-#define SPD_LOCATED_LOG(X, ...)                                                 \
+#define GYT_LOCATED_LOG(X, ...)                                                 \
   Gyunity::GetDefaultLogger()->X(                                               \
       fmt::format("[{}: {} @{}] ", __FILE__, __FUNCTION__, __LINE__) +          \
       fmt::format(__VA_ARGS__))
 
-#define GYT_LOG_PRINT(...) SPD_INFO_LOG(Info, __VA_ARGS__)
+#define GYT_LOG_PRINT(...) GYT_INFO_LOG(Info, __VA_ARGS__)
 #define GYT_SET_LOG_LEVEL(Level) Gyunity::GetDefaultLogger()->SetLevel(Level)
-#define GYT_INFO(...) SPD_LOG(Info, __VA_ARGS__)
-#define GYT_WARN(...) SPD_LOCATED_LOG(Warn, __VA_ARGS__)
-#define GYT_DEBUG(...) SPD_LOCATED_LOG(Debug, __VA_ARGS__)
-#define GYT_TRACE(...) SPD_LOCATED_LOG(Trace, __VA_ARGS__)
+#define GYT_INFO(...) GYT_LOG(Info, __VA_ARGS__)
+#define GYT_WARN(...) GYT_LOCATED_LOG(Warn, __VA_ARGS__)
+#define GYT_DEBUG(...) GYT_LOCATED_LOG(Debug, __VA_ARGS__)
+#define GYT_TRACE(...) GYT_LOCATED_LOG(Trace, __VA_ARGS__)
 #define GYT_ERROR(...)                          \
 do                                              \
 {                                               \
-    SPD_LOCATED_LOG(Error, __VA_ARGS__);        \
+    GYT_LOCATED_LOG(Error, __VA_ARGS__);        \
     exit(2);                                    \
     GYT_UNREACHABLE                             \
 } while (0)
@@ -186,16 +186,14 @@ constexpr real PI = (real)3.14159265358979;
 constexpr real INV_PI = (real)0.31830988618379067154;
 constexpr real INV_2PI = (real)0.15915494309189533577;
 constexpr real INV_4PI = (real)0.07957747154594766788;
-constexpr real PI_Over2 = (real)1.57079632679489661923;
-constexpr real PI_Over4 = (real)0.78539816339744830961;
-constexpr real Eps = (real)1e-6;
-constexpr real Inf = std::numeric_limits<real>::infinity();
-constexpr real RayEps = (real)1e-4;
-constexpr real ShadowRayEps = (real)1e-4;
-constexpr real PhtotonEdgeEps = (real)0.0009;
-constexpr real NumericalEps = 1e-6;
-constexpr real MachineEps = std::numeric_limits<real>::epsilon() * (real)0.5;
-constexpr real MaxReal = std::numeric_limits<real>::max();
-constexpr real Infinity = std::numeric_limits<real>::infinity();
+constexpr real PI_OVER_2 = (real)1.57079632679489661923;
+constexpr real PI_OVER_4 = (real)0.78539816339744830961;
+constexpr real EPS = (real)1e-6;
+constexpr real INF = std::numeric_limits<real>::infinity();
+constexpr real RAY_EPS = (real)1e-4;
+constexpr real SHADOW_RAY_EPS = (real)1e-4;
+constexpr real NUMERICAL_EPS = 1e-6;
+constexpr real MACHINE_EPS = std::numeric_limits<real>::epsilon() * (real)0.5;
+constexpr real MAX_REAL = std::numeric_limits<real>::max();
 
 GYT_NAMESPACE_END

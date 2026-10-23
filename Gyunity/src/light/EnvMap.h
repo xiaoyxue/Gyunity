@@ -10,14 +10,14 @@ public:
 	EnvironmentMap(const std::string &filename, real rotate, float scale = 1.f) {
 		this->mScale = scale;
 		LoadImage(filename, rotate, scale);
-		mpDistribution.reset(ConvertImageToPdf(mpImage.get()));
+		mDistribution.reset(ConvertImageToPdf(mImage.get()));
 	}
 
 	Vec3 Sample(Vec3* dir, real* pdfW, const Vec2& u) const {
 		real uv[2];
 		real pdf;
-		mpDistribution->SampleContinuous(u[0], u[1], uv, &pdf);
-		real sinTheta = SinTheta(uv[1], mpImage->Height());
+		mDistribution->SampleContinuous(u[0], u[1], uv, &pdf);
+		real sinTheta = SinTheta(uv[1], mImage->Height());
 		if (sinTheta == 0)
 			*pdfW = 0;
 		else
@@ -34,15 +34,15 @@ public:
 
 		if (pdfW) {
 			Vec2 uv = DirToLatLong(normDir);
-			real sinTheta = SinTheta(uv[1], mpImage->Height());
+			real sinTheta = SinTheta(uv[1], mImage->Height());
 
 			if (sinTheta == 0) 
 				*pdfW = 0;
 			else
-				*pdfW = mpDistribution->Pdf(uv[0], uv[1]) / (2 * PI * PI * sinTheta);
+				*pdfW = mDistribution->Pdf(uv[0], uv[1]) / (2 * PI * PI * sinTheta);
 
 		}
-		DEBUG_PIXEL_IF(ThreadIndex()) {
+		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
 			if (std::isnan(radiance.x)) {
 				std::cout << "Radiance: " << radiance << " dir: " << dir << " uv: " << uv << std::endl;
 			}
@@ -53,28 +53,28 @@ public:
 	real PdfDir(const Vec3& dir) const {
 		Vec3 normDir = dir.Norm();
 		Vec2 uv = DirToLatLong(normDir);
-		real sinTheta = SinTheta(uv[1], mpImage->Height());
+		real sinTheta = SinTheta(uv[1], mImage->Height());
 		if (sinTheta == 0)
 			return 0;
 		else 
-			return mpDistribution->Pdf(uv[0], uv[1]) / (2 * PI * PI * sinTheta);
+			return mDistribution->Pdf(uv[0], uv[1]) / (2 * PI * PI * sinTheta);
 	}
 
 	Vec3 LookupRadiance(real u, real v) const {
-		return mpImage->Sample(Vec2(u, 1 - v)) * mScale;
+		return mImage->Sample(Vec2(u, 1 - v)) * mScale;
 	}
 private:
 
 	void LoadImage(const std::string& filename, real rotate, real scale) {
 
 		ImageTexture<Vec3>* imageTexture = new ImageTexture<Vec3>(filename);
-		mpImage.reset(imageTexture);
+		mImage.reset(imageTexture);
 		
 	}
 
 	Distribution2D* ConvertImageToPdf(const ImageTexture<Vec3>* pImage) const {
-		int height = mpImage->Height();
-		int width = mpImage->Width();
+		int height = mImage->Height();
+		int width = mImage->Width();
 		real* data = new real[width * height];
 		for (int r = 0; r < height; ++r) {
 			real v = (real)(r + 0.5f) / (real)(height);
@@ -127,8 +127,8 @@ private:
 	}
 
 public:
-	std::unique_ptr<ImageTexture<Vec3>> mpImage;
-	std::unique_ptr<Distribution2D> mpDistribution;
+	std::unique_ptr<ImageTexture<Vec3>> mImage;
+	std::unique_ptr<Distribution2D> mDistribution;
 	real mScale;
 };
 

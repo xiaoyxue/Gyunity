@@ -23,15 +23,15 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 		}
 		scene.QueryIntersectionInfo(ray, &isect);
 		isect.ComputeScatteringFunction(arena);
-		BSDF* bsdf = isect.mpBSDF;
+		BSDF* bsdf = isect.mBsdf;
 
-		DEBUG_PIXEL_IF(ThreadIndex()) {
+		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
 			std::cout << "Depth: " << i << " ************************************ \n";
 			std::cout << "wo: " << -ray.mDir << std::endl;
 		}
 
-		if ((i == 0 || deltaBoundEvent) && isect.mpPrimitive->IsLight()) {
-			const Light* emissionShape = isect.mpPrimitive->GetLight();
+		if ((i == 0 || deltaBoundEvent) && isect.mPrimitive->IsLight()) {
+			const Light* emissionShape = isect.mPrimitive->GetLight();
 			L += throughput * emissionShape->Emission(isect, isect.mOutDir);
 		}
 		else {
@@ -39,7 +39,7 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 
 		}
 
-		DEBUG_PIXEL_IF(ThreadIndex()) {
+		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
 			std::cout << "Path Tracing: Sample BSDF " << std::endl;
 		}
 		Vec3 wi;

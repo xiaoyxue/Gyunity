@@ -62,11 +62,11 @@ private:
     uint32_t FlattenBVHTree(BVHBuildNode* node, uint32_t* offset);
 
     // BVHAccel Private Data
-    uint32_t maxPrimsInNode;
-    enum SplitMethod { SPLIT_MIDDLE, SPLIT_EQUAL_COUNTS, SPLIT_SAH };
-    SplitMethod splitMethod;
-    std::vector<std::shared_ptr<Primitive> > primitives;
-    LinearBVHNode* nodes;
+    uint32_t mMaxPrimsInNode;
+    enum class SplitMethod { Middle, EqualCounts, Sah };
+    SplitMethod mSplitMethod;
+    std::vector<std::shared_ptr<Primitive> > mPrimitives;
+    LinearBVHNode* mNodes;
 };
 
 GYT_NAMESPACE_END
