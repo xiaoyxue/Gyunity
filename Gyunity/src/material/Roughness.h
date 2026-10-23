@@ -13,7 +13,7 @@ public:
 	RoughnessMaterial(const std::shared_ptr<Texture<Vec3>>& reflectence, 
 		const std::shared_ptr<Texture<real>> &roughnessx, const std::shared_ptr<Texture<real>>& roughnessy,
 		const std::shared_ptr<Texture<Vec3>>& eta, const std::shared_ptr<Texture<Vec3>>& k)
-		: reflectence(reflectence), roughnessx(roughnessx), roughnessy(roughnessy), eta(eta), k(k) {
+		: mReflectance(reflectence), mRoughnessX(roughnessx), mRoughnessY(roughnessy), mEta(eta), mK(k) {
 
 	}
 	//void ComputeScatteringFunction(Intersection* isect,
@@ -35,20 +35,20 @@ public:
 
 	void ComputeScatteringFunction(Intersection* isect, MemoryPool &arena,
 		TransportMode mode = TransportMode::Radiance) const {
-		real alphax = GGXDistribution::RoughnessToAlpha(roughnessx->Sample(*isect));
-		real alphay = GGXDistribution::RoughnessToAlpha(roughnessy->Sample(*isect));
+		real alphax = GGXDistribution::RoughnessToAlpha(mRoughnessX->Sample(*isect));
+		real alphay = GGXDistribution::RoughnessToAlpha(mRoughnessY->Sample(*isect));
 		MicrofacetDistribution* distribution =
 			MEMORY_POOL_ALLOC(arena, GGXDistribution)(alphax, alphay, true);
 		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
-		Fresnel* fresnel = MEMORY_POOL_ALLOC(arena, FresnelConductor)(Vec3(1.0, 1.0, 1.0), eta->Sample(*isect), k->Sample(*isect));
-		BxDF* microfacetReflectionBSDF = MEMORY_POOL_ALLOC(arena, MicrofacetReflectionBSDF)(distribution, fresnel, reflectence->Sample(*isect));
+		Fresnel* fresnel = MEMORY_POOL_ALLOC(arena, FresnelConductor)(Vec3(1.0, 1.0, 1.0), mEta->Sample(*isect), mK->Sample(*isect));
+		BxDF* microfacetReflectionBSDF = MEMORY_POOL_ALLOC(arena, MicrofacetReflectionBSDF)(distribution, fresnel, mReflectance->Sample(*isect));
 		isect->mBsdf->Add(microfacetReflectionBSDF);
 	}
 private:
-	std::shared_ptr<Texture<Vec3>> reflectence;
-	std::shared_ptr<Texture<real>> roughnessx, roughnessy;
-	std::shared_ptr<Texture<Vec3>> eta;
-	std::shared_ptr<Texture<Vec3>> k;
+	std::shared_ptr<Texture<Vec3>> mReflectance;
+	std::shared_ptr<Texture<real>> mRoughnessX, mRoughnessY;
+	std::shared_ptr<Texture<Vec3>> mEta;
+	std::shared_ptr<Texture<Vec3>> mK;
 };
 
 GYT_NAMESPACE_END

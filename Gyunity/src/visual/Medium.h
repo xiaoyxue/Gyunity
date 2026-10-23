@@ -40,11 +40,11 @@ public:
 class HenyeyGreenstein : public PhaseFunction {
 public:
     // HenyeyGreenstein Public Methods
-    HenyeyGreenstein(real g) : g(g) {}
+    HenyeyGreenstein(real g) : mG(g) {}
     real p(const Vec3& wo, const Vec3& wi) const;
     real Sample_p(const Vec3& wo, Vec3* wi, const Vec2& sample) const;
 private:
-    const real g;
+    const real mG;
 };
 
 // MediumInterface Declarations

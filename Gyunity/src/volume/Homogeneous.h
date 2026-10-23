@@ -9,7 +9,7 @@ GYT_NAMESPACE_BEGIN
 class HomogeneousMedium : public Medium {
 public:
 	HomogeneousMedium(const Vec3 &sigmaA, const Vec3 &sigmaS, real g):
-		sigma_a(sigmaA), sigma_s(sigmaS), sigma_t(sigma_s + sigma_a), g(g) {}
+		mSigmaA(sigmaA), mSigmaS(sigmaS), mSigmaT(mSigmaS + mSigmaA), mG(g) {}
 
 	Vec3 Tr(const Ray& ray, StateSequence& rand) const;
 
@@ -19,8 +19,8 @@ public:
 		const Intersection& lightPoint, MediumIntersection* mi) const override;
 
 private:
-	Vec3 sigma_a, sigma_s, sigma_t;
-	real g;
+	Vec3 mSigmaA, mSigmaS, mSigmaT;
+	real mG;
 };
 
 GYT_NAMESPACE_END

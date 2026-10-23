@@ -137,7 +137,7 @@ public:
 	}
 
 	Vec3 WorldToScreen(const Camera& camera, const Vec3& point, bool* inScreen) const {
-		Transform World2Raster = camera.CameraToRaster * camera.WorldToCamera;
+		Transform World2Raster = camera.mCameraToRaster * camera.mWorldToCamera;
 		Vec3 rasterPoint = World2Raster(point);
 		Vec2i rasterPointPrim = Vec2i(int(rasterPoint.x), int(rasterPoint.y));
 		if (rasterPointPrim.x >= 0 && rasterPointPrim.x <= camera.GetFilm()->mResX &&

@@ -7,7 +7,7 @@ GYT_NAMESPACE_BEGIN
 
 class MirrorMaterial : public Material {
 public:
-	MirrorMaterial(const std::shared_ptr<Texture<Vec3>>& kr) : kr(kr) {
+	MirrorMaterial(const std::shared_ptr<Texture<Vec3>>& kr) : mKr(kr) {
 
 	}
 	//void ComputeScatteringFunction(Intersection* isect,
@@ -28,10 +28,10 @@ public:
 
 		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
 
-		isect->mBsdf->Add(MEMORY_POOL_ALLOC(arena, SpecularBSDF)(kr->Sample(*isect)));
+		isect->mBsdf->Add(MEMORY_POOL_ALLOC(arena, SpecularBSDF)(mKr->Sample(*isect)));
 	}
 private:
-	std::shared_ptr<Texture<Vec3>> kr;
+	std::shared_ptr<Texture<Vec3>> mKr;
 };
 
 GYT_NAMESPACE_END
