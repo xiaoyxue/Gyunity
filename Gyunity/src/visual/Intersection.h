@@ -64,14 +64,14 @@ public:
 		Vec3 d = target - origin;
 		real dis = d.Length();
 		Normalize(d);
-		return Ray(origin, d, dis - SHADOW_RAY_EPS, 0, GetMedium(d));
+		return Ray(origin, d, dis - SHADOW_RAY_EPS, GetMedium(d));
 		//return Ray(origin, d, 1 - shadowRayEps, 0.f);
 	}
 
 	Ray SpawnRay(const Vec3 &d) const {
 		Vec3 o = OffsetRayOrigin(mPos, mPointError, mAbsNormal, d);
 		//Vec3 o = hit + d * 0.0001;
-		return Ray(o, d, INF, 0, GetMedium(d));
+		return Ray(o, d, INF, GetMedium(d));
 	}
 
 	const Medium* GetMedium(const Vec3& w) const {

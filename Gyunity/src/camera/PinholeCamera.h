@@ -25,7 +25,7 @@ public:
 		Vec3 sampledPos = mRasterToWorld(Vec3(pixelX + u.x, pixelY + u.y, -1));
 
 		Vec3 dir = (sampledPos - mPos).Norm();
-		return Ray(mPos + dir * offset, dir, INF, 0);
+		return Ray(mPos + dir * offset, dir, INF);
 	}
 
 	Vec3 We(const Ray& ray) const override
