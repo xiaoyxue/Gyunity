@@ -10,12 +10,12 @@ struct Ray {
 	Ray() 
 		: mMedium(nullptr)
 	{
-		mTmax = Inf;
+		mTmax = INF;
 		mTmin = 0.f;
 	}
 
-	Ray(Vec3 orig, Vec3 dir, real tmax = Inf, real tmin = 0.f, const Medium* medium = nullptr) 
-		: mOrig(orig + dir * RayEps), mDir(dir), mTmax(tmax), mTmin(tmin), mMedium(medium) 
+	Ray(Vec3 orig, Vec3 dir, real tmax = INF, real tmin = 0.f, const Medium* medium = nullptr) 
+		: mOrig(orig + dir * RAY_EPS), mDir(dir), mTmax(tmax), mTmin(tmin), mMedium(medium) 
 	{}
 
 	Vec3 operator()(real t) const 

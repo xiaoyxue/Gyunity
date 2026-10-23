@@ -8,7 +8,7 @@ GYT_NAMESPACE_BEGIN
 template <typename T>
 GYT_FORCE_INLINE
 typename std::enable_if_t<std::is_floating_point<T>::value, bool>
-Equal(const T &a, const T &b, float64 tolerance = NumericalEps) {
+Equal(const T &a, const T &b, float64 tolerance = NUMERICAL_EPS) {
 	return std::abs(a - b) <= tolerance;
 }
 
@@ -42,7 +42,7 @@ template<typename T, typename TensorType TType = T::tensorType,
 template <typename T>
 GYT_FORCE_INLINE
 typename std::enable_if_t<!std::is_floating_point<T>::value, bool>
-Equal(const T &a, const T &b, float64 tolerance = NumericalEps) {
+Equal(const T &a, const T &b, float64 tolerance = NUMERICAL_EPS) {
 	return std::abs(Maximum(a - b)) <= tolerance;
 }
 

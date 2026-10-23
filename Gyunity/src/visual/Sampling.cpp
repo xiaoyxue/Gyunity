@@ -13,11 +13,11 @@ Vec2 ConcentricSampleDisk(const Vec2 &u) {
 	real theta, r;
 	if (std::abs(uOffset.x) > std::abs(uOffset.y)) {
 		r = uOffset.x;
-		theta = PI_Over4 * (uOffset.y / uOffset.x);
+		theta = PI_OVER_4 * (uOffset.y / uOffset.x);
 	}
 	else {
 		r = uOffset.y;
-		theta = PI_Over2 - PI_Over4 * (uOffset.x / uOffset.y);
+		theta = PI_OVER_2 - PI_OVER_4 * (uOffset.x / uOffset.y);
 	}
 	return r * Vec2(std::cos(theta), std::sin(theta));
 }

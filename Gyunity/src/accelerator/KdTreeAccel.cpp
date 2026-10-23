@@ -128,7 +128,7 @@ void KdTreeAccel::BuildTree(int nodeNum, const AABB& nodeBounds,
 
 	// Choose split axis position for interior node
 	int bestAxis = -1, bestOffset = -1;
-	real bestCost = Infinity;
+	real bestCost = INF;
 	real oldCost = mIsectCost * real(nPrimitives);
 	real totalSA = nodeBounds.SurfaceArea();
 	real invTotalSA = 1 / totalSA;

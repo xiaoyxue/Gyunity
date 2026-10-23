@@ -35,7 +35,7 @@ public:
 		//Ray ray(isect.hit, wi);
 		Ray ray = isect.SpawnRay(wi);
 		Intersection lightPoint;
-		real t = Inf;
+		real t = INF;
 		if (!Intersect(ray, &lightPoint, &t)) {
 			return 0;
 		}

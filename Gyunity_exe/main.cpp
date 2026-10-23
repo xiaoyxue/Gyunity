@@ -53,13 +53,13 @@ using namespace Gyunity;
 
 //const real ALPHA = 0.66666667;
 const real ALPHA = 0.75;
-const int64  render_stage_number = 300000;
+const int64  RENDER_STAGE_NUMBER = 300000;
 
 void TestSppm(int argc, char* argv[]) {
 	//clock_t begin = clock();
 
 	//int w = 1024, h = 768;
-	//int nIterations = (argc == 2) ? atol(argv[1]) : 256; //(argc == 2) ? std::max(atoll(argv[1]) / render_stage_number, (int64)1) : render_stage_number;
+	//int nIterations = (argc == 2) ? atol(argv[1]) : 256; //(argc == 2) ? std::max(atoll(argv[1]) / RENDER_STAGE_NUMBER, (int64)1) : RENDER_STAGE_NUMBER;
 
 	//std::shared_ptr<Film> film = std::shared_ptr<Film>(new Film(w, h));
 
@@ -87,7 +87,7 @@ void TestSppm(int argc, char* argv[]) {
 	//std::shared_ptr<SamplerEnum> samplerEnum = std::shared_ptr<SamplerEnum>(new SamplerEnum());
 	//std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)w, (unsigned)h));
 	//std::shared_ptr<Integrator> integrator =
-	//	std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
+	//	std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
 	//fprintf(stderr, "Load Scene ...\n");
 	////scene->SetCamera(cam, cx, cy);
 	//scene->SetCamera(camera);
@@ -136,7 +136,7 @@ void TestSPPM2(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> samplerEnum = std::shared_ptr<SamplerEnum>(new SamplerEnum());
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)w, (unsigned)h));
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
 	fprintf(stderr, "Load Scene ...\n");
 
 	std::shared_ptr<Accelerator> accelerator = std::shared_ptr<Accelerator>(new BruteForce());
@@ -247,7 +247,7 @@ void TestSPPM3(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> samplerEnum = std::shared_ptr<SamplerEnum>(new SamplerEnum());
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)w, (unsigned)h));
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 1.0, ALPHA, false, haltonSampler, haltonSamplerEnum));
 	fprintf(stderr, "Load Scene ...\n");
 
 	CornellBoxSphere::SetScene(scene);
@@ -437,7 +437,7 @@ void TestSPPM4(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)resX, (unsigned)resY));
 	real alpha = 0.66666667;
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 0.05, alpha, true, haltonSampler, haltonSamplerEnum));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 0.05, alpha, true, haltonSampler, haltonSamplerEnum));
 	fprintf(stderr, "Load Scene ...\n");
 
 	CornellBoxTriangle2::SetScene(scene);
@@ -479,7 +479,7 @@ void TestSPPM5(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)resX, (unsigned)resY));
 	real alpha = 0.66666667;
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
 	fprintf(stderr, "Load Scene ...\n");
 
 	CornellBoxMesh::SetScene(scene);
@@ -515,7 +515,7 @@ void TestHashGrid() {
 	for (int i = 0; i < points.size(); ++i) {
 		hashGrid.AddPoint(std::move(std::pair<Vec3, int>(points[i], i)), 0.15f);
 	}
-	hashGrid.BuildHashGrid(searchRadius + Eps);
+	hashGrid.BuildHashGrid(searchRadius + EPS);
 	Vec3 testPoint = Vec3(0.12f, 0.34f, 0.56f);
 
 
@@ -610,7 +610,7 @@ void TestSPPM6(int argc, char* argv[]) {
 	std::shared_ptr<SamplerEnum> haltonSamplerEnum = std::shared_ptr<SamplerEnum>(new HaltonEnum((unsigned)resX, (unsigned)resY));
 	real alpha = 0.66666667;
 	std::shared_ptr<Integrator> integrator =
-		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
+		std::shared_ptr<Integrator>(new SPPM(nIterations, RENDER_STAGE_NUMBER, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
 
 	GYT_PRINT("Load Scene ...\n");
 

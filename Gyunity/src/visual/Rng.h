@@ -32,14 +32,14 @@ public:
 
 // Random Number Declarations
 
-static const double DoubleOneMinusEpsilon = 0.99999999999999989;
-static const float FloatOneMinusEpsilon = 0.99999994;
+static const double DOUBLE_ONE_MINUS_EPSILON = 0.99999999999999989;
+static const float FLOAT_ONE_MINUS_EPSILON = 0.99999994;
 
 
 #ifdef GYT_USING_DOUBLE
-static const real OneMinusEpsilon = DoubleOneMinusEpsilon;
+static const real ONE_MINUS_EPSILON = DOUBLE_ONE_MINUS_EPSILON;
 #else
-static const real OneMinusEpsilon = FloatOneMinusEpsilon;
+static const real ONE_MINUS_EPSILON = FLOAT_ONE_MINUS_EPSILON;
 #endif
 
 #define GYT_PCG32_DEFAULT_STATE 0x853c49e6748fea9bULL
@@ -61,10 +61,10 @@ class Pcg32 {
     }
     real UniformFloat() {
 #ifndef GYT_HAVE_HEX_FP_CONSTANTS
-        return std::min(OneMinusEpsilon,
+        return std::min(ONE_MINUS_EPSILON,
                         real(UniformUInt32() * 2.3283064365386963e-10f));
 #else
-        return std::min(OneMinusEpsilon, Float(UniformUInt32() * 0x1p-32f));
+        return std::min(ONE_MINUS_EPSILON, Float(UniformUInt32() * 0x1p-32f));
 #endif
     }
     template <typename Iterator>
