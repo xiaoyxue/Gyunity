@@ -95,7 +95,7 @@ public:
 				mPrimes.push_back(i);
 			}
 		}
-		ASSERT(mPrimes.size() == 1229);
+		GYT_DEBUG_ASSERT(mPrimes.size() == 1229);
 	}
 
 	int GetPrime(int i) {
@@ -114,7 +114,7 @@ private:
 class RegularHaltonSampler : public Sampler {
 public:
 	real Sample(unsigned int d, unsigned long long i) override {
-		ASSERT(d < (unsigned)primeList.GetPrimesNum());
+		GYT_DEBUG_ASSERT(d < (unsigned)primeList.GetPrimesNum());
 		real val = hal(d, i + 1);  // The first one is evil...
 		return val;
 	}

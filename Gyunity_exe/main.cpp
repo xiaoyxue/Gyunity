@@ -612,7 +612,7 @@ void TestSPPM6(int argc, char* argv[]) {
 	std::shared_ptr<Integrator> integrator =
 		std::shared_ptr<Integrator>(new SPPM(nIterations, render_stage_number, 20, 0.05, alpha, false, haltonSampler, haltonSamplerEnum, true));
 
-	GYT_Print("Load Scene ...\n");
+	GYT_PRINT("Load Scene ...\n");
 
 	CornellBoxMesh::SetScene(scene);
 	//CornellBoxWater::SetScene(scene);
@@ -722,7 +722,7 @@ void TestPathTracing2(int argc, char* argv[]) {
 	std::shared_ptr<Integrator> integrator = std::shared_ptr<Integrator>(new PathTracing(100, 1, randomSampler, samplerEnum));
 
 	//fprintf(stderr, "Load Scene ...\n");
-	GYT_Print("Load Scene ...\n");
+	GYT_PRINT("Load Scene ...\n");
 	//CornellBoxMesh::SetScene(scene);
 	//CornellBoxMeshEmpty::SetScene(scene);
 	CornellBoxMeshWithSlope::SetScene(scene);
@@ -742,7 +742,7 @@ void TestPathTracing2(int argc, char* argv[]) {
 	renderer->Render();
 	clock_t end = clock();
 
-	GYT_Print("\nCost time: {:.6f} min\n", (end - begin) / 1000.0 / 60.0);
+	GYT_PRINT("\nCost time: {:.6f} min\n", (end - begin) / 1000.0 / 60.0);
 }
 
 
@@ -769,7 +769,7 @@ void TestLightTracing(int argc, char* argv[]) {
 
 	std::shared_ptr<Integrator> integrator = std::shared_ptr<Integrator>(new LightTracing(randomSampler, 15, 512));
 
-	GYT_Print("Load Scene ...\n");
+	GYT_PRINT("Load Scene ...\n");
 	CornellBoxMesh::SetScene(scene);
 	//CornellBoxMeshEmpty::SetScene(scene);
 	//CornellBoxDiffuseBunny::SetScene(scene);

@@ -50,11 +50,11 @@ void ProjectiveCamera::Initialize() {
 	mFilm->mUpperRight = filmCenter + mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
 	mFilm->mLowerRight = filmCenter - mCy * mFilm->mHeight * 0.5 + mCx * mFilm->mWidth * 0.5;
 
-	GYT_Print("Film center: {}\n", filmCenter);
-	GYT_Print("LL: {} \n", mFilm->mLowerLeft);
-	GYT_Print("LU: {} \n", mFilm->mUpperLeft);
-	GYT_Print("RL: {} \n", mFilm->mLowerRight);
-	GYT_Print("RU: {} \n", mFilm->mUpperRight);
+	GYT_PRINT("Film center: {}\n", filmCenter);
+	GYT_PRINT("LL: {} \n", mFilm->mLowerLeft);
+	GYT_PRINT("LU: {} \n", mFilm->mUpperLeft);
+	GYT_PRINT("RL: {} \n", mFilm->mLowerRight);
+	GYT_PRINT("RU: {} \n", mFilm->mUpperRight);
 
 }
 

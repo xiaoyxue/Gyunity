@@ -20,7 +20,7 @@ Vec3 VisibilityTester::Tr(const Scene& scene, StateSequence& rand) const {
         if (hitSurface && isect.mPrimitive->GetMaterial() != nullptr)
             return Vec3();
 
-        //DEBUG_PIXEL_IF(ThreadIndex()) {
+        //GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
         //    std::cout << "Hit: "<< isect.hit 
         //        << ", Tr: " << Tr << std::endl;
         //}

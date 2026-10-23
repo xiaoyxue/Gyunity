@@ -36,15 +36,15 @@ static const double DoubleOneMinusEpsilon = 0.99999999999999989;
 static const float FloatOneMinusEpsilon = 0.99999994;
 
 
-#ifdef USING_DOUBLE
+#ifdef GYT_USING_DOUBLE
 static const real OneMinusEpsilon = DoubleOneMinusEpsilon;
 #else
 static const real OneMinusEpsilon = FloatOneMinusEpsilon;
 #endif
 
-#define PCG32_DEFAULT_STATE 0x853c49e6748fea9bULL
-#define PCG32_DEFAULT_STREAM 0xda3e39cb94b95bdbULL
-#define PCG32_MULT 0x5851f42d4c957f2dULL
+#define GYT_PCG32_DEFAULT_STATE 0x853c49e6748fea9bULL
+#define GYT_PCG32_DEFAULT_STREAM 0xda3e39cb94b95bdbULL
+#define GYT_PCG32_MULT 0x5851f42d4c957f2dULL
 class Pcg32 {
   public:
     // Pcg32 Public Methods
@@ -60,7 +60,7 @@ class Pcg32 {
         }
     }
     real UniformFloat() {
-#ifndef PBRT_HAVE_HEX_FP_CONSTANTS
+#ifndef GYT_HAVE_HEX_FP_CONSTANTS
         return std::min(OneMinusEpsilon,
                         real(UniformUInt32() * 2.3283064365386963e-10f));
 #else
@@ -74,7 +74,7 @@ class Pcg32 {
                            begin + UniformUInt32((uint32_t)(it - begin + 1)));
     }
     void Advance(int64_t idelta) {
-        uint64 cur_mult = PCG32_MULT, cur_plus = mInc, acc_mult = 1u,
+        uint64 cur_mult = GYT_PCG32_MULT, cur_plus = mInc, acc_mult = 1u,
                  acc_plus = 0u, delta = (uint64)idelta;
         while (delta > 0) {
             if (delta & 1) {
@@ -88,7 +88,7 @@ class Pcg32 {
         mState = acc_mult * mState + acc_plus;
     }
     int64_t operator-(const Pcg32 &other) const {
-        uint64 cur_mult = PCG32_MULT, cur_plus = mInc, cur_state = other.mState,
+        uint64 cur_mult = GYT_PCG32_MULT, cur_plus = mInc, cur_state = other.mState,
                  the_bit = 1u, distance = 0u;
         while (mState != cur_state) {
             if ((mState & the_bit) != (cur_state & the_bit)) {
@@ -108,18 +108,18 @@ class Pcg32 {
 };
 
 // Pcg32 Inline Method Definitions
-inline Pcg32::Pcg32() : mState(PCG32_DEFAULT_STATE), mInc(PCG32_DEFAULT_STREAM) {}
+inline Pcg32::Pcg32() : mState(GYT_PCG32_DEFAULT_STATE), mInc(GYT_PCG32_DEFAULT_STREAM) {}
 inline void Pcg32::SetSequence(uint64 initseq) {
     mState = 0u;
     mInc = (initseq << 1u) | 1u;
     UniformUInt32();
-    mState += PCG32_DEFAULT_STATE;
+    mState += GYT_PCG32_DEFAULT_STATE;
     UniformUInt32();
 }
 
 inline uint32_t Pcg32::UniformUInt32() {
     uint64 oldstate = mState;
-    mState = oldstate * PCG32_MULT + mInc;
+    mState = oldstate * GYT_PCG32_MULT + mInc;
     uint32_t xorshifted = (uint32_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
     uint32_t rot = (uint32_t)(oldstate >> 59u);
     return (xorshifted >> rot) | (xorshifted << ((~rot + 1u) & 31));

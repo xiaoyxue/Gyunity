@@ -55,7 +55,7 @@ public:
 			}
 		}
 
-		//DEBUG_PIXEL_IF() {
+		//GYT_DEBUG_PIXEL_IF() {
 		//	std::cout << "Intersection function: tmax: " << r.tMax << " tHit: " << tHit << std::endl;
 		//}
 

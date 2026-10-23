@@ -39,7 +39,7 @@ GYT_FORCE_INLINE bool SameHemisphere(const Vec3& w, const Vec3& wp) {
 GYT_FORCE_INLINE Vec3 OffsetRayOrigin(const Vec3 &p, const Vec3 &pError,
 	const Vec3 &n, const Vec3 &w) {
 	real d = Dot(Abs(n), pError);
-#ifdef USING_DOUBLE
+#ifdef GYT_USING_DOUBLE
 	// We have tons of precision; for now bump up the offset a bunch just
 	// to be extra sure that we start on the right side of the surface
 	// (In case of any bugs in the epsilons code...)

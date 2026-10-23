@@ -23,7 +23,7 @@
 #include <map>
 #include <list>
 
-#define ISE_SSE
+#define GYT_ISE_SSE
 
 GYT_NAMESPACE_BEGIN
 
@@ -45,7 +45,7 @@ using uint64 = uint64_t;
 using float32 = float;
 using float64 = double;
 
-#ifdef USING_DOUBLE
+#ifdef GYT_USING_DOUBLE
 using real = double;
 using real_bit = uint64;
 #else
@@ -140,27 +140,27 @@ inline bool StartsWith(std::string const& str, std::string const& ending)
 /****************** Logging *********************/
 #define GYT_UNREACHABLE __assume(0);
 
-#define GYT_Print(...) fmt::print(__VA_ARGS__)
+#define GYT_PRINT(...) fmt::print(__VA_ARGS__)
 
-#define SPD_LOG(X, ...) Gyunity::GetDefaultLogger()->X(fmt::format(__VA_ARGS__))
+#define GYT_LOG(X, ...) Gyunity::GetDefaultLogger()->X(fmt::format(__VA_ARGS__))
 
-#define SPD_INFO_LOG(X, ...) Gyunity::GetInfoLogger()->X(fmt::format(__VA_ARGS__))
+#define GYT_INFO_LOG(X, ...) Gyunity::GetInfoLogger()->X(fmt::format(__VA_ARGS__))
 
-#define SPD_LOCATED_LOG(X, ...)                                                 \
+#define GYT_LOCATED_LOG(X, ...)                                                 \
   Gyunity::GetDefaultLogger()->X(                                               \
       fmt::format("[{}: {} @{}] ", __FILE__, __FUNCTION__, __LINE__) +          \
       fmt::format(__VA_ARGS__))
 
-#define GYT_LOG_PRINT(...) SPD_INFO_LOG(Info, __VA_ARGS__)
+#define GYT_LOG_PRINT(...) GYT_INFO_LOG(Info, __VA_ARGS__)
 #define GYT_SET_LOG_LEVEL(Level) Gyunity::GetDefaultLogger()->SetLevel(Level)
-#define GYT_INFO(...) SPD_LOG(Info, __VA_ARGS__)
-#define GYT_WARN(...) SPD_LOCATED_LOG(Warn, __VA_ARGS__)
-#define GYT_DEBUG(...) SPD_LOCATED_LOG(Debug, __VA_ARGS__)
-#define GYT_TRACE(...) SPD_LOCATED_LOG(Trace, __VA_ARGS__)
+#define GYT_INFO(...) GYT_LOG(Info, __VA_ARGS__)
+#define GYT_WARN(...) GYT_LOCATED_LOG(Warn, __VA_ARGS__)
+#define GYT_DEBUG(...) GYT_LOCATED_LOG(Debug, __VA_ARGS__)
+#define GYT_TRACE(...) GYT_LOCATED_LOG(Trace, __VA_ARGS__)
 #define GYT_ERROR(...)                          \
 do                                              \
 {                                               \
-    SPD_LOCATED_LOG(Error, __VA_ARGS__);        \
+    GYT_LOCATED_LOG(Error, __VA_ARGS__);        \
     exit(2);                                    \
     GYT_UNREACHABLE                             \
 } while (0)

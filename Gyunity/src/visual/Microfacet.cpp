@@ -157,7 +157,7 @@ static Vec3 GGXSampleVisible(const Vec3& _wi, const Vec2& sample, real alphaU, r
 
 real MicrofacetDistribution::Pdf(const Vec3& wo, const Vec3& wh) const {
 	if (mSampleVisibleArea) {
-		DEBUG_PIXEL_IF(ThreadIndex()) {
+		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
 			std::cout << "D: " << D(wh) << " G1: " << G1(wo, wh) << std::endl;
 		}
 		return D(wh) * G1(wo, wh) * std::abs(Dot(wo, wh)) / BSDFCoordinate::AbsCosTheta(wo);
