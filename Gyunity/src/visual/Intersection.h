@@ -19,8 +19,8 @@ public:
 	Vec3 mPointError;
 	real mB1, mB2;
 	int64 mShapeId, mPrimId;
-	const Primitive *mpPrimitive;
-	BSDF* mpBSDF;
+	const Primitive *mPrimitive;
+	BSDF* mBsdf;
 	MediumInterface mMediumInterface;
 	//bool mIsDelta = false;
 
@@ -37,15 +37,15 @@ public:
 	}
 
 	Intersection(const Vec3 &hit, const Vec3 &ng, const Vec3 &nl, const Vec3 &wo, const Vec3 &pError):
-		mPos(hit), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mRayEps(0), mpPrimitive(nullptr){
-		mpBSDF = nullptr;
+		mPos(hit), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mRayEps(0), mPrimitive(nullptr){
+		mBsdf = nullptr;
 		mShapeId = -1;
 	}
 
 	Intersection(const Vec3& hit, const Vec3& ng, const Vec3& nl, 
 		const Vec3& dpdu, const Vec3& dpdv, const Vec3& wo, const Vec3& pError) :
-		mPos(hit), mDpDu(dpdu), mDpDv(dpdv), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mRayEps(0), mpPrimitive(nullptr) {
-		mpBSDF = nullptr;
+		mPos(hit), mDpDu(dpdu), mDpDv(dpdv), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mRayEps(0), mPrimitive(nullptr) {
+		mBsdf = nullptr;
 		mShapeId = -1;
 	}
 
@@ -95,16 +95,16 @@ public:
 class MediumIntersection : public Intersection {
 public:
 	// MediumInteraction Public Methods
-	MediumIntersection() : mpPhase(nullptr) {}
+	MediumIntersection() : mPhase(nullptr) {}
 
 	MediumIntersection(const Vec3& p, const Vec3& wo, 
 		const Medium* medium, const PhaseFunction* phase)
-		: Intersection(p, wo, medium), mpPhase(phase) {}
+		: Intersection(p, wo, medium), mPhase(phase) {}
 
-	bool IsValid() const { return mpPhase != nullptr; }
+	bool IsValid() const { return mPhase != nullptr; }
 
 	// MediumInteraction Public Data
-	const PhaseFunction* mpPhase;
+	const PhaseFunction* mPhase;
 };
 
 GYT_NAMESPACE_END

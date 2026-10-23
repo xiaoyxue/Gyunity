@@ -12,7 +12,7 @@ class LightTracing : public Integrator {
 
 public:
 	LightTracing(std::shared_ptr<Sampler> pSampler, int maxDepth, int spp) :
-		mpSampler(pSampler), mSpp(spp), mMaxDepth(maxDepth) { }
+		mSampler(pSampler), mSpp(spp), mMaxDepth(maxDepth) { }
 
 	void Render(const Scene& scene, const Camera& camera) override {
 
@@ -24,7 +24,7 @@ public:
 		int64 resY = camera.GetFilm()->mResY;
 		std::vector<MemoryPool> memoryArenas(ThreadsNumber());
 		ParallelFor(int64(0), resY, [&](int64 y) {
-			std::shared_ptr<Sampler> clonedSampler = mpSampler->Clone(y);
+			std::shared_ptr<Sampler> clonedSampler = mSampler->Clone(y);
 			MemoryPool& arena = memoryArenas[ThreadIndex()];
 			for (int64 x = 0; x < resX; ++x) {
 				for (int p = 0; p < mSpp; ++p) {
@@ -50,7 +50,7 @@ public:
 		});
 
 
-		//RandomStateSequence rand(mpSampler, 123);
+		//RandomStateSequence rand(mSampler, 123);
 		//MemoryPool arena;
 		//for (int p = 0; p < totalPhotons; ++p) {
 		//	std::vector<PathVertex> lightPath(mMaxDepth + 1);
@@ -86,7 +86,7 @@ public:
 			scene.QueryIntersectionInfo(ray, &isect);
 			isect.ComputeScatteringFunction(arena, TransportMode::Importance);
 
-			lightPath[bounce].mIsDelta = isect.mpBSDF->IsDelta();
+			lightPath[bounce].mIsDelta = isect.mBsdf->IsDelta();
 			lightPath[bounce].mPdfFwd = pdfDir;
 			lightPath[bounce].mThroughput = throughput;
 
@@ -94,7 +94,7 @@ public:
 			if (bounce >= mMaxDepth) break;
 
 			Vec3 wi;
-			Vec3 f = isect.mpBSDF->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()));
+			Vec3 f = isect.mBsdf->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()));
 			ray = Ray(isect.mPos + wi * RayEps, wi);
 
 			throughput = throughput * f * std::abs(Dot(wi, isect.mNormal)) / pdfDir;
@@ -212,7 +212,7 @@ public:
 		real pdfW;
 		Vec3 wi;
 		Vec3 We = camera.Sample_Wi(vertex.mIsect, &pdfW, &wi, Vec3(rand(), rand(), rand()));
-		Vec3 f = vertex.mIsect.mpBSDF->Evaluate(vertex.mIsect.mOutDir, wi);
+		Vec3 f = vertex.mIsect.mBsdf->Evaluate(vertex.mIsect.mOutDir, wi);
 		Vec3 L = We * f * vertex.mThroughput * std::abs(Dot(wi, vertex.mIsect.mNormal)) / pdfW;
 
 		//{
@@ -233,7 +233,7 @@ public:
 
 private:
 	int mSpp, mMaxDepth;
-	std::shared_ptr<Sampler> mpSampler;
+	std::shared_ptr<Sampler> mSampler;
 
 	//debug
 	mutable std::mutex mMutex;

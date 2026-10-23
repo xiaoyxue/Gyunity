@@ -12,7 +12,7 @@ class EnvironmentLight : public Light
 {
 public:
 	EnvironmentLight(const std::string& filename, real rotate, real scale = 1.f) {
-		mpEnvMap.reset(new EnvironmentMap(filename, rotate, scale));
+		mEnvMap.reset(new EnvironmentMap(filename, rotate, scale));
 	}
 
 	void Initialize(const Scene& scene);
@@ -29,7 +29,7 @@ public:
 	bool IsEnvironmentLight() const override { return true; }
 
 private:
-	std::unique_ptr<EnvironmentMap> mpEnvMap;
+	std::unique_ptr<EnvironmentMap> mEnvMap;
 	Vec3 mCenter;
 	real mRadius;
 };

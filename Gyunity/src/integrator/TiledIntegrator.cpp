@@ -28,7 +28,7 @@ void TiledIntegrator::Render(const Scene& scene, const Camera& camera) {
 	ParallelFor(0, tileNum, [&](int i) {
 		MemoryPool arena;
 		const Tile& tile = tiles[i];
-		std::shared_ptr<Sampler> tileSampler = mpSampler->Clone(i);
+		std::shared_ptr<Sampler> tileSampler = mSampler->Clone(i);
 		for (int y = tile.minY; y < tile.maxY; ++y) {
 			for (int x = tile.minX; x < tile.maxX; ++x) {
 				//std::cout << y << " " << x << std::endl;
@@ -37,10 +37,10 @@ void TiledIntegrator::Render(const Scene& scene, const Camera& camera) {
 					//DEBUG_PIXEL_IF(ThreadIndex()) {
 					//	std::cout << s << std::endl;
 					//}
-					uint64 instance = mpSamplerEnum->GetIndex(s, x, y);
+					uint64 instance = mSamplerEnum->GetIndex(s, x, y);
 					RandomStateSequence rand(tileSampler, instance);
-					real u = mpSamplerEnum->SampleX(x, rand());
-					real v = mpSamplerEnum->SampleY(y, rand());
+					real u = mSamplerEnum->SampleX(x, rand());
+					real v = mSamplerEnum->SampleY(y, rand());
 					Vec2 pixelSample(u, v);
 					Ray ray = camera.GenerateRay(x, y, pixelSample);
 

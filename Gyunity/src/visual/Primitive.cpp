@@ -4,32 +4,32 @@ GYT_NAMESPACE_BEGIN
 
 bool Primitive::Intersect(const Ray& r, Intersection* isect) const {
 	real t;
-	if (mpShape->Intersect(r, isect, &t)) {
+	if (mShape->Intersect(r, isect, &t)) {
 		r.mTmax = t;
-		isect->mpPrimitive = this;
+		isect->mPrimitive = this;
 		isect->mPrimId = this->mPrimId;
 		if (mMediumInterface.IsMediumTransition())
 			isect->mMediumInterface = mMediumInterface;
 		else
-			isect->mMediumInterface = MediumInterface(r.mpMedium);
+			isect->mMediumInterface = MediumInterface(r.mMedium);
 		return true;
 	}
 	return false;
 }
 
 bool Primitive::Intersect(const Ray& r) const {
-	return mpShape->Intersect(r);
+	return mShape->Intersect(r);
 }
 
 void Primitive::ComputeScatteringFunction(Intersection* isect, MemoryPool& arena,
 	TransportMode mode) const {
-	if (mpMaterial) {
-		mpMaterial->ComputeScatteringFunction(isect, arena, mode);
+	if (mMaterial) {
+		mMaterial->ComputeScatteringFunction(isect, arena, mode);
 	}
 }
 
 void Primitive::QueryIntersectionInfo(const Ray& ray, Intersection* isect) const {
-	mpShape->QueryIntersectionInfo(ray, isect);
+	mShape->QueryIntersectionInfo(ray, isect);
 }
 
 GYT_NAMESPACE_END

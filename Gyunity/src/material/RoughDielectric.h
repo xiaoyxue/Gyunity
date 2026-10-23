@@ -23,7 +23,7 @@ public:
 		real alphay = GGXDistribution::RoughnessToAlpha(yRoughness->Sample(*isect));
 		//real alphax = xRoughness->Sample(*isect);
 		//real alphay = yRoughness->Sample(*isect);
-		isect->mpBSDF = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
+		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
 
 		Vec3 kr = Kr->Sample(*isect);
 		Vec3 kt = Kt->Sample(*isect);
@@ -37,7 +37,7 @@ public:
 		//isect->bsdf->Add(microfacetReflectionBSDF);
 		//isect->bsdf->Add(microfacetTransmissionBSDF);
 		BxDF* roughDielectricBSDF = MEMORY_POOL_ALLOC(arena, RoughDielectricBSDF)(distribution, kr, kt, 1.f, eta, mode);
-		isect->mpBSDF->Add(roughDielectricBSDF);
+		isect->mBsdf->Add(roughDielectricBSDF);
 	}
 
 private:

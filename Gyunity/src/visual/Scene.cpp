@@ -16,11 +16,11 @@ bool Scene::IntersectTr(Ray& ray, StateSequence& rand, Intersection* isect, Vec3
     while (true) {
         bool hitSurface = Intersect(ray, isect);
         // Accumulate beam transmittance for ray segment
-        if (ray.mpMedium) *Tr *= ray.mpMedium->Tr(ray, rand);
+        if (ray.mMedium) *Tr *= ray.mMedium->Tr(ray, rand);
 
         // Initialize next ray segment or terminate transmittance computation
         if (!hitSurface) return false;
-        if (isect->mpPrimitive->GetMaterial() != nullptr) return true;
+        if (isect->mPrimitive->GetMaterial() != nullptr) return true;
         ray = isect->SpawnRay(ray.mDir);
     }
 }

@@ -26,14 +26,14 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		if (pdf > 0 && Li != Vec3(0)) {
 			VisibilityTester visibilityTester(isect, lightPoint);
 			if (isect.IsSurfaceScatter()) {
-				BSDF* bsdf = isect.mpBSDF;
+				BSDF* bsdf = isect.mBsdf;
 				scatteringPdf = bsdf->Pdf(isect.mOutDir, wi);
 				f = bsdf->Evaluate(isect.mOutDir, wi);
 				cosTheta = std::abs(isect.mNormal.Dot(wi));
 			}
 			else {
 				const MediumIntersection& mi = (const MediumIntersection&)isect;
-				real p = mi.mpPhase->p(mi.mOutDir, wi);
+				real p = mi.mPhase->p(mi.mOutDir, wi);
 				f = Vec3(p);
 				scatteringPdf = p;
 			}
@@ -63,13 +63,13 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		Vec3 f;
 		real cosTheta = 1;
 		if (isect.IsSurfaceScatter()) {
-			BSDF* bsdf = isect.mpBSDF;
+			BSDF* bsdf = isect.mBsdf;
 			f = bsdf->Sample(isect.mOutDir, &wi, &pdf, v);
 			cosTheta = std::abs(isect.mNormal.Dot(wi));
 		}
 		else {
 			const MediumIntersection& mi = (const MediumIntersection&)isect;
-			real p = mi.mpPhase->Sample_p(mi.mOutDir, &wi, Vec2(v[0], v[1]));
+			real p = mi.mPhase->Sample_p(mi.mOutDir, &wi, Vec2(v[0], v[1]));
 			f = Vec3(p);
 			pdf = p;
 		}
@@ -87,10 +87,10 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 				Vec3 Tr(1.f);
 				bool surfaceIntersection = handleMedia ? scene.IntersectTr(ray, rand, &intersection, &Tr) : scene.Intersect(ray, &intersection);
 				if (surfaceIntersection) {
-					if (intersection.mpPrimitive->IsLight() && intersection.mpPrimitive->GetLight() == light) {
+					if (intersection.mPrimitive->IsLight() && intersection.mPrimitive->GetLight() == light) {
 						//std::cout << lightPdf << std::endl;
 						scene.QueryIntersectionInfo(ray, &intersection);
-						const Light* emissionShape = intersection.mpPrimitive->GetLight();
+						const Light* emissionShape = intersection.mPrimitive->GetLight();
 						L2 = emissionShape->Emission(intersection, -wi) * f * Tr * cosTheta / pdf;
 					}
 				}

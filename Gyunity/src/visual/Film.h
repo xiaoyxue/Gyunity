@@ -24,7 +24,7 @@ private:
 	std::string mFilename;
 	std::vector<Pixel> mPixelBuffer;
 	std::vector<Vec3> mImageBuffer;
-	std::unique_ptr<Filter> mpFilter;
+	std::unique_ptr<Filter> mFilter;
 	std::vector<Spinlock> mBufferLocks;
 
 public:
@@ -44,10 +44,10 @@ public:
 		mImageBuffer.resize((int64)mResX * mResY);
 		mBufferLocks.resize((int64)mResX * mResY);
 		if (pFilter == nullptr) {
-			mpFilter.reset(new BoxFilter());
+			mFilter.reset(new BoxFilter());
 		}
 		else {
-			mpFilter.reset(pFilter);
+			mFilter.reset(pFilter);
 		}
 
 	}
@@ -63,10 +63,10 @@ public:
 		x -= 0.5;
 		y -= 0.5;
 
-		int minX = (int)(std::ceil(x - mpFilter->GetRadius()));
-		int maxX = (int)(std::floor(x + mpFilter->GetRadius()));
-		int minY = (int)(std::ceil(y - mpFilter->GetRadius()));
-		int maxY = (int)(std::floor(y + mpFilter->GetRadius()));
+		int minX = (int)(std::ceil(x - mFilter->GetRadius()));
+		int maxX = (int)(std::floor(x + mFilter->GetRadius()));
+		int minY = (int)(std::ceil(y - mFilter->GetRadius()));
+		int maxY = (int)(std::floor(y + mFilter->GetRadius()));
 		minX = std::max(0, minX);
 		maxX = std::min(maxX, mResX - 1);
 		minY = std::max(0, minY);
@@ -79,7 +79,7 @@ public:
 				int pixelIndex = i * mResX + j;
 				std::lock_guard<Spinlock> lock(mBufferLocks[pixelIndex]);
 				Pixel& pixel = mPixelBuffer[pixelIndex];
-				real weight = mpFilter->Evaluate(j - x, i - y);
+				real weight = mFilter->Evaluate(j - x, i - y);
 				pixel.weight += weight;
 				pixel.color = pixel.color + sample * weight;
 			}

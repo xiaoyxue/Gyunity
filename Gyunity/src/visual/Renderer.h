@@ -8,21 +8,21 @@ GYT_NAMESPACE_BEGIN
 class Renderer 
 {
 private:
-	std::shared_ptr<Scene> mpScene;
-	std::shared_ptr<Integrator> mpIntegrator;
-	std::shared_ptr<Film> mpFilm;
-	std::shared_ptr<Camera> mpCamera;
+	std::shared_ptr<Scene> mScene;
+	std::shared_ptr<Integrator> mIntegrator;
+	std::shared_ptr<Film> mFilm;
+	std::shared_ptr<Camera> mCamera;
 public:
 	Renderer(const std::shared_ptr<Scene> &pScene, const std::shared_ptr<Camera> &pCamera, 
 		const std::shared_ptr<Integrator> &pIntegrator, const std::shared_ptr<Film> &pFilm) 
-		: mpScene(pScene), mpIntegrator(pIntegrator), mpFilm(pFilm), mpCamera(pCamera) 
+		: mScene(pScene), mIntegrator(pIntegrator), mFilm(pFilm), mCamera(pCamera) 
 	{
 
 	}
 	void Render() 
 	{
-		mpIntegrator->Render(*mpScene, *mpCamera);
-		mpFilm->SaveImage();
+		mIntegrator->Render(*mScene, *mCamera);
+		mFilm->SaveImage();
 	}
 };
 
