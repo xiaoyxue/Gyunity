@@ -34,7 +34,7 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 			const Light* emissionShape = isect.mPrimitive->GetLight();
 			L += throughput * emissionShape->Emission(isect, isect.mOutDir);
 		}
-		else {
+		else if (!bsdf->IsDelta()) {
 			L += throughput * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
 
 		}

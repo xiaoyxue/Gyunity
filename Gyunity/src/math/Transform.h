@@ -220,28 +220,26 @@ GYT_FORCE_INLINE Ray Transform::operator()(const Ray& r) const {
 	Vector3 d = this->TransformVector(r.mDir);
 
 	real length2 = d.Length2();
-	real tMax = r.mTmax, tMin = r.mTmin;
+	real tMax = r.mTmax;
 	if(length2 > 0) {
 		real dt = Dot(Abs(d), originError) / length2;
 		o += d * dt;
 		tMax -= dt;
-		tMin += dt;
 	}
-	return Ray(o, d, tMax, tMin);
+	return Ray(o, d, tMax);
 }
 
 GYT_FORCE_INLINE Ray Transform::operator()(const Ray &r, Vector3 *originError, Vector3 *directionError) const {
 	Vector3 o = (*this)(r.mOrig, originError);
 	Vector3 d = this->TransformVector(r.mDir, directionError);
 	real tMax = r.mTmax;
-	real tMin = r.mTmin;
 	real length2 = d.Length2();
 	if (length2 > 0) {
 		real dt = Dot(Abs(d), *originError) / length2;
 		o += d * dt;
 		//        tMax -= dt;
 	}
-	return Ray(o, d, tMax, tMin);
+	return Ray(o, d, tMax);
 }
 
 GYT_FORCE_INLINE Vector3 Transform::TransformNormal(const Vector3 &n) const {

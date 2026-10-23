@@ -11,11 +11,10 @@ struct Ray {
 		: mMedium(nullptr)
 	{
 		mTmax = INF;
-		mTmin = 0.f;
 	}
 
-	Ray(Vec3 orig, Vec3 dir, real tmax = INF, real tmin = 0.f, const Medium* medium = nullptr) 
-		: mOrig(orig + dir * RAY_EPS), mDir(dir), mTmax(tmax), mTmin(tmin), mMedium(medium) 
+	Ray(Vec3 orig, Vec3 dir, real tmax = INF, const Medium* medium = nullptr) 
+		: mOrig(orig), mDir(dir), mTmax(tmax), mMedium(medium) 
 	{}
 
 	Vec3 operator()(real t) const 
@@ -24,7 +23,7 @@ struct Ray {
 	}
 
 	Vec3 mOrig, mDir;
-	mutable real mTmin, mTmax;
+	mutable real mTmax;
 	const Medium* mMedium;
 };
 

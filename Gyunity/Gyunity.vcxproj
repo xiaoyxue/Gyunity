@@ -183,7 +183,6 @@
     <ClCompile Include="src\common\DebugUtils.cpp" />
     <ClCompile Include="src\numeric\EFloat.cpp" />
     <ClCompile Include="src\light\EnvLight.cpp" />
-    <ClCompile Include="src\shape\HeartSurface.cpp" />
     <ClCompile Include="src\system\Threading.cpp" />
     <ClCompile Include="src\volume\Homogeneous.cpp" />
     <ClCompile Include="src\image\ImageIO.cpp" />
@@ -251,7 +250,6 @@
     <ClInclude Include="src\sampler\Halton.h" />
     <ClInclude Include="src\sampler\HaltonEnum.h" />
     <ClInclude Include="src\integrator\HashGrid.h" />
-    <ClInclude Include="src\shape\HeartSurface.h" />
     <ClInclude Include="src\volume\Homogeneous.h" />
     <ClInclude Include="src\image\ImageIO.h" />
     <ClInclude Include="src\texture\ImageTexture.h" />

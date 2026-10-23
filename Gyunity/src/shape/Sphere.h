@@ -48,9 +48,9 @@ public:
 		}
 
 		tHit = (-vd - det) / d2;
-		if (tHit < r.mTmin || tHit > r.mTmax) {
+		if (tHit <= 0 || tHit > r.mTmax) {
 			tHit = (-vd + det) / d2;
-			if (tHit < r.mTmin || tHit > r.mTmax) {
+			if (tHit <= 0 || tHit > r.mTmax) {
 				return false;
 			}
 		}
@@ -114,7 +114,7 @@ public:
 		Vec3 dpdvs = Cross(n, dpdus).Norm();
 		it.SetShading(n, dpdus, dpdvs);
 
-		mObjectToWorld(it);
+		*isect = mObjectToWorld(it);
 
 		isect->mUv = Vec2(u, v);
 		isect->mShapeId = mShapeId;
@@ -131,7 +131,7 @@ public:
 		Ray r;
 		real tHit;
 
-		mWorldToObject(ray);
+		r = mWorldToObject(ray);
 
 		Vec3 op = mPos - r.mOrig;
 		Vec3 v = r.mOrig - mPos;
@@ -145,9 +145,9 @@ public:
 			det = sqrt(det);
 		}
 		tHit = (-vd - det) / d2;
-		if (tHit < r.mTmin || tHit > r.mTmax) {
+		if (tHit <= 0 || tHit > r.mTmax) {
 			tHit = (-vd + det) / d2;
-			if (tHit < r.mTmin || tHit > r.mTmax) {
+			if (tHit <= 0 || tHit > r.mTmax) {
 				return false;
 			}
 		}
@@ -176,13 +176,12 @@ public:
 		Intersection isect;
 		Vec3 hit = mPos + scaledDir;
 		Vec3 n = GetNorm(hit);
-		Vec3 nl = isect.mNormal;
 		Vec3 pError = Abs(mPos) * Gamma(1) + Abs(scaledDir) * Gamma(6);
 
 		isect.mPos = mObjectToWorld(hit, pError, &isect.mPointError);
 		isect.mNormal = mObjectToWorld.TransformNormal(n).Norm();
 
-		isect.mAbsNormal = nl;
+		isect.mAbsNormal = isect.mNormal;
 		isect.mShapeId = mShapeId;
 		return isect;
 	}

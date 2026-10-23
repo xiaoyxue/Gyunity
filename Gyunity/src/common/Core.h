@@ -190,7 +190,6 @@ constexpr real PI_OVER_2 = (real)1.57079632679489661923;
 constexpr real PI_OVER_4 = (real)0.78539816339744830961;
 constexpr real EPS = (real)1e-6;
 constexpr real INF = std::numeric_limits<real>::infinity();
-constexpr real RAY_EPS = (real)1e-4;
 constexpr real SHADOW_RAY_EPS = (real)1e-4;
 constexpr real NUMERICAL_EPS = 1e-6;
 constexpr real MACHINE_EPS = std::numeric_limits<real>::epsilon() * (real)0.5;
