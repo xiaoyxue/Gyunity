@@ -1,7 +1,7 @@
 #pragma once
 
 #include <algorithm>
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/Ray.h"
 
 GYT_NAMESPACE_BEGIN

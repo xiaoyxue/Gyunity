@@ -1,5 +1,5 @@
 #pragma once
-#include "Linagl.h"
+#include "Linalg.h"
 #include "Ray.h"
 #include "numeric/NumericUtils.h"
 #include "AABB.h"

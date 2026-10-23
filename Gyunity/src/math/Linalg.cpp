@@ -1,4 +1,4 @@
-#include "Linagl.h"
+#include "Linalg.h"
 #include "common/Core.h"
 
 GYT_NAMESPACE_BEGIN

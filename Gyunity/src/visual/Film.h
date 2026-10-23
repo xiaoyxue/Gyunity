@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/Filter.h"
 #include "math/MathUtils.h"
 #include "system/Threading.h"

@@ -4,7 +4,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "common/Core.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "container/Array.h"
 
 

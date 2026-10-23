@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/Core.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "Integrator.h"
 #include "sampler/SamplerEnum.h"
 #include "sampler/Sampler.h"

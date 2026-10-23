@@ -2,7 +2,7 @@
 #include "Texture.h"
 #include "math/MathUtils.h"
 #include "image/ImageIO.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 
 GYT_NAMESPACE_BEGIN
 

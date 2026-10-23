@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <random>
-#include "math/LowDiscrepency.h"
+#include "math/LowDiscrepancy.h"
 #include "visual/Rng.h"
 
 GYT_NAMESPACE_BEGIN

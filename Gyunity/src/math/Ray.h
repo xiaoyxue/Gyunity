@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Linagl.h"
+#include "Linalg.h"
 #include "common/Core.h"
 #include "ForwardDecl.h"
 

@@ -1,7 +1,7 @@
 #pragma once
 #include "common/Core.h"
 #include "math/MathUtils.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 
 GYT_NAMESPACE_BEGIN
 

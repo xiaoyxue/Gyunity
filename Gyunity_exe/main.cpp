@@ -20,7 +20,7 @@
 #include "sampler\SamplerEnum.h"
 #include "sampler\HaltonEnum.h"
 #include "sampler\SobolEnum.h"
-#include "math\Linagl.h"
+#include "math\Linalg.h"
 #include "visual\Scene.h"
 #include "visual\Film.h"
 #include "shape\sphere.h"
