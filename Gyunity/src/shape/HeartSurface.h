@@ -27,7 +27,7 @@ public:
 	}
 
 	AABB ObjectBound() const override {
-		return bounding;
+		return mBounding;
 	}
 
 	void QueryIntersectionInfo(const Ray& ray, Intersection* isct) const override;
@@ -37,7 +37,7 @@ public:
 	}
 private:
 
-	AABB bounding;
+	AABB mBounding;
 
 	void Initialize() {
 		real val0[2] = { 1.5, -1.5 };
@@ -45,11 +45,11 @@ private:
 		for (int i = 0; i < 2; ++i) {
 			for (int j = 0; j < 2; ++j) {
 				for (int k = 0; k < 2; ++k) {
-					bounding = Union(bounding, Vec3(val0[i], val0[j], val1[k]));
+					mBounding = Union(mBounding, Vec3(val0[i], val0[j], val1[k]));
 				}
 			}
 		}
-		std::cout << bounding << std::endl;
+		std::cout << mBounding << std::endl;
 	}
 
 	real F(const Vec3 &p) const {

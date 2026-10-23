@@ -31,7 +31,7 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 			int fv = shapes[s].mesh.num_face_vertices[f];
 
 			// Loop over vertices in the face.
-			int i = (int)vertices.size(), j = i + 1, k = i + 2;
+			int i = (int)mVertices.size(), j = i + 1, k = i + 2;
 			if (reverseVertices) {
 				std::swap(j, k);
 			}
@@ -42,13 +42,13 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 				float vx = attrib.vertices[3 * idx.vertex_index + 0];
 				float vy = attrib.vertices[3 * idx.vertex_index + 1];
 				float vz = attrib.vertices[3 * idx.vertex_index + 2];
-				vertices.push_back(Vec3(vx, vy, vz));
+				mVertices.push_back(Vec3(vx, vy, vz));
 				if (idx.normal_index != -1) {
 					float nx = attrib.normals[3 * idx.normal_index + 0];
 					float ny = attrib.normals[3 * idx.normal_index + 1];
 					float nz = attrib.normals[3 * idx.normal_index + 2];
 					has_normal = true;
-					normals.push_back(Vec3(nx, ny, nz));
+					mNormals.push_back(Vec3(nx, ny, nz));
 				}
 				else {
 					// should be consistent
@@ -60,39 +60,39 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 					tx = attrib.texcoords[2 * idx.texcoord_index + 0];
 					ty = attrib.texcoords[2 * idx.texcoord_index + 1];
 				}
-				uvs.push_back(Vector2(tx, ty));
+				mUvs.push_back(Vector2(tx, ty));
 			}
 			if (!has_normal) {
-				Vec3* a = &vertices[vertices.size() - 1] - 2;
+				Vec3* a = &mVertices[mVertices.size() - 1] - 2;
 				Vec3 generated_normal = Cross(a[1] - a[0], a[2] - a[0]);
 				if (generated_normal.Length() > 1e-6f) {
 					generated_normal = generated_normal.Norm();
 				}
 				for (int v = 0; v < fv; v++) {
-					normals.push_back(generated_normal);
+					mNormals.push_back(generated_normal);
 				}
 			}
 
-			untransformedTriangles.push_back(
+			mUntransformedTriangles.push_back(
 				Triangle(Transform(), Transform(),
-					vertices[i], vertices[j], vertices[k],
-					normals[i], normals[j], normals[k],
-					uvs[i], uvs[j], uvs[k]));
+					mVertices[i], mVertices[j], mVertices[k],
+					mNormals[i], mNormals[j], mNormals[k],
+					mUvs[i], mUvs[j], mUvs[k]));
 			index_offset += fv;
 		}
 	}
 }
 
 void Mesh::SetMaterial(const std::shared_ptr<Material> material) {
-	this->material = material;
+	this->mMaterial = material;
 }
 void Mesh::SetEmission(const Vec3 emission) {
-	this->isEmission = true;
-	this->emission = emission;
+	this->mIsEmission = true;
+	this->mEmission = emission;
 }
 
 void Mesh::SetMedium(const MediumInterface& mi) {
-	this->mediumInterface = mi;
+	this->mMediumInterface = mi;
 }
 
 GYT_NAMESPACE_END

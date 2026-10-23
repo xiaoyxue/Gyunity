@@ -66,13 +66,13 @@ public:
 
 
 	void AddMesh(Mesh &mesh, const Transform &transform) {
-		for (int i = 0; i < mesh.untransformedTriangles.size(); ++i) {
+		for (int i = 0; i < mesh.mUntransformedTriangles.size(); ++i) {
 			Triangle* triangle = new Triangle();
 			//*triangle = mesh.untransformedTriangles[i];
-			auto pTriangle = std::make_shared<Triangle>(mesh.untransformedTriangles[i]);
+			auto pTriangle = std::make_shared<Triangle>(mesh.mUntransformedTriangles[i]);
 			pTriangle->SetTransform(transform);
 			std::shared_ptr<Shape> shape = std::shared_ptr<Shape>(pTriangle);
-			AddPrimitive(shape, mesh.material, mesh.mediumInterface);
+			AddPrimitive(shape, mesh.mMaterial, mesh.mMediumInterface);
 		}
 	}
 

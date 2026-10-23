@@ -11,13 +11,13 @@ GYT_NAMESPACE_BEGIN
 
 class Shape {
 protected:
-	const Transform ObjectToWorld, WorldToObject;
+	const Transform mObjectToWorld, mWorldToObject;
 public:
 	int64 mShapeId;
 public:
 	Shape() {}
 	Shape(const Transform &ObjectToWorld, const Transform &WorldToObject) 
-		: ObjectToWorld(ObjectToWorld), WorldToObject(WorldToObject) 
+		: mObjectToWorld(ObjectToWorld), mWorldToObject(WorldToObject) 
 	{
 	}
 	virtual ~Shape(){ }
@@ -29,7 +29,7 @@ public:
 	virtual AABB ObjectBound() const = 0;
 	virtual AABB WorldBould() const
 	{
-		return ObjectToWorld(ObjectBound());
+		return mObjectToWorld(ObjectBound());
 	}
 	virtual real Pdf(const Intersection &isect, const Vec3 &wi) const {
 		//Ray ray(isect.hit, wi);
