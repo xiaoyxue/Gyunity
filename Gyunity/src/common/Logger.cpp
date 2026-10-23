@@ -7,36 +7,36 @@ GYT_NAMESPACE_BEGIN
 
 void Logger::Info(const std::string& msg) const
 {
-	mpConsole->info(msg);
+	mConsole->info(msg);
 }
 
 void Logger::Warn(const std::string& msg) const
 {
-	mpConsole->warn(msg);
+	mConsole->warn(msg);
 }
 
 void Logger::Debug(const std::string& msg) const
 {
-	mpConsole->debug(msg);
+	mConsole->debug(msg);
 }
 
 void Logger::Error(const std::string& msg, bool raiseException /*= true*/) const
 {
-	mpConsole->error(msg);
+	mConsole->error(msg);
 	if (raiseException)
 		throw std::exception(msg.c_str());
 }
 
 void Logger::Critical(const std::string& msg, bool raiseException /*= true*/) const
 {
-	mpConsole->critical(msg);
+	mConsole->critical(msg);
 	if (raiseException)
 		throw std::exception(msg.c_str());
 }
 
 void Logger::Flush() const
 {
-	mpConsole->flush();
+	mConsole->flush();
 }
 
 void Logger::SetLevel(const std::string& levelName /*= "Info"*/)
@@ -87,15 +87,15 @@ Logger::~Logger()
 
 DefaultLogger::DefaultLogger()
 {
-	mpConsole = spdlog::stdout_color_mt("ConsoleLogger");
-	mpConsole->set_pattern("%^[%l] [%D %X.%e] %v%$");
+	mConsole = spdlog::stdout_color_mt("ConsoleLogger");
+	mConsole->set_pattern("%^[%l] [%D %X.%e] %v%$");
 	SetLevel();
 }
 
 InfoLogger::InfoLogger()
 {
-	mpConsole = spdlog::stdout_color_mt("InfoLogger");
-	mpConsole->set_pattern("%v");
+	mConsole = spdlog::stdout_color_mt("InfoLogger");
+	mConsole->set_pattern("%v");
 	SetLevel();
 
 }

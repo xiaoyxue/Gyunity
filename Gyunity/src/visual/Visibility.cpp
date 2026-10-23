@@ -17,7 +17,7 @@ Vec3 VisibilityTester::Tr(const Scene& scene, StateSequence& rand) const {
         Intersection isect;
 
         bool hitSurface = scene.Intersect(ray, &isect);
-        if (hitSurface && isect.mpPrimitive->GetMaterial() != nullptr)
+        if (hitSurface && isect.mPrimitive->GetMaterial() != nullptr)
             return Vec3();
 
         //DEBUG_PIXEL_IF(ThreadIndex()) {
@@ -25,7 +25,7 @@ Vec3 VisibilityTester::Tr(const Scene& scene, StateSequence& rand) const {
         //        << ", Tr: " << Tr << std::endl;
         //}
 
-        if (ray.mpMedium) Tr *= ray.mpMedium->Tr(ray, rand);
+        if (ray.mMedium) Tr *= ray.mMedium->Tr(ray, rand);
 
         if (!hitSurface) break;
         scene.QueryIntersectionInfo(ray, &isect);

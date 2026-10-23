@@ -39,10 +39,10 @@ public:
 		real alphay = GGXDistribution::RoughnessToAlpha(roughnessy->Sample(*isect));
 		MicrofacetDistribution* distribution =
 			MEMORY_POOL_ALLOC(arena, GGXDistribution)(alphax, alphay, true);
-		isect->mpBSDF = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
+		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
 		Fresnel* fresnel = MEMORY_POOL_ALLOC(arena, FresnelConductor)(Vec3(1.0, 1.0, 1.0), eta->Sample(*isect), k->Sample(*isect));
 		BxDF* microfacetReflectionBSDF = MEMORY_POOL_ALLOC(arena, MicrofacetReflectionBSDF)(distribution, fresnel, reflectence->Sample(*isect));
-		isect->mpBSDF->Add(microfacetReflectionBSDF);
+		isect->mBsdf->Add(microfacetReflectionBSDF);
 	}
 private:
 	std::shared_ptr<Texture<Vec3>> reflectence;

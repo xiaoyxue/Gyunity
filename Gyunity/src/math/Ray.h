@@ -8,14 +8,14 @@ GYT_NAMESPACE_BEGIN
 
 struct Ray {
 	Ray() 
-		: mpMedium(nullptr)
+		: mMedium(nullptr)
 	{
 		mTmax = Inf;
 		mTmin = 0.f;
 	}
 
 	Ray(Vec3 orig, Vec3 dir, real tmax = Inf, real tmin = 0.f, const Medium* medium = nullptr) 
-		: mOrig(orig + dir * RayEps), mDir(dir), mTmax(tmax), mTmin(tmin), mpMedium(medium) 
+		: mOrig(orig + dir * RayEps), mDir(dir), mTmax(tmax), mTmin(tmin), mMedium(medium) 
 	{}
 
 	Vec3 operator()(real t) const 
@@ -25,7 +25,7 @@ struct Ray {
 
 	Vec3 mOrig, mDir;
 	mutable real mTmin, mTmax;
-	const Medium* mpMedium;
+	const Medium* mMedium;
 };
 
 std::ostream& operator<<(std::ostream &os, const Ray &ray);

@@ -77,9 +77,9 @@ class Primitive
 {
 public:
 	int64 mPrimId;
-	std::shared_ptr<Shape> mpShape;
-	std::shared_ptr<Material> mpMaterial;
-	std::shared_ptr<Light> mpLight;
+	std::shared_ptr<Shape> mShape;
+	std::shared_ptr<Material> mMaterial;
+	std::shared_ptr<Light> mLight;
 	MediumInterface mMediumInterface;
 
 public:
@@ -87,7 +87,7 @@ public:
 		const std::shared_ptr<Material>& material = nullptr,
 		const std::shared_ptr<Light>& light = nullptr,
 		MediumInterface mediumInterface = MediumInterface()) 
-		:mpShape(shape), mpMaterial(material), mpLight(light), mMediumInterface(mediumInterface) 
+		:mShape(shape), mMaterial(material), mLight(light), mMediumInterface(mediumInterface) 
 	{
 
 	}
@@ -98,23 +98,23 @@ public:
 	void ComputeScatteringFunction(Intersection* isect, MemoryPool& arena, TransportMode mode = TransportMode::Radiance) const;
 
 	Shape* GetShape() const {
-		return mpShape.get();
+		return mShape.get();
 	}
 
 	const Material* GetMaterial() const {
-		return mpMaterial.get();
+		return mMaterial.get();
 	}
 
 	const Light* GetLight() const {
-		return mpLight.get();
+		return mLight.get();
 	}
 
 	bool IsLight() const {
-		return mpLight != nullptr;
+		return mLight != nullptr;
 	}
 
 	AABB WorldBound() const {
-		return mpShape->WorldBould();
+		return mShape->WorldBould();
 	}
 
 	void QueryIntersectionInfo(const Ray& ray, Intersection* isect) const;

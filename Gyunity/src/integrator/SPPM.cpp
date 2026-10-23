@@ -57,7 +57,7 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 		}
 		scene.QueryIntersectionInfo(r, &isect);
 		isect.ComputeScatteringFunction(arena);
-		BSDF* bsdf = isect.mpBSDF;
+		BSDF* bsdf = isect.mBsdf;
 		Vec3 wi;
 		real pdf;
 
@@ -92,8 +92,8 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			hp.pix = pixel;
 			hp.outDir = -1 * r.mDir;
 			mHitPoints[pixel] = hp;
-			if ((i == 0 || deltaBoundEvent) && isect.mpPrimitive->IsLight()) {
-				const Light* emissionShape = isect.mpPrimitive->GetLight();
+			if ((i == 0 || deltaBoundEvent) && isect.mPrimitive->IsLight()) {
+				const Light* emissionShape = isect.mPrimitive->GetLight();
 				mDirectillum[hp.pix] = mDirectillum[hp.pix] + importance * emissionShape->Emission(isect, isect.mOutDir);
 				
 			}
@@ -114,7 +114,7 @@ void SPPM::TracePhoton(const Scene& scene, StateSequence& rand, const Ray& ray, 
 		if (!scene.Intersect(r, &isect)) return;
 		scene.QueryIntersectionInfo(r, &isect);
 		isect.ComputeScatteringFunction(arena, TransportMode::Importance);
-		BSDF* bsdf = isect.mpBSDF;
+		BSDF* bsdf = isect.mBsdf;
 
 		Vec3 wi;
 		real pdf;
@@ -209,10 +209,10 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 				MemoryPool& arena = memoryArenas[ThreadIndex()];
 				int pixel = x + y * resX;
 				mHitPoints[pixel].used = false;
-				uint64 instance = mpSamplerEnum->GetIndex(iter, x, y);
-				RandomStateSequence rand(mpSampler, instance);
-				real u = mpSamplerEnum->SampleX(x, rand());
-				real v = mpSamplerEnum->SampleY(y, rand());
+				uint64 instance = mSamplerEnum->GetIndex(iter, x, y);
+				RandomStateSequence rand(mSampler, instance);
+				real u = mSamplerEnum->SampleX(x, rand());
+				real v = mSamplerEnum->SampleY(y, rand());
 				Vec2 pixelSample(u, v);
 				Ray ray = camera.GenerateRay(x, y, pixelSample);
 				TraceEyePath(scene, rand, ray, pixel, arena);
@@ -235,7 +235,7 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 			MemoryPool& arena = memoryArenas[ThreadIndex()];
 			Ray ray;
 			Vec3 photonFlux;
-			RandomStateSequence rand(mpSampler, iter * mPhotonsPerRenderStage + j);
+			RandomStateSequence rand(mSampler, iter * mPhotonsPerRenderStage + j);
 			GeneratePhoton(scene, &ray, &photonFlux, rand(), Vec2(rand(), rand()), Vec2(rand(), rand()));
 			TracePhoton(scene, rand, ray, photonFlux, arena);
 			arena.Reset();
@@ -278,7 +278,7 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 
 SPPM::SPPM(int iterations, int nPhotonsPerStage, int maxDepth, real initialRadius, real alpha, bool batchShrink, const std::shared_ptr<Sampler>& pSampler, const std::shared_ptr<SamplerEnum>& pSmplerEnum, bool traceGlossyRay /*= false*/)
 	: mIterations(iterations), mPhotonsPerRenderStage(nPhotonsPerStage), mBatchShrink(batchShrink),
-	mMaxDepth(maxDepth), mInitialRadius(initialRadius), mAlpha(alpha), mpSampler(pSampler), mpSamplerEnum(pSmplerEnum), mTraceGlossyRay(traceGlossyRay)
+	mMaxDepth(maxDepth), mInitialRadius(initialRadius), mAlpha(alpha), mSampler(pSampler), mSamplerEnum(pSmplerEnum), mTraceGlossyRay(traceGlossyRay)
 {
 
 }

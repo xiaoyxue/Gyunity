@@ -13,7 +13,7 @@ GYT_NAMESPACE_BEGIN
 class Logger {
 protected:
 	std::string mLevelName;
-	std::shared_ptr<spdlog::logger> mpConsole;
+	std::shared_ptr<spdlog::logger> mConsole;
 public:
 	Logger();
 	virtual ~Logger();

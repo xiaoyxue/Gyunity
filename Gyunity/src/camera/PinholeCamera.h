@@ -31,7 +31,7 @@ public:
 	Vec3 We(const Ray& ray) const override
 	{
 		real pdfA = 1.0; // for pinhole camera
-		real area = mpFilm->mArea;
+		real area = mFilm->mArea;
 		real cosTheta = mCz.Dot(ray.mDir);
 		real cos2Theta = cosTheta * cosTheta;
 		real value = mFilmDistance * mFilmDistance * pdfA / (area * cos2Theta * cos2Theta);
@@ -56,7 +56,7 @@ public:
 
 	real PdfDir(const Ray& cameraRay) const override 
 	{
-		real filmArea = mpFilm->Area();
+		real filmArea = mFilm->Area();
 		real cosTheta = std::abs(mCz.Dot(cameraRay.mDir));
 		real cos2Theta = cosTheta * cosTheta;
 		return mFilmDistance * mFilmDistance / (filmArea * cos2Theta * cosTheta);
