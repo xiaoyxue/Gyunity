@@ -56,7 +56,7 @@ using real_bit = uint32;
 #if defined(GYT_PLATFORM_WINDOWS)
 #define GYT_FORCE_INLINE __forceinline
 #else
-#define FORCE_INLINE inline __attribute__((always_inline))
+#define GYT_FORCE_INLINE inline __attribute__((always_inline))
 #endif
 
 #if defined(GYT_COMPILER_MSVC)

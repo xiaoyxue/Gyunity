@@ -1,4 +1,5 @@
 #pragma once
+#include "common/Core.h"
 #include <random>
 
 GYT_NAMESPACE_BEGIN
