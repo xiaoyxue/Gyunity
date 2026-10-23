@@ -67,7 +67,7 @@ public:
 
 class RandomSampler : public Sampler {
 public:
-	RandomSampler(int seed) : mRng(seed), mPbrtRng(seed) {
+	RandomSampler(int seed) : mRng(seed), mPcg32(seed) {
 
 	}
 
@@ -78,13 +78,13 @@ public:
 
 	std::shared_ptr<Sampler> Clone(uint32 seed) override {
 		RandomSampler* newSampler = new RandomSampler(seed);
-		newSampler->mPbrtRng.SetSequence(seed);
+		newSampler->mPcg32.SetSequence(seed);
 		return std::shared_ptr<Sampler>(newSampler);
 	}
 private:
 	std::mt19937_64 mRng;
 	std::uniform_real_distribution<real> mUniform;
-	RNG mPbrtRng;
+	Pcg32 mPcg32;
 };
 
 class PrimeList {
