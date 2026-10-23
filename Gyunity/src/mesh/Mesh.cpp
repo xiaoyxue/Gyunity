@@ -26,7 +26,7 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 	// Loop over shapes
 	for (size_t s = 0; s < shapes.size(); s++) {
 		// Loop over faces(polygon)
-		size_t index_offset = 0;
+		size_t indexOffset = 0;
 		for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
 			int fv = shapes[s].mesh.num_face_vertices[f];
 
@@ -35,10 +35,10 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 			if (reverseVertices) {
 				std::swap(j, k);
 			}
-			bool has_normal = false;
+			bool hasNormal = false;
 			for (int v = 0; v < fv; v++) {
 				// access to vertex
-				tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+				tinyobj::index_t idx = shapes[s].mesh.indices[indexOffset + v];
 				float vx = attrib.vertices[3 * idx.vertex_index + 0];
 				float vy = attrib.vertices[3 * idx.vertex_index + 1];
 				float vz = attrib.vertices[3 * idx.vertex_index + 2];
@@ -47,13 +47,13 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 					float nx = attrib.normals[3 * idx.normal_index + 0];
 					float ny = attrib.normals[3 * idx.normal_index + 1];
 					float nz = attrib.normals[3 * idx.normal_index + 2];
-					has_normal = true;
+					hasNormal = true;
 					mNormals.push_back(Vec3(nx, ny, nz));
 				}
 				else {
 					// should be consistent
-					assert(!has_normal);
-					has_normal = false;
+					assert(!hasNormal);
+					hasNormal = false;
 				}
 				float tx = 0.0f, ty = 0.0f;
 				if (idx.texcoord_index != -1) {
@@ -62,14 +62,14 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 				}
 				mUvs.push_back(Vector2(tx, ty));
 			}
-			if (!has_normal) {
+			if (!hasNormal) {
 				Vec3* a = &mVertices[mVertices.size() - 1] - 2;
-				Vec3 generated_normal = Cross(a[1] - a[0], a[2] - a[0]);
-				if (generated_normal.Length() > 1e-6f) {
-					generated_normal = generated_normal.Norm();
+				Vec3 generatedNormal = Cross(a[1] - a[0], a[2] - a[0]);
+				if (generatedNormal.Length() > 1e-6f) {
+					generatedNormal = generatedNormal.Norm();
 				}
 				for (int v = 0; v < fv; v++) {
-					mNormals.push_back(generated_normal);
+					mNormals.push_back(generatedNormal);
 				}
 			}
 
@@ -78,7 +78,7 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 					mVertices[i], mVertices[j], mVertices[k],
 					mNormals[i], mNormals[j], mNormals[k],
 					mUvs[i], mUvs[j], mUvs[k]));
-			index_offset += fv;
+			indexOffset += fv;
 		}
 	}
 }

@@ -1412,8 +1412,8 @@ public:
 		std::shared_ptr<Material> waterMaterial = std::shared_ptr<Material>(new GlassMaterial(fullWhiteConstant, fullWhiteConstant, 1.f, 1.33));
 
 		//Homogenoug media
-		Vec3 sigma_a(0, 0, 0), sigma_s(1, 1, 1);
-		Medium* homogenoursMedium = new HomogeneousMedium(sigma_a, sigma_s, 0);
+		Vec3 sigmaA(0, 0, 0), sigma_s(1, 1, 1);
+		Medium* homogenoursMedium = new HomogeneousMedium(sigmaA, sigma_s, 0);
 		MediumInterface mediaInterface(homogenoursMedium, nullptr);
 
 		//Points

@@ -4,12 +4,12 @@
 GYT_NAMESPACE_BEGIN
 
 static void TrowbridgeReitzSample11(real cosTheta, real U1, real U2,
-	real* slope_x, real* slope_y) {
+	real* slopeX, real* slope_y) {
 	// special case (normal incidence)
 	if (cosTheta > .9999) {
 		real r = sqrt(U1 / (1 - U1));
 		real phi = 6.28318530718 * U2;
-		*slope_x = r * cos(phi);
+		*slopeX = r * cos(phi);
 		*slope_y = r * sin(phi);
 		return;
 	}
@@ -20,16 +20,16 @@ static void TrowbridgeReitzSample11(real cosTheta, real U1, real U2,
 	real a = 1 / tanTheta;
 	real G1 = 2 / (1 + std::sqrt(1.f + 1.f / (a * a)));
 
-	// sample slope_x
+	// sample slopeX
 	real A = 2 * U1 / G1 - 1;
 	real tmp = 1.f / (A * A - 1.f);
 	if (tmp > 1e10) tmp = 1e10;
 	real B = tanTheta;
 	real D = std::sqrt(
 		std::max(real(B * B * tmp * tmp - (A * A - B * B) * tmp), real(0)));
-	real slope_x_1 = B * tmp - D;
-	real slope_x_2 = B * tmp + D;
-	*slope_x = (A < 0 || slope_x_2 > 1.f / tanTheta) ? slope_x_1 : slope_x_2;
+	real slopeX1 = B * tmp - D;
+	real slopeX2 = B * tmp + D;
+	*slopeX = (A < 0 || slopeX2 > 1.f / tanTheta) ? slopeX1 : slopeX2;
 
 	// sample slope_y
 	real S;
@@ -44,31 +44,31 @@ static void TrowbridgeReitzSample11(real cosTheta, real U1, real U2,
 	real z =
 		(U2 * (U2 * (U2 * 0.27385f - 0.73369f) + 0.46341f)) /
 		(U2 * (U2 * (U2 * 0.093073f + 0.309420f) - 1.000000f) + 0.597999f);
-	*slope_y = S * z * std::sqrt(1.f + *slope_x * *slope_x);
+	*slope_y = S * z * std::sqrt(1.f + *slopeX * *slopeX);
 
 }
 
-static Vec3 TrowbridgeReitzSample(const Vec3& wi, real alpha_x,
-	real alpha_y, real U1, real U2) {
+static Vec3 TrowbridgeReitzSample(const Vec3& wi, real alphaX,
+	real alphaY, real U1, real U2) {
 	// 1. stretch wi
 	Vec3 wiStretched =
-		Vec3(alpha_x * wi.x, alpha_y * wi.y, wi.z).Norm();
+		Vec3(alphaX * wi.x, alphaY * wi.y, wi.z).Norm();
 
 	// 2. simulate P22_{wi}(x_slope, y_slope, 1, 1)
-	real slope_x, slope_y;
-	TrowbridgeReitzSample11(BSDFCoordinate::CosTheta(wiStretched), U1, U2, &slope_x, &slope_y);
+	real slopeX, slope_y;
+	TrowbridgeReitzSample11(BSDFCoordinate::CosTheta(wiStretched), U1, U2, &slopeX, &slope_y);
 
 	// 3. rotate
-	real tmp = BSDFCoordinate::CosPhi(wiStretched) * slope_x - BSDFCoordinate::SinPhi(wiStretched) * slope_y;
-	slope_y = BSDFCoordinate::SinPhi(wiStretched) * slope_x + BSDFCoordinate::CosPhi(wiStretched) * slope_y;
-	slope_x = tmp;
+	real tmp = BSDFCoordinate::CosPhi(wiStretched) * slopeX - BSDFCoordinate::SinPhi(wiStretched) * slope_y;
+	slope_y = BSDFCoordinate::SinPhi(wiStretched) * slopeX + BSDFCoordinate::CosPhi(wiStretched) * slope_y;
+	slopeX = tmp;
 
 	// 4. unstretch
-	slope_x = alpha_x * slope_x;
-	slope_y = alpha_y * slope_y;
+	slopeX = alphaX * slopeX;
+	slope_y = alphaY * slope_y;
 
 	// 5. compute normal
-	return Vec3(-slope_x, -slope_y, 1.).Norm();
+	return Vec3(-slopeX, -slope_y, 1.).Norm();
 }
 
 
@@ -95,9 +95,9 @@ static Vec2 GGXSampleVisible11(real thetaI, Vec2 sample)  {
 	real tmp = 1.0f / (A * A - 1.0f);
 	real B = tanThetaI;
 	real D = SafeSqrt(B * B * tmp * tmp - (A * A - B * B) * tmp);
-	real slope_x_1 = B * tmp - D;
-	real slope_x_2 = B * tmp + D;
-	slope.x = (A < 0.0f || slope_x_2 > 1.0f / tanThetaI) ? slope_x_1 : slope_x_2;
+	real slopeX1 = B * tmp - D;
+	real slopeX2 = B * tmp + D;
+	slope.x = (A < 0.0f || slopeX2 > 1.0f / tanThetaI) ? slopeX1 : slopeX2;
 
 	/* Simulate Y component */
 	real S;
@@ -170,17 +170,17 @@ real MicrofacetDistribution::Pdf(const Vec3& wo, const Vec3& wh) const {
 real GGXDistribution::Lambda(const Vec3& w) const {
 	real tanTheta = BSDFCoordinate::TanTheta(w);
 	if (std::isinf(std::abs(tanTheta))) return 0.f;
-	real inv_a2;
+	real invA2;
 	if (mAlphax == mAlphay) {
-		inv_a2 = mAlphax * mAlphax * tanTheta * tanTheta;
+		invA2 = mAlphax * mAlphax * tanTheta * tanTheta;
 	}
 	else {
 		real cos2Phi = BSDFCoordinate::Cos2Phi(w);
 		real sin2Phi = BSDFCoordinate::Sin2Phi(w);
-		real alpha_o = std::sqrt(cos2Phi * mAlphax * mAlphax + sin2Phi * mAlphay * mAlphay);
-		inv_a2 = alpha_o * alpha_o * tanTheta * tanTheta;
+		real alphaO = std::sqrt(cos2Phi * mAlphax * mAlphax + sin2Phi * mAlphay * mAlphay);
+		invA2 = alphaO * alphaO * tanTheta * tanTheta;
 	}
-	return (-1 + std::sqrt(1 + inv_a2)) / 2;
+	return (-1 + std::sqrt(1 + invA2)) / 2;
 }
 
 

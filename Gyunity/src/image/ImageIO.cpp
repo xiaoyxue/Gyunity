@@ -103,10 +103,10 @@ Array2D<Vec3> ImageIO::LoadTexture(std::string filename) {
 	std::vector<Vec3> texture(resX * resY);
 	for (int y = 0; y < resY; ++y) {
 		for (int x = 0; x < resX; ++x) {
-			int idx_texture = y * resX + x;
+			int idxTexture = y * resX + x;
 			int idx = (resY - 1 - y) * resX + x;
 			for (int k = 0; k < channels; ++k) {
-				texture[idx_texture][k] = data[idx * channels + k];
+				texture[idxTexture][k] = data[idx * channels + k];
 			}
 		}
 	}

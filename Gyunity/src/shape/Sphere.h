@@ -189,13 +189,13 @@ public:
 	Intersection Sample(const Intersection &isect, real *pdf, const Vec2 &u) const override {
 		/*
 		Vec3 sw = p - isect.hit, su = ((fabs(sw.x) > .1 ? Vec3(0, 1) : Vec3(1)) % sw).Norm(), sv = sw % su;
-		real cos_a_max = sqrt(1 - rad * rad / (isect.hit - p).Dot(isect.hit - p));
+		real cosAMax = sqrt(1 - rad * rad / (isect.hit - p).Dot(isect.hit - p));
 		real zeta1 = u.x, zeta2 = u.y;
-		real cos_a = 1 - zeta1 + zeta1 * cos_a_max;
-		real sin_a = sqrt(1 - cos_a * cos_a);
+		real cosA = 1 - zeta1 + zeta1 * cosAMax;
+		real sinA = sqrt(1 - cosA * cosA);
 		real phi = 2 * PI * zeta2;
-		Vec3 dir = su * cos(phi) * sin_a + sv * sin(phi) * sin_a + sw * cos_a;
-		real omega = 2 * PI *(1 - cos_a_max);
+		Vec3 dir = su * cos(phi) * sinA + sv * sin(phi) * sinA + sw * cosA;
+		real omega = 2 * PI *(1 - cosAMax);
 		*pdf = 1.0 / omega;
 		return isect.hit + dir.Norm() * (sw.Length() - rad);
 		//return dir.Norm();*/
