@@ -83,13 +83,13 @@ public:
 
 class FresnelConductor : public Fresnel {
 private:
-	Vec3 m_etaI, m_etaT, m_k;
+	Vec3 mEtaI, mEtaT, mK;
 public:
 	FresnelConductor(const Vec3& etaI, const Vec3& etaT, const Vec3& k)
-		: m_etaI(etaI), m_etaT(etaT), m_k(k) {}
+		: mEtaI(etaI), mEtaT(etaT), mK(k) {}
 
 	Vec3 Evaluate(real cosThetaI) const override{
-		return FrConductor(std::abs(cosThetaI), m_etaI, m_etaT, m_k);
+		return FrConductor(std::abs(cosThetaI), mEtaI, mEtaT, mK);
 	}
 
 	real EvaluateScalar(real cosI) const override {
@@ -99,16 +99,16 @@ public:
 
 class FresnelDielectric : public Fresnel {
 private:
-	real m_etaI, m_etaT;
+	real mEtaI, mEtaT;
 public:
-	FresnelDielectric(real etaI, real etaT) : m_etaI(etaI), m_etaT(etaT) {}
+	FresnelDielectric(real etaI, real etaT) : mEtaI(etaI), mEtaT(etaT) {}
 
 	Vec3 Evaluate(real cosThetaI) const {
-		return FrDielectric(cosThetaI, m_etaI, m_etaT);
+		return FrDielectric(cosThetaI, mEtaI, mEtaT);
 	}
 
 	real EvaluateScalar(real cosThetaI) const override {
-		return FrDielectric(cosThetaI, m_etaI, m_etaT);
+		return FrDielectric(cosThetaI, mEtaI, mEtaT);
 	}
 };
 
@@ -221,14 +221,14 @@ private:
 class TransmissionBSDF : public BxDF 
 {
 private:
-	real m_nc, m_nt;
+	real mNc, mNt;
 	Vec3 mR, mT;
 	TransportMode mTransportMode;
 public:
 	TransmissionBSDF(const Vec3 kt = Vec3(1.0, 1.0, 1.0), const Vec3 kr = Vec3(1.0, 1.0, 1.0), 
 		TransportMode mode = TransportMode::Radiance, real eta1 = 1.0, real eta2 = 1.5) 
 		:BxDF(ScatterEventType(BSDF_REFLECTION | BSDF_TRANSMISSION | BSDF_SPECULAR)),
-		mT(kt), mR(kr), m_nc(eta1), m_nt(eta2), mTransportMode(mode) 
+		mT(kt), mR(kr), mNc(eta1), mNt(eta2), mTransportMode(mode) 
 	{
 	}
 
@@ -240,11 +240,11 @@ public:
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 
 	{
 
-		real Re = FrDielectric(BSDFCoordinate::CosTheta(wo), m_nc, m_nt);
+		real Re = FrDielectric(BSDFCoordinate::CosTheta(wo), mNc, mNt);
 
 		bool entering = BSDFCoordinate::CosTheta(wo) > 0;
-		real etaI = entering ? m_nc : m_nt;
-		real etaT = entering ? m_nt : m_nc;
+		real etaI = entering ? mNc : mNt;
+		real etaT = entering ? mNt : mNc;
 		Vec3 nForward = BSDFCoordinate::CosTheta(wo) > 0 ? Vec3(0, 0, 1) : Vec3(0, 0, -1);
 		real P = Re * 0.5f + 0.25f;
 		P = Re;
@@ -280,9 +280,9 @@ public:
 	real Fresnell(const Vec3 &wo, const Vec3 &td, const Vec3 &n, const Vec3 &nl) const 
 	{
 		bool into = (n.Dot(nl) > 0.0);
-		real nnt = into ? m_nc / m_nt : m_nt / m_nc, ddn = (-1 * wo).Dot(nl);//, cos2t;
+		real nnt = into ? mNc / mNt : mNt / mNc, ddn = (-1 * wo).Dot(nl);//, cos2t;
 		//cos2t = 1 - nnt * nnt*(1 - ddn * ddn);
-		real a = m_nt - m_nc, b = m_nt + m_nc, R0 = a * a / (b * b), c = 1 - (into ? -ddn : td.Dot(n));
+		real a = mNt - mNc, b = mNt + mNc, R0 = a * a / (b * b), c = 1 - (into ? -ddn : td.Dot(n));
 		real Re = R0 + (1 - R0) * c * c* c * c * c;
 		return Re;
 	}
@@ -373,7 +373,7 @@ public:
 class MicrofacetTransmissionBSDF : public BxDF {
 private:
 	const Vec3 mT;
-	const real m_etaA, m_etaB;
+	const real mEtaA, mEtaB;
 	const FresnelDielectric mFresnel;
 	const TransportMode mTransportMode;
 	std::unique_ptr<MicrofacetDistribution> mpDistribution;
@@ -383,8 +383,8 @@ public:
 		: BxDF(ScatterEventType(BSDF_TRANSMISSION | BSDF_GLOSSY)),
 		mT(T),
 		mpDistribution(distribution),
-		m_etaA(etaA),
-		m_etaB(etaB),
+		mEtaA(etaA),
+		mEtaB(etaB),
 		mFresnel(etaA, etaB),
 		mTransportMode(mode)
 	{
@@ -398,7 +398,7 @@ public:
 		real cosThetaI = BSDFCoordinate::CosTheta(wi);
 		if (cosThetaI == 0 || cosThetaO == 0) return Vec3();
 
-		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (m_etaB / m_etaA) : (m_etaA / m_etaB);
+		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
 		Vec3 wh = (wo + wi * eta).Norm();
 		if (wh.z < 0) wh = -wh;
 
@@ -418,7 +418,7 @@ public:
 		if (wo.z == 0) return 0.;
 		//Vec3 wh = distribution->Sample_wh(wo, Vec2(rand[0], rand[1]));
 		Vec3 wh = mpDistribution->Sample_wh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
-		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (m_etaA / m_etaB) : (m_etaB / m_etaA);
+		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaA / mEtaB) : (mEtaB / mEtaA);
 		if (!TransmissionBSDF::Refract(wo, Faceforward(wh, wo), eta, wi)) {
 			*pdf = 0;
 			return Vec3();
@@ -432,7 +432,7 @@ public:
 	{
 		if (SameHemisphere(wo, wi)) return 0;
 
-		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (m_etaB / m_etaA) : (m_etaA / m_etaB);
+		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
 		Vec3 wh = -((wo + wi * eta).Norm());
 
 		wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
@@ -448,7 +448,7 @@ public:
 class RoughDielectricBSDF : public BxDF{
 private:
 	const Vec3 mR, mT;
-	const real m_etaA, m_etaB;
+	const real mEtaA, mEtaB;
 	const FresnelDielectric mFresnel;
 	const TransportMode mTransportMode;
 	std::unique_ptr<MicrofacetDistribution> distribution;
@@ -458,8 +458,8 @@ public:
 		: BxDF(ScatterEventType(BSDF_REFLECTION | BSDF_TRANSMISSION | BSDF_GLOSSY)),
 		mR(R), mT(T),
 		distribution(distribution),
-		m_etaA(etaA),
-		m_etaB(etaB),
+		mEtaA(etaA),
+		mEtaB(etaB),
 		mFresnel(etaA, etaB),
 		mTransportMode(mode) 
 	{
@@ -492,7 +492,7 @@ public:
 			real cosThetaI = BSDFCoordinate::CosTheta(wi);
 			if (cosThetaI == 0 || cosThetaO == 0) return Vec3();
 
-			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (m_etaB / m_etaA) : (m_etaA / m_etaB);
+			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
 			Vec3 wh = (-(wo + wi * eta).Norm());
 			wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
 
@@ -523,7 +523,7 @@ public:
 			dwh_dwi = 1.f / (4 * Dot(wi, wh));
 		}
 		else {
-			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (m_etaB / m_etaA) : (m_etaA / m_etaB);
+			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
 			wh = -((wo + wi * eta).Norm());
 
 			// Compute change of variables _dwh\_dwi_ for microfacet transmission
@@ -583,7 +583,7 @@ public:
 			if (wo.z == 0) return Vec3();
 			//if (Dot(wo, wh) < 0) return 0.;  // Should be rare
 
-			real etaRefract = BSDFCoordinate::CosTheta(wo) > 0 ? (m_etaA / m_etaB) : (m_etaB / m_etaA);
+			real etaRefract = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaA / mEtaB) : (mEtaB / mEtaA);
 			if (!TransmissionBSDF::Refract(wo, Faceforward(wh, wo), etaRefract, wi)) {
 				*pdf = 0;
 				return Vec3();
@@ -591,7 +591,7 @@ public:
 
 			if (BSDFCoordinate::CosTheta(wo) * BSDFCoordinate::CosTheta(*wi) >= 0) return Vec3();
 
-			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (m_etaB / m_etaA) : (m_etaA / m_etaB);
+			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
 			real sqrtDenom = Dot(wo, wh) + eta * Dot(*wi, wh);
 			real dwh_dwi = std::abs((eta * eta * Dot(*wi, wh)) / (sqrtDenom * sqrtDenom));
 			*pdf = std::abs((1 - P) * distribution->Pdf(wo, wh) * dwh_dwi);

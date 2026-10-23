@@ -5,7 +5,7 @@
 GYT_NAMESPACE_BEGIN
 
 Vec3 HomogeneousMedium::Tr(const Ray& ray, StateSequence& rand) const {
-    return Exp(-sigma_t * std::min(ray.m_tMax * ray.mDir.Length(), MaxReal));
+    return Exp(-sigma_t * std::min(ray.mTMax * ray.mDir.Length(), MaxReal));
 }
 
 
@@ -15,8 +15,8 @@ Vec3 HomogeneousMedium::Sample(const Ray& ray, StateSequence& rand, MemoryPool& 
     //int channel = 0;
     real dist = -std::log(1 - rand()) / sigma_t[channel];
     //real dist = -std::log(1 - std::max(0.f, rand() - 0.1f)) / sigma_t[channel];
-    real t = std::min(dist / ray.mDir.Length(), ray.m_tMax);
-    bool sampledMedium = t < ray.m_tMax;
+    real t = std::min(dist / ray.mDir.Length(), ray.mTMax);
+    bool sampledMedium = t < ray.mTMax;
     if (sampledMedium)
         *mi = MediumIntersection(ray(t), -ray.mDir, this, MEMORY_POOL_ALLOC(arena, HenyeyGreenstein)(g));
 
@@ -53,11 +53,11 @@ Vec3 HomogeneousMedium::EquiAngularSampling(
     real u = rand();
     real tau = D * std::tan((1 - u) * theta_a + u * theta_b);
     real t = delta + tau;
-    bool sampleMedia = t < ray.m_tMax;
+    bool sampleMedia = t < ray.mTMax;
     Vec3 Tr = sampleMedia ? Exp(-sigma_t * t) : this->Tr(ray, rand);
     real pdf = sampleMedia ?
         D / ((theta_b - theta_a) * (D * D + tau * tau))
-        : 1 - (std::atan2(std::min(tMax, ray.m_tMax) - delta, D) - theta_a) / (theta_b - theta_a);
+        : 1 - (std::atan2(std::min(tMax, ray.mTMax) - delta, D) - theta_a) / (theta_b - theta_a);
     if(sampleMedia) *mi = MediumIntersection(ray(t), -ray.mDir, this, MEMORY_POOL_ALLOC(arena, HenyeyGreenstein)(g));
 
     return sampleMedia ? Tr * sigma_s / pdf : this->Tr(ray, rand) / pdf;

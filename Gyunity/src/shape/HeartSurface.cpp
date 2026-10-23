@@ -26,8 +26,8 @@ bool HeartSurface::Intersect(const Ray& r, Intersection* isect, real* t) const {
 	if (!bounding.Intersect(ray, &t0, &t1)) return false;
 
 
-	real segmentStart = std::max(ray.m_tMin, t0) - 1e-3;
-	real segmentEnd = std::min(ray.m_tMax, t1) + 1e-3;
+	real segmentStart = std::max(ray.mTMin, t0) - 1e-3;
+	real segmentEnd = std::min(ray.mTMax, t1) + 1e-3;
 	if (segmentStart > segmentEnd) return false;
 
 
@@ -61,8 +61,8 @@ bool HeartSurface::Intersect(const Ray& r) const {
 	real t0, t1;
 	if (!bounding.Intersect(ray, &t0, &t1)) return false;
 
-	real segmentStart = std::max(ray.m_tMin, t0) - 1e-3;
-	real segmentEnd = std::min(ray.m_tMax, t1) + 1e-3;
+	real segmentStart = std::max(ray.mTMin, t0) - 1e-3;
+	real segmentEnd = std::min(ray.mTMax, t1) + 1e-3;
 	if (segmentStart > segmentEnd) return false;
 
 	real step = (segmentEnd - segmentStart) / 10;
