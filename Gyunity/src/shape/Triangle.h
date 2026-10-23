@@ -12,14 +12,14 @@ public:
 
 	Triangle(const Transform& ObjectToWorld, const Transform& WorldToObject,
 		const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& normal, Vec2 *uvs = nullptr) 
-		: Shape(ObjectToWorld, WorldToObject), p0(p0), p1(p1), p2(p2), faceNormal(normal)
+		: Shape(ObjectToWorld, WorldToObject), mP0(p0), mP1(p1), mP2(p2), mFaceNormal(normal)
 	{
 		//faceNormal = Cross(p1 - p0, p2 - p0).Norm();
-		n0 = n1 = n2 = faceNormal;
+		mN0 = mN1 = mN2 = mFaceNormal;
 		if (uvs) {
-			this->uvs[0] = uvs[0];
-			this->uvs[1] = uvs[1];
-			this->uvs[2] = uvs[2];
+			this->mUvs[0] = uvs[0];
+			this->mUvs[1] = uvs[1];
+			this->mUvs[2] = uvs[2];
 		}
 		Initialize();
 
@@ -29,13 +29,13 @@ public:
 		const Vec3& n0, const Vec3& n1, const Vec3& n2, 
 		Vec2* uvs = nullptr) :
 		Shape(ObjectToWorld, WorldToObject), 
-		p0(p0), p1(p1), p2(p2), n0(n0), n1(n1), n2(n2)
+		mP0(p0), mP1(p1), mP2(p2), mN0(n0), mN1(n1), mN2(n2)
 	{
-		faceNormal = Cross(p1 - p0, p2 - p0).Norm();
+		mFaceNormal = Cross(p1 - p0, p2 - p0).Norm();
 		if (uvs) {
-			this->uvs[0] = uvs[0];
-			this->uvs[1] = uvs[1];
-			this->uvs[2] = uvs[2];
+			this->mUvs[0] = uvs[0];
+			this->mUvs[1] = uvs[1];
+			this->mUvs[2] = uvs[2];
 		}
 		Initialize();
 	}
@@ -45,12 +45,12 @@ public:
 		const Vec3& n0, const Vec3& n1, const Vec3& n2,
 		const Vec2 &uv0, const Vec2& uv1, const Vec2& uv2) :
 		Shape(ObjectToWorld, WorldToObject),
-		p0(p0), p1(p1), p2(p2), n0(n0), n1(n1), n2(n2)
+		mP0(p0), mP1(p1), mP2(p2), mN0(n0), mN1(n1), mN2(n2)
 	{
-		faceNormal = Cross(p1 - p0, p2 - p0).Norm();
-		this->uvs[0] = uv0;
-		this->uvs[1] = uv1;
-		this->uvs[2] = uv2;
+		mFaceNormal = Cross(p1 - p0, p2 - p0).Norm();
+		this->mUvs[0] = uv0;
+		this->mUvs[1] = uv1;
+		this->mUvs[2] = uv2;
 		Initialize();
 	}
 
@@ -63,27 +63,27 @@ public:
 	//Intersection Sample(const Intersection& isect, real* pdf, const Vec2& u) const override;
 
 	Vec3 GetNorm(const Vec3& point) const override {
-		return faceNormal;
+		return mFaceNormal;
 	}
 
 	real Area() const override {
-		return 0.5 * Cross(p1 - p0, p2 - p0).Length();
+		return 0.5 * Cross(mP1 - mP0, mP2 - mP0).Length();
 	}
 
 	AABB ObjectBound() const override {
-		AABB ret(p0, p1);
-		return Union(ret, p2);
+		AABB ret(mP0, mP1);
+		return Union(ret, mP2);
 	}
 
 	void SetTransform(const Transform& transform) {
-		p0 = transform(p0);
-		p1 = transform(p1);
-		p2 = transform(p2);
-		n0 = transform.TransformNormal(n0).Norm();
-		n1 = transform.TransformNormal(n1).Norm();
-		n2 = transform.TransformNormal(n2).Norm();
+		mP0 = transform(mP0);
+		mP1 = transform(mP1);
+		mP2 = transform(mP2);
+		mN0 = transform.TransformNormal(mN0).Norm();
+		mN1 = transform.TransformNormal(mN1).Norm();
+		mN2 = transform.TransformNormal(mN2).Norm();
 		//faceNormal = transform.TransformNormal(faceNormal);
-		faceNormal = Cross(p1 - p0, p2 - p1).Norm();
+		mFaceNormal = Cross(mP1 - mP0, mP2 - mP1).Norm();
 		Initialize();
 	}
 
@@ -91,45 +91,45 @@ public:
 
 private:
 	void GetUVs(real uv[3][2]) const {
-		if (uvs == nullptr) {
+		if (mUvs == nullptr) {
 			uv[0][0] = 0.; uv[0][1] = 0.;
 			uv[1][0] = 1.; uv[1][1] = 0.;
 			uv[2][0] = 1.; uv[2][1] = 1.;
 		}
 		else {
-			uv[0][0] = uvs[0][0]; uv[0][1] = uvs[0][1];
-			uv[1][0] = uvs[1][0]; uv[1][1] = uvs[1][1];
-			uv[2][0] = uvs[2][0]; uv[2][1] = uvs[2][1];
+			uv[0][0] = mUvs[0][0]; uv[0][1] = mUvs[0][1];
+			uv[1][0] = mUvs[1][0]; uv[1][1] = mUvs[1][1];
+			uv[2][0] = mUvs[2][0]; uv[2][1] = mUvs[2][1];
 		}
 
 	}
 
 	void Initialize() {
-		e1 = p1 - p0;
-		e2 = p2 - p0;
+		mE1 = mP1 - mP0;
+		mE2 = mP2 - mP0;
 		real uvs[3][2];
 		GetUVs(uvs);
-		du1 = uvs[0][0] - uvs[2][0];
-		du2 = uvs[1][0] - uvs[2][0];
-		dv1 = uvs[0][1] - uvs[2][1];
-		dv2 = uvs[1][1] - uvs[2][1];
-		dp1 = p0 - p2;
-		dp2 = p1 - p2;
+		mDu1 = uvs[0][0] - uvs[2][0];
+		mDu2 = uvs[1][0] - uvs[2][0];
+		mDv1 = uvs[0][1] - uvs[2][1];
+		mDv2 = uvs[1][1] - uvs[2][1];
+		mDp1 = mP0 - mP2;
+		mDp2 = mP1 - mP2;
 	}
 
-	Vec3 p0, p1, p2;
-	Vec3 n0, n1, n2;
-	Vec3 faceNormal;
-	Vec2 uvs[3];
-	Vec3 e1, e2;
+	Vec3 mP0, mP1, mP2;
+	Vec3 mN0, mN1, mN2;
+	Vec3 mFaceNormal;
+	Vec2 mUvs[3];
+	Vec3 mE1, mE2;
 
 private:
-	real du1; 
-	real du2;
-	real dv1;
-	real dv2;
-	Vec3 dp1;
-	Vec3 dp2;
+	real mDu1; 
+	real mDu2;
+	real mDv1;
+	real mDv2;
+	Vec3 mDp1;
+	Vec3 mDp2;
 };
 
 GYT_NAMESPACE_END

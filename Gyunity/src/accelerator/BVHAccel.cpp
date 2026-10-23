@@ -153,28 +153,28 @@ static inline bool IntersectP(const AABB& bounds, const Ray& ray,
 // BVHAccel Method Definitions
 BVHAccel::BVHAccel(const std::vector<std::shared_ptr<Primitive> >& p,
     uint32_t mp, const std::string& sm) {
-    maxPrimsInNode = std::min(255u, mp);
-    primitives = p;
-    if (sm == "sah")         splitMethod = SPLIT_SAH;
-    else if (sm == "middle") splitMethod = SPLIT_MIDDLE;
-    else if (sm == "equal")  splitMethod = SPLIT_EQUAL_COUNTS;
+    mMaxPrimsInNode = std::min(255u, mp);
+    mPrimitives = p;
+    if (sm == "sah")         mSplitMethod = SPLIT_SAH;
+    else if (sm == "middle") mSplitMethod = SPLIT_MIDDLE;
+    else if (sm == "equal")  mSplitMethod = SPLIT_EQUAL_COUNTS;
     else {
         //Warning("BVH split method \"%s\" unknown.  Using \"sah\".",
         //    sm.c_str());
-        splitMethod = SPLIT_SAH;
+        mSplitMethod = SPLIT_SAH;
     }
 
-    if (primitives.size() == 0) {
-        nodes = NULL;
+    if (mPrimitives.size() == 0) {
+        mNodes = NULL;
         return;
     }
     // Build BVH from _primitives_
 
     // Initialize _buildData_ array for primitives
     std::vector<BVHPrimitiveInfo> buildData;
-    buildData.reserve(primitives.size());
-    for (uint32_t i = 0; i < primitives.size(); ++i) {
-        AABB AABB = primitives[i]->WorldBound();
+    buildData.reserve(mPrimitives.size());
+    for (uint32_t i = 0; i < mPrimitives.size(); ++i) {
+        AABB AABB = mPrimitives[i]->WorldBound();
         buildData.push_back(BVHPrimitiveInfo(i, AABB));
     }
 
@@ -182,18 +182,18 @@ BVHAccel::BVHAccel(const std::vector<std::shared_ptr<Primitive> >& p,
     MemoryPool buildArena;
     uint32_t totalNodes = 0;
     std::vector<std::shared_ptr<Primitive> > orderedPrims;
-    orderedPrims.reserve(primitives.size());
+    orderedPrims.reserve(mPrimitives.size());
     BVHBuildNode* root = RecursiveBuild(buildArena, buildData, 0,
-        primitives.size(), &totalNodes,
+        mPrimitives.size(), &totalNodes,
         orderedPrims);
-    primitives.swap(orderedPrims);
+    mPrimitives.swap(orderedPrims);
     //Info("BVH created with %d nodes for %d primitives (%.2f MB)", totalNodes,
     //    (int)primitives.size(), float(totalNodes * sizeof(LinearBVHNode)) / (1024.f * 1024.f));
 
     // Compute representation of depth-first traversal of BVH tree
-    nodes = AllocAligned<LinearBVHNode>(totalNodes);
+    mNodes = AllocAligned<LinearBVHNode>(totalNodes);
     for (uint32_t i = 0; i < totalNodes; ++i)
-        new (&nodes[i]) LinearBVHNode;
+        new (&mNodes[i]) LinearBVHNode;
     uint32_t offset = 0;
     FlattenBVHTree(root, &offset);
     assert(offset == totalNodes);
@@ -201,7 +201,7 @@ BVHAccel::BVHAccel(const std::vector<std::shared_ptr<Primitive> >& p,
 
 
 AABB BVHAccel::WorldBound() const {
-    return nodes ? nodes[0].bounds : AABB();
+    return mNodes ? mNodes[0].bounds : AABB();
 }
 
 
@@ -222,7 +222,7 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
         uint32_t firstPrimOffset = orderedPrims.size();
         for (uint32_t i = start; i < end; ++i) {
             uint32_t primNum = buildData[i].primitiveNumber;
-            orderedPrims.push_back(primitives[primNum]);
+            orderedPrims.push_back(mPrimitives[primNum]);
         }
         node->InitLeaf(firstPrimOffset, nPrimitives, boundBox);
     }
@@ -238,12 +238,12 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
         if (centroidBounds.maxPoint[dim] == centroidBounds.minPoint[dim]) {
             // If nPrimitives is no greater than maxPrimsInNode,
             // then all the nodes can be stored in a compact bvh node.
-            if (nPrimitives <= maxPrimsInNode) {
+            if (nPrimitives <= mMaxPrimsInNode) {
                 // Create leaf _BVHBuildNode_
                 uint32_t firstPrimOffset = orderedPrims.size();
                 for (uint32_t i = start; i < end; ++i) {
                     uint32_t primNum = buildData[i].primitiveNumber;
-                    orderedPrims.push_back(primitives[primNum]);
+                    orderedPrims.push_back(mPrimitives[primNum]);
                 }
                 node->InitLeaf(firstPrimOffset, nPrimitives, boundBox);
                 return node;
@@ -262,7 +262,7 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
         }
 
         // Partition primitives based on _splitMethod_
-        switch (splitMethod) {
+        switch (mSplitMethod) {
         case SPLIT_MIDDLE: {
             // Partition primitives through node's midpoint
             float pmid = .5f * (centroidBounds.minPoint[dim] + centroidBounds.maxPoint[dim]);
@@ -340,7 +340,7 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
                 }
 
                 // Either create leaf or split primitives at selected SAH bucket
-                if (nPrimitives > maxPrimsInNode ||
+                if (nPrimitives > mMaxPrimsInNode ||
                     minCost < nPrimitives) {
                     BVHPrimitiveInfo* pmid = std::partition(&buildData[start],
                         &buildData[end - 1] + 1,
@@ -353,7 +353,7 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
                     uint32_t firstPrimOffset = orderedPrims.size();
                     for (uint32_t i = start; i < end; ++i) {
                         uint32_t primNum = buildData[i].primitiveNumber;
-                        orderedPrims.push_back(primitives[primNum]);
+                        orderedPrims.push_back(mPrimitives[primNum]);
                     }
                     node->InitLeaf(firstPrimOffset, nPrimitives, boundBox);
                     return node;
@@ -373,7 +373,7 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
 
 
 uint32_t BVHAccel::FlattenBVHTree(BVHBuildNode* node, uint32_t* offset) {
-    LinearBVHNode* linearNode = &nodes[*offset];
+    LinearBVHNode* linearNode = &mNodes[*offset];
     linearNode->bounds = node->bounds;
     uint32_t myOffset = (*offset)++;
     if (node->nPrimitives > 0) {
@@ -394,12 +394,12 @@ uint32_t BVHAccel::FlattenBVHTree(BVHBuildNode* node, uint32_t* offset) {
 
 
 BVHAccel::~BVHAccel() {
-    FreeAligned(nodes);
+    FreeAligned(mNodes);
 }
 
 
 bool BVHAccel::Intersect(const Ray& ray, Intersection* isect) const {
-    if (!nodes) return false;
+    if (!mNodes) return false;
     bool hit = false;
     Vec3 invDir(1.f / ray.mDir.x, 1.f / ray.mDir.y, 1.f / ray.mDir.z);
     uint32_t dirIsNeg[3] = { invDir.x < 0, invDir.y < 0, invDir.z < 0 };
@@ -407,14 +407,14 @@ bool BVHAccel::Intersect(const Ray& ray, Intersection* isect) const {
     uint32_t todoOffset = 0, nodeNum = 0;
     uint32_t todo[64];
     while (true) {
-        const LinearBVHNode* node = &nodes[nodeNum];
+        const LinearBVHNode* node = &mNodes[nodeNum];
         // Check ray against BVH node
         if (IntersectP(node->bounds, ray, invDir, dirIsNeg)) {
             if (node->nPrimitives > 0) {
                 // Intersect ray with primitives in leaf BVH node
                 for (uint32_t i = 0; i < node->nPrimitives; ++i)
                 {
-                    if (primitives[node->primitivesOffset + i]->Intersect(ray, isect))
+                    if (mPrimitives[node->primitivesOffset + i]->Intersect(ray, isect))
                     {
                         hit = true;
                     }
@@ -446,18 +446,18 @@ bool BVHAccel::Intersect(const Ray& ray, Intersection* isect) const {
 
 
 bool BVHAccel::Intersect(const Ray& ray) const {
-    if (!nodes) return false;
+    if (!mNodes) return false;
     Vec3 invDir(1.f / ray.mDir.x, 1.f / ray.mDir.y, 1.f / ray.mDir.z);
     uint32_t dirIsNeg[3] = { invDir.x < 0, invDir.y < 0, invDir.z < 0 };
     uint32_t todo[64];
     uint32_t todoOffset = 0, nodeNum = 0;
     while (true) {
-        const LinearBVHNode* node = &nodes[nodeNum];
+        const LinearBVHNode* node = &mNodes[nodeNum];
         if (IntersectP(node->bounds, ray, invDir, dirIsNeg)) {
             // Process BVH node _node_ for traversal
             if (node->nPrimitives > 0) {
                 for (uint32_t i = 0; i < node->nPrimitives; ++i) {
-                    if (primitives[node->primitivesOffset + i]->Intersect(ray)) {
+                    if (mPrimitives[node->primitivesOffset + i]->Intersect(ray)) {
                         return true;
                     }
                     else {

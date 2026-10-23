@@ -32,7 +32,7 @@ public:
 		Ray r;
 		real tHit;
 
-		r = WorldToObject(ray);
+		r = mWorldToObject(ray);
 
 		Vec3 po = r.mOrig - mPos;
 		real vd = po.Dot(r.mDir), d2 = r.mDir.Dot(r.mDir), po2 = po.Dot(po);
@@ -114,7 +114,7 @@ public:
 		Vec3 dpdvs = Cross(n, dpdus).Norm();
 		it.SetShading(n, dpdus, dpdvs);
 
-		ObjectToWorld(it);
+		mObjectToWorld(it);
 
 		isect->mUv = Vec2(u, v);
 		isect->mShapeId = mShapeId;
@@ -131,7 +131,7 @@ public:
 		Ray r;
 		real tHit;
 
-		WorldToObject(ray);
+		mWorldToObject(ray);
 
 		Vec3 op = mPos - r.mOrig;
 		Vec3 v = r.mOrig - mPos;
@@ -179,8 +179,8 @@ public:
 		Vec3 nl = isect.mNormal;
 		Vec3 pError = Abs(mPos) * gamma(1) + Abs(scaledDir) * gamma(6);
 
-		isect.mPos = ObjectToWorld(hit, pError, &isect.mPointError);
-		isect.mNormal = ObjectToWorld.TransformNormal(n).Norm();
+		isect.mPos = mObjectToWorld(hit, pError, &isect.mPointError);
+		isect.mNormal = mObjectToWorld.TransformNormal(n).Norm();
 
 		isect.mAbsNormal = nl;
 		isect.mShapeId = mShapeId;
@@ -245,7 +245,7 @@ public:
 		
 		Vec3 pCenter;
 
-		pCenter = ObjectToWorld(mPos);
+		pCenter = mObjectToWorld(mPos);
 
 		if ((pCenter - isect.mPos).Length2() <= mRad * mRad) {
 			Intersection lightPoint = Sample(pdf, u);
