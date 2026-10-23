@@ -34,6 +34,7 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
   <ItemGroup>
+    <ClCompile Include="tests\BsdfTest.cpp" />
     <ClCompile Include="tests\ConfigTest.cpp" />
     <ClCompile Include="tests\MatrixTest.cpp" />
     <ClCompile Include="test.cpp" />
@@ -48,11 +49,11 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;__TBB_NO_IMPLICIT_LINKAGE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
-      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(SolutionDir)external;$(SolutionDir)external\tbb\include;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -65,11 +66,11 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>X64;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>X64;_DEBUG;_CONSOLE;__TBB_NO_IMPLICIT_LINKAGE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
-      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\googletest\googletest\include;$(SolutionDir)external\googletest\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(SolutionDir)external;$(SolutionDir)external\tbb\include;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\googletest\googletest\include;$(SolutionDir)external\googletest\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -77,16 +78,19 @@
       <AdditionalDependencies>$(SolutionDir)$(Platform)\$(Configuration)\Gyunity.lib;$(SolutionDir)external\build\lib\$(Configuration)\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /y "$(SolutionDir)external\build\runtime\$(Configuration)\*.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;__TBB_NO_IMPLICIT_LINKAGE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(SolutionDir)external;$(SolutionDir)external\tbb\include;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -100,11 +104,11 @@
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <PreprocessorDefinitions>X64;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>X64;NDEBUG;_CONSOLE;__TBB_NO_IMPLICIT_LINKAGE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\googletest\googletest\include;$(SolutionDir)external\googletest\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/Gyunity/src;$(SolutionDir)external;$(SolutionDir)external\tbb\include;$(MSBuildThisFileDirectory)include;$(SolutionDir)external\spdlog\include\spdlog;$(SolutionDir)external\spdlog\include;$(SolutionDir)external\googletest\googletest\include;$(SolutionDir)external\googletest\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -114,5 +118,8 @@
       <AdditionalDependencies>$(SolutionDir)$(Platform)\$(Configuration)\Gyunity.lib;$(SolutionDir)external\build\lib\$(Configuration)\*.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /y "$(SolutionDir)external\build\runtime\$(Configuration)\*.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>
