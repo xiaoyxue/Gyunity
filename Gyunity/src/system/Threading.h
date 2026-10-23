@@ -9,14 +9,14 @@ GYT_NAMESPACE_BEGIN
 
 class Spinlock {
 protected:
-	std::atomic<bool> latch;
+	std::atomic<bool> mLatch;
 
 public:
 	Spinlock() : Spinlock(false) {
 	}
 
 	Spinlock(bool flag) {
-		latch.store(flag);
+		mLatch.store(flag);
 	}
 
 	Spinlock(int flag) : Spinlock(flag != 0) {
@@ -24,24 +24,24 @@ public:
 
 	void lock() {
 		bool unlatched = false;
-		while (!latch.compare_exchange_weak(unlatched, true,
+		while (!mLatch.compare_exchange_weak(unlatched, true,
 			std::memory_order_acquire)) {
 			unlatched = false;
 		}
 	}
 
 	void unlock() {
-		latch.store(false, std::memory_order_release);
+		mLatch.store(false, std::memory_order_release);
 	}
 
 	Spinlock(const Spinlock &o) {
 		// We just ignore racing condition here...
-		latch.store(o.latch.load());
+		mLatch.store(o.mLatch.load());
 	}
 
 	Spinlock &operator=(const Spinlock &o) {
 		// We just ignore racing condition here...
-		latch.store(o.latch.load());
+		mLatch.store(o.mLatch.load());
 		return *this;
 	}
 };
