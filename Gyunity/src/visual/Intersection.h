@@ -15,7 +15,6 @@ public:
 	Vec3 mDpDu, mDpDv;
 	Vec3 mShadingDpDu, mShadingDpDv;
 	Vec2 mUv;
-	real mRayEps = 0;
 	Vec3 mPointError;
 	real mB1, mB2;
 	int64 mShapeId, mPrimId;
@@ -25,26 +24,24 @@ public:
 	//bool mIsDelta = false;
 
 	Intersection() { 
-		mRayEps = 0; 
 		mShapeId = -1;
 		mNormal = mAbsNormal = mGeometryNormal = Vec3();
 	}
 
 	Intersection(const Vec3& hit, const Vec3& wo, const MediumInterface& medium) :
 		mPos(hit), mOutDir(wo), mMediumInterface(medium) {
-		mRayEps = 0;
 		mNormal = mAbsNormal = mGeometryNormal = Vec3();
 	}
 
 	Intersection(const Vec3 &hit, const Vec3 &ng, const Vec3 &nl, const Vec3 &wo, const Vec3 &pError):
-		mPos(hit), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mRayEps(0), mPrimitive(nullptr){
+		mPos(hit), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mPrimitive(nullptr){
 		mBsdf = nullptr;
 		mShapeId = -1;
 	}
 
 	Intersection(const Vec3& hit, const Vec3& ng, const Vec3& nl, 
 		const Vec3& dpdu, const Vec3& dpdv, const Vec3& wo, const Vec3& pError) :
-		mPos(hit), mDpDu(dpdu), mDpDv(dpdv), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mRayEps(0), mPrimitive(nullptr) {
+		mPos(hit), mDpDu(dpdu), mDpDv(dpdv), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mPrimitive(nullptr) {
 		mBsdf = nullptr;
 		mShapeId = -1;
 	}
@@ -67,14 +64,14 @@ public:
 		Vec3 d = target - origin;
 		real dis = d.Length();
 		Normalize(d);
-		return Ray(origin, d, dis - SHADOW_RAY_EPS, mRayEps, GetMedium(d));
+		return Ray(origin, d, dis - SHADOW_RAY_EPS, 0, GetMedium(d));
 		//return Ray(origin, d, 1 - shadowRayEps, 0.f);
 	}
 
 	Ray SpawnRay(const Vec3 &d) const {
 		Vec3 o = OffsetRayOrigin(mPos, mPointError, mAbsNormal, d);
 		//Vec3 o = hit + d * 0.0001;
-		return Ray(o, d, INF, mRayEps, GetMedium(d));
+		return Ray(o, d, INF, 0, GetMedium(d));
 	}
 
 	const Medium* GetMedium(const Vec3& w) const {
