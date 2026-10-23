@@ -1,6 +1,6 @@
 #pragma once
 #include "common/Core.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/Transform.h"
 #include "shape/Triangle.h"
 

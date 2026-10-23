@@ -1,4 +1,4 @@
-#include "LowDiscrepency.h"
+#include "LowDiscrepancy.h"
 
 GYT_NAMESPACE_BEGIN
 

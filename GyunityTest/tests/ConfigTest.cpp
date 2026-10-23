@@ -1,6 +1,6 @@
 #include "common/Config.h"
 #include "gtest/gtest.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 
 
 GYT_NAMESPACE_BEGIN

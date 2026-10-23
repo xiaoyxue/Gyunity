@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/MathUtils.h"
 #include "math/Transform.h"
 

@@ -103,15 +103,15 @@ inline std::string TrimString(const std::string& s)
 inline std::vector<std::string> SplitString(const std::string& s, const std::string& seperators) 
 {
 	std::vector<std::string> ret;
-	bool isSeperator[256] = { false };
+	bool isSeparator[256] = { false };
 	for (auto& ch : seperators) 
 	{
-		isSeperator[(unsigned int)ch] = true;
+		isSeparator[(unsigned int)ch] = true;
 	}
 	int begin = 0;
 	for (int i = 0; i <= (int)s.size(); i++) 
 	{
-		if (isSeperator[(uint8)s[i]] || i == (int)s.size()) 
+		if (isSeparator[(uint8)s[i]] || i == (int)s.size()) 
 		{
 			ret.push_back(std::string(s.begin() + begin, s.begin() + i));
 			begin = i + 1;
@@ -192,7 +192,6 @@ constexpr real Eps = (real)1e-6;
 constexpr real Inf = std::numeric_limits<real>::infinity();
 constexpr real RayEps = (real)1e-4;
 constexpr real ShadowRayEps = (real)1e-4;
-constexpr real PhtotonEdgeEps = (real)0.0009;
 constexpr real NumericalEps = 1e-6;
 constexpr real MachineEps = std::numeric_limits<real>::epsilon() * (real)0.5;
 constexpr real MaxReal = std::numeric_limits<real>::max();

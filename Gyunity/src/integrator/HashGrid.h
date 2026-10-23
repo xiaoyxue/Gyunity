@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/Core.h"
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/AABB.h"
 #include "system/Threading.h"
 #include <mutex>

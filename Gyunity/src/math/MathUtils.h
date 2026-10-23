@@ -1,6 +1,6 @@
 #pragma once
 #include "common/Core.h"
-#include "Linagl.h"
+#include "Linalg.h"
 #include <algorithm>
 
 GYT_NAMESPACE_BEGIN

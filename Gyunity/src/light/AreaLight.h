@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "visual/Intersection.h"
 #include "light/Light.h"
 #include "visual/Sampling.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/Linagl.h"
+#include "math/Linalg.h"
 #include "math/Ray.h"
 #include "math/GeometryUtils.h"
 #include "material/Material.h"

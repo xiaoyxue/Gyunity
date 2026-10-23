@@ -24,7 +24,7 @@
 
 
 #include "common/Core.h"
-#include "math/LowDiscrepency.h"
+#include "math/LowDiscrepancy.h"
 #include "visual/Rng.h"
 #include "Sampler.h"
 
