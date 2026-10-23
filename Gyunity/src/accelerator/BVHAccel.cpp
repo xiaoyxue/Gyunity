@@ -155,13 +155,13 @@ BVHAccel::BVHAccel(const std::vector<std::shared_ptr<Primitive> >& p,
     uint32_t mp, const std::string& sm) {
     mMaxPrimsInNode = std::min(255u, mp);
     mPrimitives = p;
-    if (sm == "sah")         mSplitMethod = SPLIT_SAH;
-    else if (sm == "middle") mSplitMethod = SPLIT_MIDDLE;
-    else if (sm == "equal")  mSplitMethod = SPLIT_EQUAL_COUNTS;
+    if (sm == "sah")         mSplitMethod = SplitMethod::Sah;
+    else if (sm == "middle") mSplitMethod = SplitMethod::Middle;
+    else if (sm == "equal")  mSplitMethod = SplitMethod::EqualCounts;
     else {
         //Warning("BVH split method \"%s\" unknown.  Using \"sah\".",
         //    sm.c_str());
-        mSplitMethod = SPLIT_SAH;
+        mSplitMethod = SplitMethod::Sah;
     }
 
     if (mPrimitives.size() == 0) {
@@ -263,7 +263,7 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
 
         // Partition primitives based on _splitMethod_
         switch (mSplitMethod) {
-        case SPLIT_MIDDLE: {
+        case SplitMethod::Middle: {
             // Partition primitives through node's midpoint
             float pmid = .5f * (centroidBounds.minPoint[dim] + centroidBounds.maxPoint[dim]);
             BVHPrimitiveInfo* midPtr = std::partition(&buildData[start],
@@ -273,17 +273,17 @@ BVHBuildNode* BVHAccel::RecursiveBuild(MemoryPool& buildArena,
             if (mid != start && mid != end)
                 // for lots of prims with large overlapping bounding boxes, this
                 // may fail to partition; in that case don't break and fall through
-                // to SPLIT_EQUAL_COUNTS
+                // to SplitMethod::EqualCounts
                 break;
         }
-        case SPLIT_EQUAL_COUNTS: {
+        case SplitMethod::EqualCounts: {
             // Partition primitives into equally-sized subsets
             mid = (start + end) / 2;
             std::nth_element(&buildData[start], &buildData[mid],
                 &buildData[end - 1] + 1, ComparePoints(dim));
             break;
         }
-        case SPLIT_SAH: default: {
+        case SplitMethod::Sah: default: {
             // Partition primitives using approximate SAH
             if (nPrimitives <= 4) {
                 // Partition primitives into equally-sized subsets
