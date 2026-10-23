@@ -73,7 +73,7 @@ public:
 	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &p) const;
 	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &p, Vector3 *pError) const;
 	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &p, const Vector3 &pError, Vector3 *absError) const;
-	GYT_FORCE_INLINE Ray operator()(const Ray &r, Vector3 *oError, Vector3 *dError) const;
+	GYT_FORCE_INLINE Ray operator()(const Ray &r, Vector3 *originError, Vector3 *directionError) const;
 	GYT_FORCE_INLINE Ray operator()(const Ray &r) const;
 	GYT_FORCE_INLINE Transform operator*(const Transform &t) const;
 	GYT_FORCE_INLINE AABB operator()(const AABB &bound) const;
@@ -85,7 +85,7 @@ public:
 	GYT_FORCE_INLINE Vector3 TransformVector(const Vector3 &v, Vector3 *absError) const;
 	GYT_FORCE_INLINE Vector3 TransformVector(const Vector3 &v, const Vector3 &vError, Vector3 *absError) const;
 	GYT_FORCE_INLINE Vector3 TransformNormal(const Vector3 &n) const;
-	GYT_FORCE_INLINE Ray TransformRay(const Ray &r, Vector3 *oError, Vector3 *dError) const;
+	GYT_FORCE_INLINE Ray TransformRay(const Ray &r, Vector3 *originError, Vector3 *directionError) const;
 	GYT_FORCE_INLINE Ray TransformRay(const Ray &r) const;
 	GYT_FORCE_INLINE AABB TransformAABB(const AABB &bound) const;
 
@@ -215,14 +215,14 @@ GYT_FORCE_INLINE Vector3 Transform::TransformVector(const Vector3 &v, const Vect
 }
 
 GYT_FORCE_INLINE Ray Transform::operator()(const Ray& r) const {
-	Vector3 oError;
-	Vector3 o = (*this)(r.mOrig, &oError);
+	Vector3 originError;
+	Vector3 o = (*this)(r.mOrig, &originError);
 	Vector3 d = this->TransformVector(r.mDir);
 
 	real length2 = d.Length2();
 	real tMax = r.mTmax, tMin = r.mTmin;
 	if(length2 > 0) {
-		real dt = Dot(Abs(d), oError) / length2;
+		real dt = Dot(Abs(d), originError) / length2;
 		o += d * dt;
 		tMax -= dt;
 		tMin += dt;
@@ -230,14 +230,14 @@ GYT_FORCE_INLINE Ray Transform::operator()(const Ray& r) const {
 	return Ray(o, d, tMax, tMin);
 }
 
-GYT_FORCE_INLINE Ray Transform::operator()(const Ray &r, Vector3 *oError, Vector3 *dError) const {
-	Vector3 o = (*this)(r.mOrig, oError);
-	Vector3 d = this->TransformVector(r.mDir, dError);
+GYT_FORCE_INLINE Ray Transform::operator()(const Ray &r, Vector3 *originError, Vector3 *directionError) const {
+	Vector3 o = (*this)(r.mOrig, originError);
+	Vector3 d = this->TransformVector(r.mDir, directionError);
 	real tMax = r.mTmax;
 	real tMin = r.mTmin;
 	real length2 = d.Length2();
 	if (length2 > 0) {
-		real dt = Dot(Abs(d), *oError) / length2;
+		real dt = Dot(Abs(d), *originError) / length2;
 		o += d * dt;
 		//        tMax -= dt;
 	}
@@ -281,8 +281,8 @@ GYT_FORCE_INLINE Vector3 Transform::TransformPoint(const Vector3 &p, const Vecto
 	return (*this)(p, pError, absError);
 }
 
-GYT_FORCE_INLINE Ray Transform::TransformRay(const Ray &r, Vector3 *oError, Vector3 *dError) const {
-	return (*this)(r, oError, dError);
+GYT_FORCE_INLINE Ray Transform::TransformRay(const Ray &r, Vector3 *originError, Vector3 *directionError) const {
+	return (*this)(r, originError, directionError);
 }
 
 GYT_FORCE_INLINE Ray Transform::TransformRay(const Ray &r) const {

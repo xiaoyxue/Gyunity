@@ -47,8 +47,8 @@ TEST(TestTranslateRay, TranslateRay) {
 		Vec3 direction = Vec3(1, 0, 0);
 		Ray ray(origin, direction);
 		Transform transform = Transform::Translate(Vec3(1, 2, 3));
-		Vec3 oError, dError;
-		Ray transformedRay = transform.TransformRay(ray, &oError, &dError);
+		Vec3 originError, directionError;
+		Ray transformedRay = transform.TransformRay(ray, &originError, &directionError);
 		std::cout << transformedRay << std::endl;
 		EXPECT_EQ(Equal(transformedRay.mOrig, Vec3(2.0002f, 4.f, 6.f)), true);
 		EXPECT_EQ(Equal(transformedRay.mDir, Vec3(1.f, 0.f, 0.f)), true);
@@ -108,8 +108,8 @@ TEST(TestScaledRay, ScaleRay) {
 		Vec3 direction = Vec3(1, 1, 1);
 		Ray ray(origin, direction);
 		Transform transform = Transform::Scale(1, 2, 3);
-		Vec3 oError, dError;
-		Ray transformedRay = transform.TransformRay(ray, &oError, &dError);
+		Vec3 originError, directionError;
+		Ray transformedRay = transform.TransformRay(ray, &originError, &directionError);
 		std::cout << transformedRay << std::endl;
 		EXPECT_EQ(Equal(transformedRay.mOrig, Vec3(1.0002f, 4.0004f, 9.0006f)), true);
 		EXPECT_EQ(Equal(transformedRay.mDir, Vec3(1.f, 2.f, 3.f)), true);
