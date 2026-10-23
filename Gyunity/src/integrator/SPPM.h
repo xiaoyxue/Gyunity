@@ -45,8 +45,8 @@ private:
 	bool mTraceGlossyRay;
 
 public:
-	SPPM(int iterations, int nPhotonsPerStage, int maxDepth, real initialRadius, real alpha, bool batchShrink, const std::shared_ptr<Sampler>& pSampler,
-		const std::shared_ptr<SamplerEnum>& pSmplerEnum, bool traceGlossyRay = false);
+	SPPM(int iterations, int nPhotonsPerStage, int maxDepth, real initialRadius, real alpha, bool batchShrink, const std::shared_ptr<Sampler>& sampler,
+		const std::shared_ptr<SamplerEnum>& samplerEnum, bool traceGlossyRay = false);
 	void GeneratePhoton(const Scene& scene, Ray* pr, Vec3* f, real u, const Vec2& v, const Vec2& w);
 
 	void TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray, int64 pixel, MemoryPool& arena);

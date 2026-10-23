@@ -32,8 +32,8 @@ public:
 		mShapeNum = 0;
 	}
 
-	void SetAccelerator(const std::shared_ptr<Accelerator>& pAccelerator) {
-		mAccelerator = pAccelerator;
+	void SetAccelerator(const std::shared_ptr<Accelerator>& accelerator) {
+		mAccelerator = accelerator;
 	}
 
 	void AddPrimitive(std::shared_ptr<Shape> shape, std::shared_ptr<Material> material, MediumInterface mi = MediumInterface()) {

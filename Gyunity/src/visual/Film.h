@@ -35,7 +35,7 @@ public:
 	Vec3 mLowerLeft, mUpperLeft, mLowerRight, mUpperRight;
 
 public:
-	Film(int w, int h, Filter* pFilter = nullptr) 
+	Film(int w, int h, Filter* filter = nullptr) 
 		: mResX(w), mResY(h) 
 	{
 		mAspectRatio = (real)(mResX) / (real)(mResY);
@@ -43,11 +43,11 @@ public:
 		mPixelBuffer.resize((int64)mResX * mResY);
 		mImageBuffer.resize((int64)mResX * mResY);
 		mBufferLocks.resize((int64)mResX * mResY);
-		if (pFilter == nullptr) {
+		if (filter == nullptr) {
 			mFilter.reset(new BoxFilter());
 		}
 		else {
-			mFilter.reset(pFilter);
+			mFilter.reset(filter);
 		}
 
 	}

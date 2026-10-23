@@ -166,11 +166,11 @@ void TestSPPM2(int argc, char* argv[]) {
 	std::shared_ptr<Primitive> backWall = std::shared_ptr<Primitive>(new GeometryPrimitive(backWallShape, backWallMaterial));
 	scene->AddPrimitive(backWall);
 
-	//Botom
-	std::shared_ptr<Shape> botomShape = std::shared_ptr<Shape>(new Sphere(nullptr, nullptr, 1e5f, Vec3(50, 1e5, 81.6f)));
-	std::shared_ptr<Material> botomMaterial = std::shared_ptr<Material>(new DiffuseMaterial(whiteConstant));
-	std::shared_ptr<Primitive> botom = std::shared_ptr<Primitive>(new GeometryPrimitive(botomShape, botomMaterial));
-	scene->AddPrimitive(botom);
+	//Bottom
+	std::shared_ptr<Shape> bottomShape = std::shared_ptr<Shape>(new Sphere(nullptr, nullptr, 1e5f, Vec3(50, 1e5, 81.6f)));
+	std::shared_ptr<Material> bottomMaterial = std::shared_ptr<Material>(new DiffuseMaterial(whiteConstant));
+	std::shared_ptr<Primitive> bottom = std::shared_ptr<Primitive>(new GeometryPrimitive(bottomShape, bottomMaterial));
+	scene->AddPrimitive(bottom);
 
 	//Top
 	std::shared_ptr<Shape> topShape = std::shared_ptr<Shape>(new Sphere(nullptr, nullptr, 1e5f, Vec3(50, -1e5f + 81.6f, 81.6f)));
@@ -294,14 +294,14 @@ void TestSPPM3(int argc, char* argv[]) {
 	//std::shared_ptr<Primitive> backWall = std::shared_ptr<Primitive>(new GeometryPrimitive(backWallShape, backWallMaterial));
 	//scene->AddPrimitive(backWall);
 
-	////Botom
-	//Transform botomWallObjectToWorld = Transform::Translate(Vec3(50, 1e5, 81.6f));
-	//Transform botomWallWorldToObject = Inverse(botomWallObjectToWorld);
-	//std::shared_ptr<Shape> botomShape = 
-	//	std::shared_ptr<Shape>(new Sphere(&botomWallObjectToWorld, &botomWallWorldToObject, 1e5f, Vec3(0, 0, 0), true));
-	//std::shared_ptr<Material> botomMaterial = std::shared_ptr<Material>(new DiffuseMaterial(whiteConstant));
-	//std::shared_ptr<Primitive> botom = std::shared_ptr<Primitive>(new GeometryPrimitive(botomShape, botomMaterial));
-	//scene->AddPrimitive(botom);
+	////Bottom
+	//Transform bottomWallObjectToWorld = Transform::Translate(Vec3(50, 1e5, 81.6f));
+	//Transform bottomWallWorldToObject = Inverse(bottomWallObjectToWorld);
+	//std::shared_ptr<Shape> bottomShape = 
+	//	std::shared_ptr<Shape>(new Sphere(&bottomWallObjectToWorld, &bottomWallWorldToObject, 1e5f, Vec3(0, 0, 0), true));
+	//std::shared_ptr<Material> bottomMaterial = std::shared_ptr<Material>(new DiffuseMaterial(whiteConstant));
+	//std::shared_ptr<Primitive> bottom = std::shared_ptr<Primitive>(new GeometryPrimitive(bottomShape, bottomMaterial));
+	//scene->AddPrimitive(bottom);
 
 	////Top
 	//Transform topWallObjectToWorld = Transform::Translate(Vec3(50, -1e5f + 81.6f, 81.6f));

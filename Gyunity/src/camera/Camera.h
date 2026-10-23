@@ -26,18 +26,18 @@ public:
 	Transform mCameraToRaster, mRasterToCamera;
 	Transform mRasterToWorld;
 public:
-	Camera(std::shared_ptr<Film> pFilm) 
+	Camera(std::shared_ptr<Film> film) 
 	{
-		mFilm = pFilm;
+		mFilm = film;
 	}
 
-	Camera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& cz, const Vec3& cx, const Vec3& cy, real fovy, real filmDis) :
+	Camera(std::shared_ptr<Film> film, const Vec3& position, const Vec3& cz, const Vec3& cx, const Vec3& cy, real fovy, real filmDis) :
 		mPos(position), mCx(cx), mCy(cy), mCz(cz), mFovy(fovy), mFilmDistance(filmDis) {
-		mFilm = pFilm;
+		mFilm = film;
 	}
-	Camera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis) :
+	Camera(std::shared_ptr<Film> film, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis) :
 		mPos(position), mLookAt(lookAt), mUp(up), mFovy(fovy), mFilmDistance(filmDis) {
-		mFilm = pFilm;
+		mFilm = film;
 	}
 	virtual Ray GenerateRay(int pixelX, int pixelY, const Vec2 &u, real offset = 0.0) const = 0;
 	virtual Vec3 We(const Ray &ray) const = 0;
@@ -61,8 +61,8 @@ public:
 	//Transform CameraToRaster, RasterToCamera;
 	//Transform RasterToWorld;
 public:
-	ProjectiveCamera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& cz, const Vec3& cx, const Vec3& cy, real fovy, real filmDis);
-	ProjectiveCamera(std::shared_ptr<Film> pFilm, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis);
+	ProjectiveCamera(std::shared_ptr<Film> film, const Vec3& position, const Vec3& cz, const Vec3& cx, const Vec3& cy, real fovy, real filmDis);
+	ProjectiveCamera(std::shared_ptr<Film> film, const Vec3& position, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis);
 	virtual ~ProjectiveCamera() { }
 protected:
 	void Initialize();
