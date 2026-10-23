@@ -95,7 +95,7 @@ public:
 
 			Vec3 wi;
 			Vec3 f = isect.mBsdf->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()));
-			ray = Ray(isect.mPos + wi * RAY_EPS, wi);
+			ray = isect.SpawnRay(wi);
 
 			throughput = throughput * f * std::abs(Dot(wi, isect.mNormal)) / pdfDir;
 
@@ -127,7 +127,7 @@ public:
 		lightPath[0].mIsDelta = light->IsDeltaLight();
 		real cosTheta = std::abs(Dot(isect.mNormal, dir));
 		Vec3 throughput = Le * cosTheta / pdfLight / pdfA / pdfDir;
-		Ray ray(isect.mPos + dir * RAY_EPS, dir);
+		Ray ray = isect.SpawnRay(dir);
 
 		int nVertices = Trace(scene, camera, ray, arena, rand, 1, throughput, pdfDir, lightPath);
 		
@@ -184,7 +184,6 @@ public:
 		const PathVertex& vertex, int s, Vec3* pRaster, bool* inScreen) const {
 		Vec3 pos = vertex.mIsect.mPos;
 		Vec3 hitToCameraDir = camera.mPos - pos;
-		real hitToCamLength = hitToCameraDir.Length();
 		Normalize(hitToCameraDir);
 		if (Dot(camera.mCz, -1 * hitToCameraDir) < 0) {
 			*inScreen = false;
@@ -198,8 +197,8 @@ public:
 		GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 429, 640, 565, 644, ThreadIndex());
 		
 
-		//Ray ray(pos + hitToCameraDir * RAY_EPS, hitToCameraDir, hitToCamLength);
-		Ray ray(pos, hitToCameraDir, hitToCamLength);
+		Ray ray = vertex.mIsect.SpawnRay(hitToCameraDir);
+		ray.mTmax = (camera.mPos - ray.mOrig).Length();
 		if (scene.Intersect(ray))
 		{
 			*inScreen = false;
