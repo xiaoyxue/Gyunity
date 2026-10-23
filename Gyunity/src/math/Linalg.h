@@ -18,13 +18,13 @@ enum class TensorType {
 	MATRIX
 };
 
-#if defined ISE_NONE
+#if defined GYT_ISE_NONE
 constexpr IntrinsicSet defaultInstructionSet = IntrinsicSet::None;
-#elif defined ISE_SSE
+#elif defined GYT_ISE_SSE
 constexpr IntrinsicSet defaultInstructionSet = IntrinsicSet::SSE;
-#define USING_SIMD
-#elif defined ISE_AVX
-#define USING_SIMD
+#define GYT_USING_SIMD
+#elif defined GYT_ISE_AVX
+#define GYT_USING_SIMD
 #endif
 
 template<int dim, typename T, IntrinsicSet ISE, class Enable = void>
@@ -1353,7 +1353,7 @@ namespace type
 GYT_NAMESPACE_END
 
 // fmt (v9+) no longer formats types via their std::ostream operator<< implicitly.
-// Opt Vector types in explicitly so fmt::print / GYT_Print can format them.
+// Opt Vector types in explicitly so fmt::print / GYT_PRINT can format them.
 FMT_BEGIN_NAMESPACE
 template <int dim, typename T, Gyunity::IntrinsicSet ISE>
 struct formatter<Gyunity::Vector<dim, T, ISE>> : ostream_formatter {};

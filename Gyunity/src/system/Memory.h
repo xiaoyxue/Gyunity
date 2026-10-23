@@ -1,12 +1,12 @@
 #pragma once
-#define HAVE_ALIGNAS
-#define L1_CACHE_LINE_SIZE 64
+#define GYT_HAVE_ALIGNAS
+#define GYT_L1_CACHE_LINE_SIZE 64
 
 #include "common/Core.h"
 
 GYT_NAMESPACE_BEGIN
 
-#define MEMORY_POOL_ALLOC(arena, Type) new ((arena).Alloc(sizeof(Type))) Type
+#define GYT_MEMORY_POOL_ALLOC(arena, Type) new ((arena).Alloc(sizeof(Type))) Type
 
 
 void* AllocAligned(size_t size);
@@ -20,8 +20,8 @@ void FreeAligned(void*);
 
 
 class
-#ifdef HAVE_ALIGNAS
-    alignas(L1_CACHE_LINE_SIZE)
+#ifdef GYT_HAVE_ALIGNAS
+    alignas(GYT_L1_CACHE_LINE_SIZE)
 #endif
     MemoryPool {
 public:
@@ -36,7 +36,7 @@ public:
     void* Alloc(size_t nBytes) {
         // Round up _nBytes_ to minimum machine alignment
 
-#if !defined(HAVE_ALIGNOF)
+#if !defined(GYT_HAVE_ALIGNOF)
         const int align = 16;
 #else
         const int align = alignof(std::max_align_t);

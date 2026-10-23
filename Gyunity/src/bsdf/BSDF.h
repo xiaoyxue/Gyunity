@@ -551,7 +551,7 @@ public:
 		real F = mFresnel.EvaluateScalar(Dot(wo, wh));
 		real P = F;
 		*pdf = 0;
-		DEBUG_PIXEL_IF(ThreadIndex()) {
+		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
 			std::cout << "SampleF fresnel : " << F << std::endl;
 		}
 		if (rand[2] < P) {
@@ -576,7 +576,7 @@ public:
 		else 
 		{
 
-			DEBUG_PIXEL_IF(ThreadIndex()) {
+			GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
 				std::cout << "SampleF wo : " << wo << " Dot(wo, wh): " << Dot(wo, wh) << std::endl;
 			}
 

@@ -14,15 +14,15 @@ public:
 
 	void ComputeScatteringFunction(Intersection* isect, MemoryPool& arena, TransportMode mode = TransportMode::Radiance) const {
 		real alpha = GGXDistribution::RoughnessToAlpha(mRoughness->Sample(*isect));
-		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
+		isect->mBsdf = GYT_MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
 
 		Vec3 Kd = mKd->Sample(*isect);
-		isect->mBsdf->Add(MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Kd));
-		Fresnel* fresnel = MEMORY_POOL_ALLOC(arena, FresnelDielectric)(1.5f, 1.f);
+		isect->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Kd));
+		Fresnel* fresnel = GYT_MEMORY_POOL_ALLOC(arena, FresnelDielectric)(1.5f, 1.f);
 		MicrofacetDistribution* distribution =
-			MEMORY_POOL_ALLOC(arena, GGXDistribution)(alpha, alpha, true);
+			GYT_MEMORY_POOL_ALLOC(arena, GGXDistribution)(alpha, alpha, true);
 		Vec3 Ks = mKs->Sample(*isect);
-		BxDF* microfacetReflectionBSDF = MEMORY_POOL_ALLOC(arena, MicrofacetReflectionBSDF)(distribution, fresnel, Ks);
+		BxDF* microfacetReflectionBSDF = GYT_MEMORY_POOL_ALLOC(arena, MicrofacetReflectionBSDF)(distribution, fresnel, Ks);
 		isect->mBsdf->Add(microfacetReflectionBSDF);
 	}
 private:

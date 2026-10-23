@@ -58,26 +58,26 @@ public:
 		auto it = std::upper_bound(mCdf.begin(), mCdf.begin() + mCount + 1, u);
 		int offset = Clamp(int(std::distance(mCdf.begin(), it) - 1), 0, mCount - 1);
 		if (off) *off = offset;
-		ASSERT(offset < mCount);
-		ASSERT(u >= mCdf[offset] && (u < mCdf[offset + 1] || u == 1));
+		GYT_DEBUG_ASSERT(offset < mCount);
+		GYT_DEBUG_ASSERT(u >= mCdf[offset] && (u < mCdf[offset + 1] || u == 1));
 
 		// Fix the case when func ends with zeros
 		if (mCdf[offset] == mCdf[offset + 1])
 		{
-			ASSERT(u == 1.0f);
+			GYT_DEBUG_ASSERT(u == 1.0f);
 
 			do { offset--; } while (mCdf[offset] == mCdf[offset + 1] && offset > 0);
 
-			ASSERT(mCdf[offset] != mCdf[offset + 1]);
+			GYT_DEBUG_ASSERT(mCdf[offset] != mCdf[offset + 1]);
 		}
 
 		// Compute offset along CDF segment
 		real du = (u - mCdf[offset]) / (mCdf[offset + 1] - mCdf[offset]);
-		ASSERT(!std::isnan(du));
+		GYT_DEBUG_ASSERT(!std::isnan(du));
 
 		// Compute PDF for sampled offset
 		if (pdf) *pdf = mFunc[offset] / mFuncInt;
-		ASSERT(mFunc[offset] > 0);
+		GYT_DEBUG_ASSERT(mFunc[offset] > 0);
 
 		// Return $x\in{}[0,1]$ corresponding to sample
 		return (offset + du) / mCount;
@@ -90,8 +90,8 @@ public:
 		//int offset = std::max(0, int(ptr - mCdf - 1));
 		auto it = std::upper_bound(mCdf.begin(), mCdf.begin() + mCount + 1, u);
 		int offset = std::max(0, int(std::distance(mCdf.begin(), it)) - 1);
-		ASSERT(offset < mCount);
-		ASSERT(u >= mCdf[offset] && u < mCdf[offset + 1]);
+		GYT_DEBUG_ASSERT(offset < mCount);
+		GYT_DEBUG_ASSERT(u >= mCdf[offset] && u < mCdf[offset + 1]);
 		if (pdf) *pdf = mFunc[offset] / (mFuncInt * mCount);
 		return offset;
 	}

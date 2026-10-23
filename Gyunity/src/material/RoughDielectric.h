@@ -23,20 +23,20 @@ public:
 		real alphay = GGXDistribution::RoughnessToAlpha(mRoughnessY->Sample(*isect));
 		//real alphax = xRoughness->Sample(*isect);
 		//real alphay = yRoughness->Sample(*isect);
-		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
+		isect->mBsdf = GYT_MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
 
 		Vec3 kr = mKr->Sample(*isect);
 		Vec3 kt = mKt->Sample(*isect);
 		real eta = mIndex->Sample(*isect);
-		Fresnel* fresnel = MEMORY_POOL_ALLOC(arena, FresnelDielectric)(1.f, eta);
+		Fresnel* fresnel = GYT_MEMORY_POOL_ALLOC(arena, FresnelDielectric)(1.f, eta);
 		MicrofacetDistribution* distribution =
-			MEMORY_POOL_ALLOC(arena, GGXDistribution)(alphax, alphay, true);
+			GYT_MEMORY_POOL_ALLOC(arena, GGXDistribution)(alphax, alphay, true);
 
-		BxDF* microfacetReflectionBSDF = MEMORY_POOL_ALLOC(arena, MicrofacetReflectionBSDF)(distribution, fresnel, kr);
-		BxDF* microfacetTransmissionBSDF = MEMORY_POOL_ALLOC(arena, MicrofacetTransmissionBSDF)(distribution, kt, 1.0, eta, mode);
+		BxDF* microfacetReflectionBSDF = GYT_MEMORY_POOL_ALLOC(arena, MicrofacetReflectionBSDF)(distribution, fresnel, kr);
+		BxDF* microfacetTransmissionBSDF = GYT_MEMORY_POOL_ALLOC(arena, MicrofacetTransmissionBSDF)(distribution, kt, 1.0, eta, mode);
 		//isect->bsdf->Add(microfacetReflectionBSDF);
 		//isect->bsdf->Add(microfacetTransmissionBSDF);
-		BxDF* roughDielectricBSDF = MEMORY_POOL_ALLOC(arena, RoughDielectricBSDF)(distribution, kr, kt, 1.f, eta, mode);
+		BxDF* roughDielectricBSDF = GYT_MEMORY_POOL_ALLOC(arena, RoughDielectricBSDF)(distribution, kr, kt, 1.f, eta, mode);
 		isect->mBsdf->Add(roughDielectricBSDF);
 	}
 

@@ -194,8 +194,8 @@ public:
 		*pRaster = WorldToScreen(camera, pos, inScreen);
 
 		
-		//DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 428, 926, 563, 977, ThreadIndex());
-		DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 429, 640, 565, 644, ThreadIndex());
+		//GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 428, 926, 563, 977, ThreadIndex());
+		GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 429, 640, 565, 644, ThreadIndex());
 		
 
 		//Ray ray(pos + hitToCameraDir * RayEps, hitToCameraDir, hitToCamLength);
@@ -217,14 +217,14 @@ public:
 
 		//{
 		//	std::lock_guard<std::mutex> lock(mMutex);
-		//	DEBUG_PIXEL_IF(ThreadIndex()) {
-		//		GYT_Print("---------------------------------------------------s: {}--------------------------------------------------------\n", s);
-		//		GYT_Print("--------------------------------------------------Raster: {}----------------------------------------------------\n", *pRaster);
+		//	GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
+		//		GYT_PRINT("---------------------------------------------------s: {}--------------------------------------------------------\n", s);
+		//		GYT_PRINT("--------------------------------------------------Raster: {}----------------------------------------------------\n", *pRaster);
 		//		const PathVertex& v = vertex;
 		//		real cos = std::abs(Dot(wi, vertex.mIsect.mNormal));
-		//		GYT_Print("Throughput: {}, pdfFwd: {}, pos: {}, normal: {}, f: {}, We: {}, pdfW: {}, cos: {}, mOutDir: {}\n",
+		//		GYT_PRINT("Throughput: {}, pdfFwd: {}, pos: {}, normal: {}, f: {}, We: {}, pdfW: {}, cos: {}, mOutDir: {}\n",
 		//			v.mThroughput, v.mPdfFwd, v.mIsect.mPos, v.mIsect.mNormal, f, We, pdfW, cos, v.mIsect.mOutDir);
-		//		GYT_Print("L: {}\n", L);
+		//		GYT_PRINT("L: {}\n", L);
 		//	}
 		//}
 
