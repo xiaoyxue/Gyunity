@@ -149,14 +149,14 @@ public:
 
 class BxDF {
 public:
-	BxDF(ScatterEventType scatterType) : scatterEventType(scatterType){}
+	BxDF(ScatterEventType scatterType) : mScatterEventType(scatterType){}
 	virtual ~BxDF(){}
 	virtual real Pdf(const Vec3& wo, const Vec3& wi) const = 0;
 	virtual Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand = Vec3(0, 0, 0)) const = 0;
 	virtual Vec3 Evaluate(const Vec3& wo, const Vec3& wi) const = 0;
-	virtual bool IsDelta() const { return scatterEventType & BSDF_SPECULAR; }
-	virtual bool MatchesTypes(ScatterEventType flags) const { return (scatterEventType & flags) == scatterEventType; }
-	const ScatterEventType scatterEventType;
+	virtual bool IsDelta() const { return mScatterEventType & BSDF_SPECULAR; }
+	virtual bool MatchesTypes(ScatterEventType flags) const { return (mScatterEventType & flags) == mScatterEventType; }
+	const ScatterEventType mScatterEventType;
 };
 
 class DiffuseBSDF : public BxDF {
@@ -189,7 +189,7 @@ public:
 class SpecularBSDF : public BxDF {
 public:
 	SpecularBSDF(Vec3 r = Vec3(1.0, 1.0, 1.0)) 
-		: BxDF(ScatterEventType(BSDF_ALL_REFLECTION | BSDF_SPECULAR)), R(r) 
+		: BxDF(ScatterEventType(BSDF_ALL_REFLECTION | BSDF_SPECULAR)), mR(r) 
 	{
 	}
 
@@ -203,7 +203,7 @@ public:
 		*wi = Vec3(-wo.x, -wo.y, wo.z);
 		*pdf = 1.0;
 		real cosTheta = BSDFCoordinate::AbsCosTheta(*wi);
-		return R / cosTheta;
+		return mR / cosTheta;
 	}
 
 	Vec3 Evaluate(const Vec3 &wo, const Vec3 &wi) const override 
@@ -213,7 +213,7 @@ public:
 
 	inline bool IsDelta() const override { return true; }
 private:
-	Vec3 R;
+	Vec3 mR;
 };
 
 //TODO
@@ -451,13 +451,13 @@ private:
 	const real mEtaA, mEtaB;
 	const FresnelDielectric mFresnel;
 	const TransportMode mTransportMode;
-	std::unique_ptr<MicrofacetDistribution> distribution;
+	std::unique_ptr<MicrofacetDistribution> mDistribution;
 
 public:
 	RoughDielectricBSDF(MicrofacetDistribution* distribution, const Vec3 &R, const Vec3& T, real etaA, real etaB, TransportMode mode)
 		: BxDF(ScatterEventType(BSDF_REFLECTION | BSDF_TRANSMISSION | BSDF_GLOSSY)),
 		mR(R), mT(T),
-		distribution(distribution),
+		mDistribution(distribution),
 		mEtaA(etaA),
 		mEtaB(etaB),
 		mFresnel(etaA, etaB),
@@ -481,8 +481,8 @@ public:
 			// as the surface normal, so that TIR is handled correctly.
 			wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
 			real F = mFresnel.EvaluateScalar(Dot(wo, wh));
-			Vec3 D = distribution->D(wh);
-			Vec3 G = distribution->G(wo, wi, wh);
+			Vec3 D = mDistribution->D(wh);
+			Vec3 G = mDistribution->G(wo, wi, wh);
 			return mR * F * D * G / (4 * cosThetaI * cosThetaO);
 		}
 		else 
@@ -497,8 +497,8 @@ public:
 			wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
 
 			real F = mFresnel.EvaluateScalar(Dot(wo, wh));
-			real D = distribution->D(wh);
-			real G = distribution->G(wo, wi, wh);
+			real D = mDistribution->D(wh);
+			real G = mDistribution->G(wo, wi, wh);
 
 
 			real sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);
@@ -533,7 +533,7 @@ public:
 
 		wh = wh * Sgn(BSDFCoordinate::CosTheta(wh));
 
-		pdf = std::abs(distribution->Pdf(wo, wh) * dwh_dwi);
+		pdf = std::abs(mDistribution->Pdf(wo, wh) * dwh_dwi);
 
 		real F = mFresnel.EvaluateScalar(Dot(wo, wh));
 
@@ -544,8 +544,8 @@ public:
 
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 
 	{
-		Vec3 wh = distribution->Sample_wh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
-		real microfacetPdf = distribution->Pdf(wo, wh);
+		Vec3 wh = mDistribution->Sample_wh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
+		real microfacetPdf = mDistribution->Pdf(wo, wh);
 		if (microfacetPdf == 0) return Vec3();
 
 		real F = mFresnel.EvaluateScalar(Dot(wo, wh));
@@ -563,13 +563,13 @@ public:
 			
 			real dwh_dwi = 1.f / (4 * Dot(*wi, wh));
 
-			*pdf = P * std::abs(distribution->Pdf(wo, wh) * dwh_dwi);
+			*pdf = P * std::abs(mDistribution->Pdf(wo, wh) * dwh_dwi);
 
 			real cosThetaO = BSDFCoordinate::AbsCosTheta(wo), cosThetaI = BSDFCoordinate::AbsCosTheta(*wi);
 
-			Vec3 D = distribution->D(wh);
+			Vec3 D = mDistribution->D(wh);
 
-			Vec3 G = distribution->G(wo, *wi, wh);
+			Vec3 G = mDistribution->G(wo, *wi, wh);
 
 			return mR * F * D * G / (4 * cosThetaI * cosThetaO);
 		}
@@ -594,16 +594,16 @@ public:
 			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
 			real sqrtDenom = Dot(wo, wh) + eta * Dot(*wi, wh);
 			real dwh_dwi = std::abs((eta * eta * Dot(*wi, wh)) / (sqrtDenom * sqrtDenom));
-			*pdf = std::abs((1 - P) * distribution->Pdf(wo, wh) * dwh_dwi);
+			*pdf = std::abs((1 - P) * mDistribution->Pdf(wo, wh) * dwh_dwi);
 
 
 			real cosThetaO = BSDFCoordinate::CosTheta(wo);
 			real cosThetaI = BSDFCoordinate::CosTheta(*wi);
 			if (cosThetaI == 0 || cosThetaO == 0) return Vec3();
 
-			real D = distribution->D(wh);
+			real D = mDistribution->D(wh);
 
-			real G = distribution->G(wo, *wi, wh);
+			real G = mDistribution->G(wo, *wi, wh);
 
 			real factor = (mTransportMode == TransportMode::Radiance) ? (1 / eta) : 1;
 

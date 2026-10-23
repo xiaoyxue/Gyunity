@@ -20,11 +20,11 @@ public:
 	real mFovy;
 	real mFilmDistance;
 
-	Transform CameraToWorld, WorldToCamera;
-	Transform CameraToNDC, NDCToCamera;
-	Transform NDCToRaster, RasterToNDC;
-	Transform CameraToRaster, RasterToCamera;
-	Transform RasterToWorld;
+	Transform mCameraToWorld, mWorldToCamera;
+	Transform mCameraToNdc, mNdcToCamera;
+	Transform mNdcToRaster, mRasterToNdc;
+	Transform mCameraToRaster, mRasterToCamera;
+	Transform mRasterToWorld;
 public:
 	Camera(std::shared_ptr<Film> pFilm) 
 	{

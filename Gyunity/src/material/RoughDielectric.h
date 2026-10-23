@@ -14,20 +14,20 @@ public:
         const std::shared_ptr<Texture<real>>& xRoughness,
         const std::shared_ptr<Texture<real>>& yRoughness,
         const std::shared_ptr<Texture<real>>& index) :
-        Kr(Kr), Kt(Kt), xRoughness(xRoughness), yRoughness(yRoughness), index(index) {
+        mKr(Kr), mKt(Kt), mRoughnessX(xRoughness), mRoughnessY(yRoughness), mIndex(index) {
 
     }
 
 	void ComputeScatteringFunction(Intersection* isect, MemoryPool& arena, TransportMode mode = TransportMode::Radiance) const {
-		real alphax = GGXDistribution::RoughnessToAlpha(xRoughness->Sample(*isect));
-		real alphay = GGXDistribution::RoughnessToAlpha(yRoughness->Sample(*isect));
+		real alphax = GGXDistribution::RoughnessToAlpha(mRoughnessX->Sample(*isect));
+		real alphay = GGXDistribution::RoughnessToAlpha(mRoughnessY->Sample(*isect));
 		//real alphax = xRoughness->Sample(*isect);
 		//real alphay = yRoughness->Sample(*isect);
 		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
 
-		Vec3 kr = Kr->Sample(*isect);
-		Vec3 kt = Kt->Sample(*isect);
-		real eta = index->Sample(*isect);
+		Vec3 kr = mKr->Sample(*isect);
+		Vec3 kt = mKt->Sample(*isect);
+		real eta = mIndex->Sample(*isect);
 		Fresnel* fresnel = MEMORY_POOL_ALLOC(arena, FresnelDielectric)(1.f, eta);
 		MicrofacetDistribution* distribution =
 			MEMORY_POOL_ALLOC(arena, GGXDistribution)(alphax, alphay, true);
@@ -41,9 +41,9 @@ public:
 	}
 
 private:
-    std::shared_ptr<Texture<Vec3>> Kr, Kt;
-    std::shared_ptr<Texture<real>> xRoughness, yRoughness;
-    std::shared_ptr<Texture<real>> index;
+    std::shared_ptr<Texture<Vec3>> mKr, mKt;
+    std::shared_ptr<Texture<real>> mRoughnessX, mRoughnessY;
+    std::shared_ptr<Texture<real>> mIndex;
 };
 
 GYT_NAMESPACE_END

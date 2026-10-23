@@ -395,20 +395,20 @@ void TestProjection() {
 	{
 		std::cout << "raster to ndc:" << std::endl;
 		Vec3 rasterPoint(0, 0, 0.5);
-		Vec3 rasterToNDC = camera->RasterToNDC(rasterPoint);
+		Vec3 rasterToNDC = camera->mRasterToNdc(rasterPoint);
 		std::cout << rasterToNDC << std::endl;
 	}
 
 	//ndc to camera
 	{
 		std::cout << "ndc to camera:" << std::endl;
-		Vec3 cameraPoint = camera->WorldToCamera(camera->GetFilm()->mUpperLeft);
+		Vec3 cameraPoint = camera->mWorldToCamera(camera->GetFilm()->mUpperLeft);
 		//cameraPoint.z = 1000;
 		std::cout << cameraPoint << std::endl;
-		Vec3 cameraToNDC = camera->CameraToNDC(cameraPoint);
+		Vec3 cameraToNDC = camera->mCameraToNdc(cameraPoint);
 		std::cout << cameraToNDC << std::endl;
 
-		Vec3 ndcToCamera = camera->NDCToCamera(Vec3(-1, 1, -1));
+		Vec3 ndcToCamera = camera->mNdcToCamera(Vec3(-1, 1, -1));
 		std::cout << ndcToCamera << std::endl;
 	}
 

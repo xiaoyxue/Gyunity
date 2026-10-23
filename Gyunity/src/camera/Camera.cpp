@@ -9,7 +9,7 @@ void ProjectiveCamera::Initialize() {
 	mCx = -Cross(mUp, mCz).Norm();
 	mCy = -Cross(mCz, mCx);
 
-	CameraToWorld =
+	mCameraToWorld =
 		Transform(mCx.x, mCy.x, mCz.x, mPos.x,
 			mCx.y, mCy.y, mCz.y, mPos.y,
 			mCx.z, mCy.z, mCz.z, mPos.z,
@@ -18,24 +18,24 @@ void ProjectiveCamera::Initialize() {
 	//Should get the same result
 	//CameraToWorld = Transform::LookAt(mPos, mLookAt, mUp);
 
-	WorldToCamera = Inverse(CameraToWorld);
+	mWorldToCamera = Inverse(mCameraToWorld);
 
-	CameraToNDC = Transform::Perspective(mFovy, mFilm->mAspectRatio, mFilmDistance, mFilmDistance, 100000.f);
+	mCameraToNdc = Transform::Perspective(mFovy, mFilm->mAspectRatio, mFilmDistance, mFilmDistance, 100000.f);
 
-	NDCToCamera = Inverse(CameraToNDC);
+	mNdcToCamera = Inverse(mCameraToNdc);
 
-	NDCToRaster =
+	mNdcToRaster =
 		Transform::Scale(real(mFilm->mResX), real(mFilm->mResY), 1) *
 		Transform::Scale(0.5f, -0.5f, 1) *
 		Transform::Translate(Vec3(1, -1, 0));
 
-	RasterToNDC = Inverse(NDCToRaster);
+	mRasterToNdc = Inverse(mNdcToRaster);
 
-	CameraToRaster = NDCToRaster * CameraToNDC;
+	mCameraToRaster = mNdcToRaster * mCameraToNdc;
 
-	RasterToCamera = NDCToCamera * RasterToNDC;
+	mRasterToCamera = mNdcToCamera * mRasterToNdc;
 
-	RasterToWorld = CameraToWorld * RasterToCamera;
+	mRasterToWorld = mCameraToWorld * mRasterToCamera;
 
 
 	

@@ -9,7 +9,7 @@ GYT_NAMESPACE_BEGIN
 class GlassMaterial : public Material {
 public:
 	GlassMaterial(const std::shared_ptr<Texture<Vec3>>& kr, const std::shared_ptr<Texture<Vec3>> &kt, real n1 = 1.f, real n2 = 1.5f)
-		: kr(kr), kt(kt), eta1(n1), eta2(n2)
+		: mKr(kr), mKt(kt), mEta1(n1), mEta2(n2)
 	{
 
 	}
@@ -30,11 +30,11 @@ public:
 	void ComputeScatteringFunction(Intersection* isect, MemoryPool &arena,
 		TransportMode mode = TransportMode::Radiance) const {
 		isect->mBsdf = MEMORY_POOL_ALLOC(arena, BSDF)(*isect);
-		isect->mBsdf->Add(MEMORY_POOL_ALLOC(arena, TransmissionBSDF)(kt->Sample(*isect), kr->Sample(*isect), mode, eta1, eta2));
+		isect->mBsdf->Add(MEMORY_POOL_ALLOC(arena, TransmissionBSDF)(mKt->Sample(*isect), mKr->Sample(*isect), mode, mEta1, mEta2));
 	}
 private:
-	std::shared_ptr<Texture<Vec3>> kr, kt;
-	real eta1, eta2;
+	std::shared_ptr<Texture<Vec3>> mKr, mKt;
+	real mEta1, mEta2;
 };
 
 GYT_NAMESPACE_END

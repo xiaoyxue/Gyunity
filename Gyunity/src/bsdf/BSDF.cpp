@@ -52,7 +52,7 @@ Vec3 FrConductor(real cosThetaI, const Vec3& etai, const Vec3& etat, const Vec3&
 
 void BSDF::Add(BxDF* bsdf) {
 	mBxdfs[mBsdfCnt++] = bsdf;
-	mIsDelta |= (bsdf->scatterEventType & BSDF_SPECULAR);
+	mIsDelta |= (bsdf->mScatterEventType & BSDF_SPECULAR);
 }
 
 real BSDF::Pdf(const Vec3& wo, const Vec3& wi, ScatterEventType flag) const {
@@ -93,8 +93,8 @@ Vec3 BSDF::Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand, Scatter
 		bool reflect = Dot(*wi, mGeometryNormal) * Dot(wo, mGeometryNormal) > 0;
 
 		for (int i = 0; i < mBsdfCnt; ++i) {
-			if((reflect && (mBxdfs[i]->scatterEventType & BSDF_REFLECTION)) ||
-				(!reflect && (mBxdfs[i]->scatterEventType & BSDF_TRANSMISSION)))
+			if((reflect && (mBxdfs[i]->mScatterEventType & BSDF_REFLECTION)) ||
+				(!reflect && (mBxdfs[i]->mScatterEventType & BSDF_TRANSMISSION)))
 				if(i != sampleIndex) f += mBxdfs[i]->Evaluate(woLocal, wiLocal);
 				//f += bxdfs[i]->f(woLocal, wiLocal);
 		}
@@ -110,8 +110,8 @@ Vec3 BSDF::Evaluate(const Vec3& wo, const Vec3& wi, ScatterEventType flags) cons
 	bool reflect = Dot(wi, mGeometryNormal) * Dot(wo, mGeometryNormal) > 0;
 
 	for (int i = 0; i < mBsdfCnt; ++i) {
-		if ((reflect && (mBxdfs[i]->scatterEventType & BSDF_REFLECTION)) ||
-			(!reflect && (mBxdfs[i]->scatterEventType & BSDF_TRANSMISSION)))
+		if ((reflect && (mBxdfs[i]->mScatterEventType & BSDF_REFLECTION)) ||
+			(!reflect && (mBxdfs[i]->mScatterEventType & BSDF_TRANSMISSION)))
 			f += mBxdfs[i]->Evaluate(woLocal, wiLocal);
 	}
 
@@ -122,7 +122,7 @@ Vec3 BSDF::Evaluate(const Vec3& wo, const Vec3& wi, ScatterEventType flags) cons
 bool BSDF::MatchScatterType(ScatterEventType flag) const {
 	int ret = 0;
 	for (int i = 0; i < mBsdfCnt; ++i) {
-		ret |= (mBxdfs[i]->scatterEventType & flag);
+		ret |= (mBxdfs[i]->mScatterEventType & flag);
 	}
 	return ret > 0;
 }
