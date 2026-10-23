@@ -277,29 +277,29 @@ public:
 		return Vec3();
 	}
 
-	real Fresnell(const Vec3 &wo, const Vec3 &td, const Vec3 &n, const Vec3 &nl) const 
+	real Fresnell(const Vec3 &wo, const Vec3 &td, const Vec3 &normal, const Vec3 &absNormal) const 
 	{
-		bool into = (n.Dot(nl) > 0.0);
-		real nnt = into ? mNc / mNt : mNt / mNc, ddn = (-1 * wo).Dot(nl);//, cos2t;
+		bool into = (normal.Dot(absNormal) > 0.0);
+		real nnt = into ? mNc / mNt : mNt / mNc, ddn = (-1 * wo).Dot(absNormal);//, cos2t;
 		//cos2t = 1 - nnt * nnt*(1 - ddn * ddn);
-		real a = mNt - mNc, b = mNt + mNc, R0 = a * a / (b * b), c = 1 - (into ? -ddn : td.Dot(n));
+		real a = mNt - mNc, b = mNt + mNc, R0 = a * a / (b * b), c = 1 - (into ? -ddn : td.Dot(normal));
 		real Re = R0 + (1 - R0) * c * c* c * c * c;
 		return Re;
 	}
 
 	inline bool IsDelta() const override { return true; }
 
-	static bool Refract(const Vec3 &wi, const Vec3 &n, real eta, Vec3 *wt) 
+	static bool Refract(const Vec3 &wi, const Vec3 &normal, real eta, Vec3 *wt) 
 	{
 		// Compute $\cos \theta_\roman{t}$ using Snell's law
-		real cosThetaI = n.Dot(wi);
+		real cosThetaI = normal.Dot(wi);
 		real sin2ThetaI = std::max(real(0), real(1 - cosThetaI * cosThetaI));
 		real sin2ThetaT = eta * eta * sin2ThetaI;
 
 		// Handle total internal reflection for transmission
 		if (sin2ThetaT >= 1) return false;
 		real cosThetaT = std::sqrt(1 - sin2ThetaT);
-		*wt = eta * (-1 * wi) + (eta * cosThetaI - cosThetaT) * Vec3(n);
+		*wt = eta * (-1 * wi) + (eta * cosThetaI - cosThetaT) * Vec3(normal);
 		return true;
 	}
 };

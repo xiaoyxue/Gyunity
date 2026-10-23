@@ -40,8 +40,8 @@ public:
 			return 0;
 		}
 		QueryIntersectionInfo(ray, &lightPoint);
-		Vec3 d = lightPoint.mPos - isect.mPos;
-		real pdf = d.Dot(d) / (std::abs(lightPoint.mNormal.Dot(-1 * wi)) * Area());
+		Vec3 toLight = lightPoint.mPos - isect.mPos;
+		real pdf = toLight.Dot(toLight) / (std::abs(lightPoint.mNormal.Dot(-1 * wi)) * Area());
 		if (std::isinf(pdf)) return 0;
 		return pdf;
 	}

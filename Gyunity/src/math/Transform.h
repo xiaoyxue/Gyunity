@@ -70,21 +70,21 @@ public:
 		return mInvMat;
 	}
 
-	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &p) const;
-	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &p, Vector3 *pError) const;
-	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &p, const Vector3 &pError, Vector3 *absError) const;
+	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &pos) const;
+	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &pos, Vector3 *pError) const;
+	GYT_FORCE_INLINE Vector3 operator()(const Vector3 &pos, const Vector3 &pError, Vector3 *absError) const;
 	GYT_FORCE_INLINE Ray operator()(const Ray &r, Vector3 *originError, Vector3 *directionError) const;
 	GYT_FORCE_INLINE Ray operator()(const Ray &r) const;
 	GYT_FORCE_INLINE Transform operator*(const Transform &t) const;
 	GYT_FORCE_INLINE AABB operator()(const AABB &bound) const;
 	GYT_FORCE_INLINE Intersection operator()(const Intersection& isect) const;
-	GYT_FORCE_INLINE Vector3 TransformPoint(const Vector3 &p) const;
-	GYT_FORCE_INLINE Vector3 TransformPoint(const Vector3 &p, Vector3 *pError) const;
-	GYT_FORCE_INLINE Vector3 TransformPoint(const Vector3 &p, const Vector3 &pError, Vector3 *absError) const;
+	GYT_FORCE_INLINE Vector3 TransformPoint(const Vector3 &pos) const;
+	GYT_FORCE_INLINE Vector3 TransformPoint(const Vector3 &pos, Vector3 *pError) const;
+	GYT_FORCE_INLINE Vector3 TransformPoint(const Vector3 &pos, const Vector3 &pError, Vector3 *absError) const;
 	GYT_FORCE_INLINE Vector3 TransformVector(const Vector3 &v) const;
 	GYT_FORCE_INLINE Vector3 TransformVector(const Vector3 &v, Vector3 *absError) const;
 	GYT_FORCE_INLINE Vector3 TransformVector(const Vector3 &v, const Vector3 &vError, Vector3 *absError) const;
-	GYT_FORCE_INLINE Vector3 TransformNormal(const Vector3 &n) const;
+	GYT_FORCE_INLINE Vector3 TransformNormal(const Vector3 &normal) const;
 	GYT_FORCE_INLINE Ray TransformRay(const Ray &r, Vector3 *originError, Vector3 *directionError) const;
 	GYT_FORCE_INLINE Ray TransformRay(const Ray &r) const;
 	GYT_FORCE_INLINE AABB TransformAABB(const AABB &bound) const;
@@ -103,8 +103,8 @@ private:
 	Matrix4 mMat, mInvMat;
 };
 
-GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &p) const {
-	Vector4 pp(p.x, p.y, p.z, 1.0);
+GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &pos) const {
+	Vector4 pp(pos.x, pos.y, pos.z, 1.0);
 	pp = mMat * pp;
 	if(pp.w == 1 || pp.w == 0) {
 		return Vector3(pp.x, pp.y, pp.z);
@@ -114,15 +114,15 @@ GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &p) const {
 	}
 }
 
-GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &p, Vector3 *pError) const {
-	Vector4 pp(p.x, p.y, p.z, 1.0);
+GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &pos, Vector3 *pError) const {
+	Vector4 pp(pos.x, pos.y, pos.z, 1.0);
 	pp = mMat * pp;
-	real xAbsSum = (std::abs(mMat(0, 0) * p.x) + std::abs(mMat(0, 1) * p.y) +
-		std::abs(mMat(0, 2) * p.z) + std::abs(mMat(0, 3)));
-	real yAbsSum = (std::abs(mMat(1, 0) * p.x) + std::abs(mMat(1, 1) * p.y) +
-		std::abs(mMat(1, 2) * p.z) + std::abs(mMat(1, 3)));
-	real zAbsSum = (std::abs(mMat(2, 0) * p.x) + std::abs(mMat(2, 1) * p.y) +
-		std::abs(mMat(2, 2) * p.z) + std::abs(mMat(2, 3)));
+	real xAbsSum = (std::abs(mMat(0, 0) * pos.x) + std::abs(mMat(0, 1) * pos.y) +
+		std::abs(mMat(0, 2) * pos.z) + std::abs(mMat(0, 3)));
+	real yAbsSum = (std::abs(mMat(1, 0) * pos.x) + std::abs(mMat(1, 1) * pos.y) +
+		std::abs(mMat(1, 2) * pos.z) + std::abs(mMat(1, 3)));
+	real zAbsSum = (std::abs(mMat(2, 0) * pos.x) + std::abs(mMat(2, 1) * pos.y) +
+		std::abs(mMat(2, 2) * pos.z) + std::abs(mMat(2, 3)));
 	*pError = Gamma(3) * Vector3(xAbsSum, yAbsSum, zAbsSum);
 	if(pp.w == 1 || pp.w == 0) {
 		return Vector3(pp.x, pp.y, pp.z);
@@ -132,10 +132,10 @@ GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &p, Vector3 *pError
 	}
 }
 
-GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &p, const Vector3 &pError,
+GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &pos, const Vector3 &pError,
 	Vector3 *absError) const {
-	real x = p.x, y = p.y, z = p.z;
-	Vector4 pp(p.x, p.y, p.z, 1.0);
+	real x = pos.x, y = pos.y, z = pos.z;
+	Vector4 pp(pos.x, pos.y, pos.z, 1.0);
 	pp = mMat * pp;
 	absError->x =
 		(Gamma(3) + (real)1) *
@@ -216,34 +216,34 @@ GYT_FORCE_INLINE Vector3 Transform::TransformVector(const Vector3 &v, const Vect
 
 GYT_FORCE_INLINE Ray Transform::operator()(const Ray& r) const {
 	Vector3 originError;
-	Vector3 o = (*this)(r.mOrig, &originError);
-	Vector3 d = this->TransformVector(r.mDir);
+	Vector3 orig = (*this)(r.mOrig, &originError);
+	Vector3 dir = this->TransformVector(r.mDir);
 
-	real length2 = d.Length2();
+	real length2 = dir.Length2();
 	real tMax = r.mTmax;
 	if(length2 > 0) {
-		real dt = Dot(Abs(d), originError) / length2;
-		o += d * dt;
+		real dt = Dot(Abs(dir), originError) / length2;
+		orig += dir * dt;
 		tMax -= dt;
 	}
-	return Ray(o, d, tMax);
+	return Ray(orig, dir, tMax);
 }
 
 GYT_FORCE_INLINE Ray Transform::operator()(const Ray &r, Vector3 *originError, Vector3 *directionError) const {
-	Vector3 o = (*this)(r.mOrig, originError);
-	Vector3 d = this->TransformVector(r.mDir, directionError);
+	Vector3 orig = (*this)(r.mOrig, originError);
+	Vector3 dir = this->TransformVector(r.mDir, directionError);
 	real tMax = r.mTmax;
-	real length2 = d.Length2();
+	real length2 = dir.Length2();
 	if (length2 > 0) {
-		real dt = Dot(Abs(d), *originError) / length2;
-		o += d * dt;
+		real dt = Dot(Abs(dir), *originError) / length2;
+		orig += dir * dt;
 		//        tMax -= dt;
 	}
-	return Ray(o, d, tMax);
+	return Ray(orig, dir, tMax);
 }
 
-GYT_FORCE_INLINE Vector3 Transform::TransformNormal(const Vector3 &n) const {
-	Vector4 nn(n.x, n.y, n.z, 0);
+GYT_FORCE_INLINE Vector3 Transform::TransformNormal(const Vector3 &normal) const {
+	Vector4 nn(normal.x, normal.y, normal.z, 0);
 	nn = mInvMat.Transpose() * nn;
 	return Vector3(nn.x, nn.y, nn.z);
 }
@@ -266,17 +266,17 @@ GYT_FORCE_INLINE AABB Transform::operator()(const AABB &bound) const {
 	return ret;
 }
 
-GYT_FORCE_INLINE Vector3 Transform::TransformPoint(const Vector3 &p) const {
-	return (*this)(p);
+GYT_FORCE_INLINE Vector3 Transform::TransformPoint(const Vector3 &pos) const {
+	return (*this)(pos);
 }
 
-GYT_FORCE_INLINE Vector3 Transform::TransformPoint(const Vector3 &p, Vector3 *pError) const {
-	return (*this)(p, pError);
+GYT_FORCE_INLINE Vector3 Transform::TransformPoint(const Vector3 &pos, Vector3 *pError) const {
+	return (*this)(pos, pError);
 }
 
-GYT_FORCE_INLINE Vector3 Transform::TransformPoint(const Vector3 &p, const Vector3 &pError,
+GYT_FORCE_INLINE Vector3 Transform::TransformPoint(const Vector3 &pos, const Vector3 &pError,
 	Vector3 *absError) const {
-	return (*this)(p, pError, absError);
+	return (*this)(pos, pError, absError);
 }
 
 GYT_FORCE_INLINE Ray Transform::TransformRay(const Ray &r, Vector3 *originError, Vector3 *directionError) const {

@@ -5,7 +5,7 @@ GYT_NAMESPACE_BEGIN
 
 class PointLight : public Light {
 public:
-	PointLight(const Vec3& p, const Vec3& intensity) : mLightPosition(p), mI(intensity) {}
+	PointLight(const Vec3& pos, const Vec3& intensity) : mLightPosition(pos), mI(intensity) {}
 
 	Vec3 Emission() const override { return mI; }
 

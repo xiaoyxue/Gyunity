@@ -26,14 +26,14 @@ struct AABB {
 	}
 	bool Intersect(const Ray& ray, real* hitt0, real* hitt1) const;
 
-	GYT_FORCE_INLINE void Fit(const Vec3 &p)
+	GYT_FORCE_INLINE void Fit(const Vec3 &pos)
 	{
-		if (p.x < minPoint.x) minPoint.x = p.x; // min
-		if (p.y < minPoint.y) minPoint.y = p.y; // min
-		if (p.z < minPoint.z) minPoint.z = p.z; // min
-		maxPoint.x = std::max(p.x, maxPoint.x);
-		maxPoint.y = std::max(p.y, maxPoint.y);
-		maxPoint.z = std::max(p.z, maxPoint.z);
+		if (pos.x < minPoint.x) minPoint.x = pos.x; // min
+		if (pos.y < minPoint.y) minPoint.y = pos.y; // min
+		if (pos.z < minPoint.z) minPoint.z = pos.z; // min
+		maxPoint.x = std::max(pos.x, maxPoint.x);
+		maxPoint.y = std::max(pos.y, maxPoint.y);
+		maxPoint.z = std::max(pos.z, maxPoint.z);
 	}
 	GYT_FORCE_INLINE void Reset() {
 		minPoint = Vec3(INF, INF, INF);
@@ -43,20 +43,20 @@ struct AABB {
 	GYT_FORCE_INLINE Vec3 Diagonal() const { return maxPoint - minPoint; }
 
 	GYT_FORCE_INLINE real SurfaceArea() const {
-		Vec3 d = Diagonal();
-		return 2 * (d.x * d.y + d.x * d.z + d.y * d.z);
+		Vec3 diagonal = Diagonal();
+		return 2 * (diagonal.x * diagonal.y + diagonal.x * diagonal.z + diagonal.y * diagonal.z);
 	}
 
 	GYT_FORCE_INLINE real Volume() const {
-		Vec3 d = Diagonal();
-		return d.x * d.y * d.z;
+		Vec3 diagonal = Diagonal();
+		return diagonal.x * diagonal.y * diagonal.z;
 	}
 
 	GYT_FORCE_INLINE real MaximumExtent() const {
-		Vec3 d = Diagonal();
-		if (d.x > d.y&& d.x > d.z)
+		Vec3 diagonal = Diagonal();
+		if (diagonal.x > diagonal.y&& diagonal.x > diagonal.z)
 			return 0;
-		else if (d.y > d.z)
+		else if (diagonal.y > diagonal.z)
 			return 1;
 		else
 			return 2;
@@ -78,7 +78,7 @@ GYT_FORCE_INLINE std::ostream& operator<<(std::ostream &os, const AABB &aabb) {
 }
 
 AABB Union(const AABB& a, const AABB& b);
-AABB Union(const AABB& a, const Vec3& p);
+AABB Union(const AABB& a, const Vec3& pos);
 
 using BBox = AABB;
 
