@@ -47,7 +47,7 @@ GYT_FORCE_INLINE real NextFloatDown(real v) {
 }
 
 GYT_FORCE_INLINE real Gamma(int n) {
-	return (n * MachineEps) / (1 - n * MachineEps);
+	return (n * MACHINE_EPS) / (1 - n * MACHINE_EPS);
 }
 
 

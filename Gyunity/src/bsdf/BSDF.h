@@ -118,8 +118,8 @@ class BSDF {
 protected:
 	Vec3 mGeometryNormal, mNormal;
 	Frame mFrame;
-	static constexpr int MaxBSDFs = 8;
-	BxDF* mBxdfs[MaxBSDFs];
+	static constexpr int MAX_BSDFS = 8;
+	BxDF* mBxdfs[MAX_BSDFS];
 	int mBsdfCnt = 0;
 	bool mIsDelta = false;
 public:

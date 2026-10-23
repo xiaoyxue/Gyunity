@@ -5,7 +5,7 @@
 GYT_NAMESPACE_BEGIN
 
 Vec3 HomogeneousMedium::Tr(const Ray& ray, StateSequence& rand) const {
-    return Exp(-mSigmaT * std::min(ray.mTmax * ray.mDir.Length(), MaxReal));
+    return Exp(-mSigmaT * std::min(ray.mTmax * ray.mDir.Length(), MAX_REAL));
 }
 
 
@@ -21,7 +21,7 @@ Vec3 HomogeneousMedium::Sample(const Ray& ray, StateSequence& rand, MemoryPool& 
         *mi = MediumIntersection(ray(t), -ray.mDir, this, GYT_MEMORY_POOL_ALLOC(arena, HenyeyGreenstein)(mG));
 
     // Compute the transmittance and sampling density
-    Vec3 Tr = Exp(-mSigmaT * std::min(t, MaxReal) * ray.mDir.Length());
+    Vec3 Tr = Exp(-mSigmaT * std::min(t, MAX_REAL) * ray.mDir.Length());
 
     // Return weighting factor for scattering from homogeneous medium
     Vec3 density = sampledMedium ? (mSigmaT * Tr) : Tr;
@@ -38,7 +38,7 @@ Vec3 HomogeneousMedium::Sample(const Ray& ray, StateSequence& rand, MemoryPool& 
 Vec3 HomogeneousMedium::EquiAngularSampling(
     const Ray& ray, StateSequence& rand, MemoryPool& arena,
     const Intersection& lightPoint, MediumIntersection* mi) const {
-    //real rrProb = Exp(-sigma_t * std::min(ray.tMax * ray.d.Length(), MaxReal)).x;
+    //real rrProb = Exp(-sigma_t * std::min(ray.tMax * ray.d.Length(), MAX_REAL)).x;
     //real rrProb = Tr(ray, rand).x;
     //if (rand() > rrProb) return 1.f / (1 - rrProb);
     real tMax = 3;

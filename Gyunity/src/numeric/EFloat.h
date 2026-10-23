@@ -97,8 +97,8 @@ public:
 		if (ef.mLow < 0 && ef.mHigh > 0) {
 			// Bah. The interval we're dividing by straddles zero, so just
 			// return an interval of everything.
-			r.mLow = -Infinity;
-			r.mHigh = Infinity;
+			r.mLow = -INF;
+			r.mHigh = INF;
 		}
 		else {
 			real div[4] = {
@@ -237,7 +237,7 @@ GYT_FORCE_INLINE bool Quadratic(EReal A, EReal B, EReal C, EReal *t0, EReal *t1)
 	if (discrim < 0.) return false;
 	double rootDiscrim = std::sqrt(discrim);
 
-	EReal floatRootDiscrim(rootDiscrim, MachineEps * rootDiscrim);
+	EReal floatRootDiscrim(rootDiscrim, MACHINE_EPS * rootDiscrim);
 
 	// Compute quadratic _t_ values
 	EReal q;

@@ -95,7 +95,7 @@ public:
 
 			Vec3 wi;
 			Vec3 f = isect.mBsdf->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()));
-			ray = Ray(isect.mPos + wi * RayEps, wi);
+			ray = Ray(isect.mPos + wi * RAY_EPS, wi);
 
 			throughput = throughput * f * std::abs(Dot(wi, isect.mNormal)) / pdfDir;
 
@@ -127,7 +127,7 @@ public:
 		lightPath[0].mIsDelta = light->IsDeltaLight();
 		real cosTheta = std::abs(Dot(isect.mNormal, dir));
 		Vec3 throughput = Le * cosTheta / pdfLight / pdfA / pdfDir;
-		Ray ray(isect.mPos + dir * RayEps, dir);
+		Ray ray(isect.mPos + dir * RAY_EPS, dir);
 
 		int nVertices = Trace(scene, camera, ray, arena, rand, 1, throughput, pdfDir, lightPath);
 		
@@ -198,7 +198,7 @@ public:
 		GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 429, 640, 565, 644, ThreadIndex());
 		
 
-		//Ray ray(pos + hitToCameraDir * RayEps, hitToCameraDir, hitToCamLength);
+		//Ray ray(pos + hitToCameraDir * RAY_EPS, hitToCameraDir, hitToCamLength);
 		Ray ray(pos, hitToCameraDir, hitToCamLength);
 		if (scene.Intersect(ray))
 		{

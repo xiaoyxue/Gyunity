@@ -67,7 +67,7 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			importance = f * std::abs(wi.Dot(isect.mNormal)) * importance / pdf;
 			//r.o = isect.hit + wi * rayeps + wi.Dot(isect.n) * nEps * isect.n;
 			//r.d = wi;
-			//r = Ray(isect.hit, wi, Inf, isect.rayEps);
+			//r = Ray(isect.hit, wi, INF, isect.rayEps);
 			r = isect.SpawnRay(wi);
 			deltaBoundEvent = true;
 		}
@@ -170,7 +170,7 @@ void SPPM::GenerateRadiusImage(const Scene& scene, const Camera &camera) {
 	int resX = camera.GetFilm()->mResX;
 	int resY = camera.GetFilm()->mResY;
 	std::vector<Vec3> radImg((int64)resX * resY);
-	real minRadius2 = Inf, maxRadius2 = 0.0, avgRadius = 0.0;
+	real minRadius2 = INF, maxRadius2 = 0.0, avgRadius = 0.0;
 	for (int y = 0; y < resY; ++y) {
 		for (int x = 0; x < resX; ++x) {
 			int index = x + y * resX;
@@ -228,7 +228,7 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 				mHashGrid.AddPoint(std::move(std::pair<Vec3, HPoint*>(hp.pos, &hp)), std::sqrt(mRadius2[i]));
 			}
 		}
-		mHashGrid.BuildHashGrid(std::sqrt(maxRadius2) + Eps);
+		mHashGrid.BuildHashGrid(std::sqrt(maxRadius2) + EPS);
 
 		//Trace photon
 		ParallelFor((int64)0, mPhotonsPerRenderStage, [&](int64 j) {
