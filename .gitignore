@@ -20,3 +20,4 @@ Gyunity_exe/*.bmp
 Gyunity_exe/*.png
 Gyunity_exe/Result/
 packages/
+.worktree/

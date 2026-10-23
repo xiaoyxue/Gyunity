@@ -1,0 +1,3 @@
+# Local test output. Keep this folder, ignore everything in it.
+*
+!.gitignore
