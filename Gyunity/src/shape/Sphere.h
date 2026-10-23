@@ -48,9 +48,9 @@ public:
 		}
 
 		tHit = (-vd - det) / d2;
-		if (tHit < r.mTMin || tHit > r.mTMax) {
+		if (tHit < r.mTmin || tHit > r.mTmax) {
 			tHit = (-vd + det) / d2;
-			if (tHit < r.mTMin || tHit > r.mTMax) {
+			if (tHit < r.mTmin || tHit > r.mTmax) {
 				return false;
 			}
 		}
@@ -145,9 +145,9 @@ public:
 			det = sqrt(det);
 		}
 		tHit = (-vd - det) / d2;
-		if (tHit < r.mTMin || tHit > r.mTMax) {
+		if (tHit < r.mTmin || tHit > r.mTmax) {
 			tHit = (-vd + det) / d2;
-			if (tHit < r.mTMin || tHit > r.mTMax) {
+			if (tHit < r.mTmin || tHit > r.mTmax) {
 				return false;
 			}
 		}

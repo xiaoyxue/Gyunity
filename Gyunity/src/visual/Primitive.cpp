@@ -5,7 +5,7 @@ GYT_NAMESPACE_BEGIN
 bool Primitive::Intersect(const Ray& r, Intersection* isect) const {
 	real t;
 	if (mpShape->Intersect(r, isect, &t)) {
-		r.mTMax = t;
+		r.mTmax = t;
 		isect->mpPrimitive = this;
 		isect->mPrimId = this->mPrimId;
 		if (mMediumInterface.IsMediumTransition())

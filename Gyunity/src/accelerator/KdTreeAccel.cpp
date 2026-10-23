@@ -241,7 +241,7 @@ bool KdTreeAccel::Intersect(const Ray& ray, Intersection* isect) const {
 	const KdAccelNode* node = &nodes[0];
 	while (node != nullptr) {
 		// Bail out if we found a hit closer than the current node
-		if (ray.mTMax < tMin) break;
+		if (ray.mTmax < tMin) break;
 		if (!node->IsLeaf()) {
 			// Process kd-tree interior node
 

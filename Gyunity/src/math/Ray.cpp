@@ -3,7 +3,7 @@
 GYT_NAMESPACE_BEGIN
 
 std::ostream& operator<<(std::ostream &os, const Ray &ray) {
-	os << "ray: " << "orig: " << ray.mOrig << " dir: " << ray.mDir << " tMin: " << ray.mTMin << " tMax: " << ray.mTMax;
+	os << "ray: " << "orig: " << ray.mOrig << " dir: " << ray.mDir << " tMin: " << ray.mTmin << " tMax: " << ray.mTmax;
 	return os;
 }
 

@@ -220,7 +220,7 @@ GYT_FORCE_INLINE Ray Transform::operator()(const Ray& r) const {
 	Vector3 d = this->TransformVector(r.mDir);
 
 	real length2 = d.Length2();
-	real tMax = r.mTMax, tMin = r.mTMin;
+	real tMax = r.mTmax, tMin = r.mTmin;
 	if(length2 > 0) {
 		real dt = Dot(Abs(d), oError) / length2;
 		o += d * dt;
@@ -233,8 +233,8 @@ GYT_FORCE_INLINE Ray Transform::operator()(const Ray& r) const {
 GYT_FORCE_INLINE Ray Transform::operator()(const Ray &r, Vector3 *oError, Vector3 *dError) const {
 	Vector3 o = (*this)(r.mOrig, oError);
 	Vector3 d = this->TransformVector(r.mDir, dError);
-	real tMax = r.mTMax;
-	real tMin = r.mTMin;
+	real tMax = r.mTmax;
+	real tMin = r.mTmin;
 	real length2 = d.Length2();
 	if (length2 > 0) {
 		real dt = Dot(Abs(d), *oError) / length2;

@@ -4,7 +4,7 @@
 GYT_NAMESPACE_BEGIN
 
 bool AABB::Intersect(const Ray& ray, real* hitt0, real* hitt1) const {
-	real t0 = 0, t1 = ray.mTMax;
+	real t0 = 0, t1 = ray.mTmax;
 	for (int i = 0; i < 3; ++i) {
 		// Update interval for _i_th bounding box slab
 		real invRayDir = 1 / ray.mDir[i];
