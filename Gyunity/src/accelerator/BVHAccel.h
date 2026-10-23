@@ -63,7 +63,7 @@ private:
 
     // BVHAccel Private Data
     uint32_t mMaxPrimsInNode;
-    enum SplitMethod { SPLIT_MIDDLE, SPLIT_EQUAL_COUNTS, SPLIT_SAH };
+    enum class SplitMethod { Middle, EqualCounts, Sah };
     SplitMethod mSplitMethod;
     std::vector<std::shared_ptr<Primitive> > mPrimitives;
     LinearBVHNode* mNodes;
