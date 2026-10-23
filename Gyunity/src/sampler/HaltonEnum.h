@@ -19,7 +19,7 @@ public:
 	HaltonEnum(uint32 width, uint32 height);
 
 	// Return how many samples per pixel can be queried before sample index overflow occurs.
-	uint64 get_max_samples_per_pixel() const { return ~0ull / m_increment; }
+	uint64 get_max_samples_per_pixel() const { return ~0ull / mIncrement; }
 
 	// Return the index of the i-th sample falling into the given pixel (x, y) within the
 	// previously given resolution bounds. i must be smaller than the value returned by
@@ -49,38 +49,38 @@ private:
 	static uint64 halton2_inverse(uint64 i, uint32 digits);
 	static uint64 halton3_inverse(uint64 i, uint32 digits);
 
-	uint32 m_p2; // Smallest integer with 2^m_p2 >= width.
-	uint32 m_p3; // Smallest integer with 3^m_p3 >= height.
-	uint32 m_x; // 3^m_p3 * ((2^m_p2)^(-1) mod 3^m_p3).
-	uint32 m_y; // 2^m_p2 * ((3^m_p3)^(-1) mod 2^m_p2).
-	real m_scale_x; // 2^m_p2.
-	real m_scale_y; // 3^m_p3.
-	uint64 m_increment; // Product of prime powers, i.e. m_res2 * m_res3.
+	uint32 mP2; // Smallest integer with 2^mP2 >= width.
+	uint32 mP3; // Smallest integer with 3^mP3 >= height.
+	uint32 mX; // 3^mP3 * ((2^mP2)^(-1) mod 3^mP3).
+	uint32 mY; // 2^mP2 * ((3^mP3)^(-1) mod 2^mP2).
+	real mScaleX; // 2^mP2.
+	real mScaleY; // 3^mP3.
+	uint64 mIncrement; // Product of prime powers, i.e. mRes2 * mRes3.
 };
 
 inline HaltonEnum::HaltonEnum(uint32 width, uint32 height) : SamplerEnum(width, height)
 {
 	assert(width && height);
 
-	m_p2 = 0;
+	mP2 = 0;
 	uint32 w = 1;
-	while (w < width) // Find 2^m_p2 >= width.
+	while (w < width) // Find 2^mP2 >= width.
 	{
-		++m_p2;
+		++mP2;
 		w *= 2;
 	}
-	m_scale_x = real(w);
+	mScaleX = real(w);
 
-	m_p3 = 0;
+	mP3 = 0;
 	uint32 h = 1;
-	while (h < height) // Find 3^m_p3 >= height.
+	while (h < height) // Find 3^mP3 >= height.
 	{
-		++m_p3;
+		++mP3;
 		h *= 3;
 	}
-	m_scale_y = real(h);
+	mScaleY = real(h);
 
-	m_increment = w * h; // There's exactly one sample per pixel.
+	mIncrement = w * h; // There's exactly one sample per pixel.
 
 	// Determine the multiplicative inverses.
 	const std::pair<int, int> inv = extended_euclid(static_cast<int>(h), static_cast<int>(w));
@@ -88,28 +88,28 @@ inline HaltonEnum::HaltonEnum(uint32 width, uint32 height) : SamplerEnum(width, 
 	const uint32 inv3 = (inv.second < 0) ? (inv.second + h) : (inv.second % h);
 	assert((!inv2 && w == 1) || (inv2 > 0 && (h * inv2) % w == 1));
 	assert((!inv3 && h == 1) || (inv3 > 0 && (w * inv3) % h == 1));
-	m_x = h * inv2;
-	m_y = w * inv3;
+	mX = h * inv2;
+	mY = w * inv3;
 }
 
 inline uint64 HaltonEnum::get_index(const uint64 i, const uint32 x, const uint32 y) const
 {
 	// Promote to 64 bits to avoid overflow.
-	const uint64 hx = halton2_inverse(x, m_p2);
-	const uint64 hy = halton3_inverse(y, m_p3);
+	const uint64 hx = halton2_inverse(x, mP2);
+	const uint64 hy = halton3_inverse(y, mP3);
 	// Apply Chinese remainder theorem.
-	const uint64  offset = (hx * m_x + hy * m_y) % m_increment;
-	return offset + i * m_increment;
+	const uint64  offset = (hx * mX + hy * mY) % mIncrement;
+	return offset + i * mIncrement;
 }
 
 inline real HaltonEnum::scale_x(const real x) const
 {
-	return x * m_scale_x;
+	return x * mScaleX;
 }
 
 inline real HaltonEnum::scale_y(const real y) const
 {
-	return y * m_scale_y;
+	return y * mScaleY;
 }
 
 inline std::pair<int, int> HaltonEnum::extended_euclid(const int a, const int b)
