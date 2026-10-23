@@ -7,18 +7,18 @@ GYT_NAMESPACE_BEGIN
 class Filter
 {
 protected:
-	real radius;
+	real mRadius;
 
 public:
 	Filter(const real rad)
-		: radius(rad)
+		: mRadius(rad)
 	{
 	}
 	virtual ~Filter() {}
 
 	const real GetRadius() const
 	{
-		return radius;
+		return mRadius;
 	}
 	virtual real Evaluate(const real dx, const real dy) const = 0;
 };
@@ -41,17 +41,17 @@ public:
 class GaussianFilter : public Filter
 {
 private:
-	real stdDev;
-	real alpha;
-	real expR;
+	real mStdDev;
+	real mAlpha;
+	real mExpR;
 
 public:
 	GaussianFilter(const real stdDiv = 0.5f)
 		: Filter(4 * stdDiv)
-		, stdDev(stdDiv)
+		, mStdDev(stdDiv)
 	{
-		alpha = -1.0f / (2.0f * stdDev * stdDev);
-		expR = std::exp(alpha * radius * radius);
+		mAlpha = -1.0f / (2.0f * mStdDev * mStdDev);
+		mExpR = std::exp(mAlpha * mRadius * mRadius);
 	}
 
 public:
@@ -59,7 +59,7 @@ public:
 	{
 		auto Gaussian = [this](const real d)
 		{
-			return std::max(0.0f, std::exp(alpha * d * d) - expR);
+			return std::max(0.0f, std::exp(mAlpha * d * d) - mExpR);
 		};
 
 		return Gaussian(dx) * Gaussian(dy);

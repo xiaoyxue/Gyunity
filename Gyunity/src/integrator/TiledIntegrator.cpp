@@ -33,7 +33,7 @@ void TiledIntegrator::Render(const Scene& scene, const Camera& camera) {
 			for (int x = tile.minX; x < tile.maxX; ++x) {
 				//std::cout << y << " " << x << std::endl;
 				//DEBUG_PIXEL(500, 850, ThreadIndex());
-				for (int s = 0; s < spp; ++s) {
+				for (int s = 0; s < mSpp; ++s) {
 					//DEBUG_PIXEL_IF(ThreadIndex()) {
 					//	std::cout << s << std::endl;
 					//}

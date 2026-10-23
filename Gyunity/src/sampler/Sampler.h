@@ -67,24 +67,24 @@ public:
 
 class RandomSampler : public Sampler {
 public:
-	RandomSampler(int seed) : rng(seed), pbrtRng(seed) {
+	RandomSampler(int seed) : mRng(seed), mPbrtRng(seed) {
 
 	}
 
 	real Sample(unsigned int d, unsigned long long i) {
-		return uniform(rng);
+		return mUniform(mRng);
 		//return pbrtRng.UniformFloat();
 	}
 
 	std::shared_ptr<Sampler> Clone(uint32 seed) override {
 		RandomSampler* newSampler = new RandomSampler(seed);
-		newSampler->pbrtRng.SetSequence(seed);
+		newSampler->mPbrtRng.SetSequence(seed);
 		return std::shared_ptr<Sampler>(newSampler);
 	}
 private:
-	std::mt19937_64 rng;
-	std::uniform_real_distribution<real> uniform;
-	RNG pbrtRng;
+	std::mt19937_64 mRng;
+	std::uniform_real_distribution<real> mUniform;
+	RNG mPbrtRng;
 };
 
 class PrimeList {
@@ -92,22 +92,22 @@ public:
 	PrimeList() {
 		for (int i = 2; i <= 10000; i++) {
 			if (IsPrime(i)) {
-				primes.push_back(i);
+				mPrimes.push_back(i);
 			}
 		}
-		ASSERT(primes.size() == 1229);
+		ASSERT(mPrimes.size() == 1229);
 	}
 
 	int GetPrime(int i) {
-		return primes[i];
+		return mPrimes[i];
 	}
 
 	int GetPrimesNum() {
-		return (int)primes.size();
+		return (int)mPrimes.size();
 	}
 
 private:
-	std::vector<int> primes;
+	std::vector<int> mPrimes;
 };
 
 

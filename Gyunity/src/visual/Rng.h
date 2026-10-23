@@ -74,7 +74,7 @@ class RNG {
                            begin + UniformUInt32((uint32_t)(it - begin + 1)));
     }
     void Advance(int64_t idelta) {
-        uint64 cur_mult = PCG32_MULT, cur_plus = inc, acc_mult = 1u,
+        uint64 cur_mult = PCG32_MULT, cur_plus = mInc, acc_mult = 1u,
                  acc_plus = 0u, delta = (uint64)idelta;
         while (delta > 0) {
             if (delta & 1) {
@@ -85,13 +85,13 @@ class RNG {
             cur_mult *= cur_mult;
             delta /= 2;
         }
-        state = acc_mult * state + acc_plus;
+        mState = acc_mult * mState + acc_plus;
     }
     int64_t operator-(const RNG &other) const {
-        uint64 cur_mult = PCG32_MULT, cur_plus = inc, cur_state = other.state,
+        uint64 cur_mult = PCG32_MULT, cur_plus = mInc, cur_state = other.mState,
                  the_bit = 1u, distance = 0u;
-        while (state != cur_state) {
-            if ((state & the_bit) != (cur_state & the_bit)) {
+        while (mState != cur_state) {
+            if ((mState & the_bit) != (cur_state & the_bit)) {
                 cur_state = cur_state * cur_mult + cur_plus;
                 distance |= the_bit;
             }
@@ -104,22 +104,22 @@ class RNG {
 
   private:
     // RNG Private Data
-    uint64 state, inc;
+    uint64 mState, mInc;
 };
 
 // RNG Inline Method Definitions
-inline RNG::RNG() : state(PCG32_DEFAULT_STATE), inc(PCG32_DEFAULT_STREAM) {}
+inline RNG::RNG() : mState(PCG32_DEFAULT_STATE), mInc(PCG32_DEFAULT_STREAM) {}
 inline void RNG::SetSequence(uint64 initseq) {
-    state = 0u;
-    inc = (initseq << 1u) | 1u;
+    mState = 0u;
+    mInc = (initseq << 1u) | 1u;
     UniformUInt32();
-    state += PCG32_DEFAULT_STATE;
+    mState += PCG32_DEFAULT_STATE;
     UniformUInt32();
 }
 
 inline uint32_t RNG::UniformUInt32() {
-    uint64 oldstate = state;
-    state = oldstate * PCG32_MULT + inc;
+    uint64 oldstate = mState;
+    mState = oldstate * PCG32_MULT + mInc;
     uint32_t xorshifted = (uint32_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
     uint32_t rot = (uint32_t)(oldstate >> 59u);
     return (xorshifted >> rot) | (xorshifted << ((~rot + 1u) & 31));

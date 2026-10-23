@@ -10,79 +10,79 @@ class EReal {
 public:
 	// EReal Public Methods
 	EReal() {}
-	EReal(real v, real err = 0.0) : v(v) {
+	EReal(real v, real err = 0.0) : mV(v) {
 		if (err == 0.)
-			low = high = v;
+			mLow = mHigh = v;
 		else {
 			// Compute conservative bounds by rounding the endpoints away
 			// from the middle. Note that this will be over-conservative in
 			// cases where v-err or v+err are exactly representable in
 			// floating-point, but it's probably not worth the trouble of
 			// checking this case.
-			low = NextFloatDown(v - err);
-			high = NextFloatUp(v + err);
+			mLow = NextFloatDown(v - err);
+			mHigh = NextFloatUp(v + err);
 		}
 		// Store high precision reference value in _EReal_
 #ifndef NDEBUG
-		vPrecise = v;
+		mVPrecise = v;
 		//Check();
 #endif  // NDEBUG
 		}
 #ifndef NDEBUG
 	EReal(real v, long double lD, real err) : EReal(v, err) {
-		vPrecise = lD;
+		mVPrecise = lD;
 	}
 #endif  // DEBUG
 
 	EReal operator+(EReal ef) const {
 		EReal r;
-		r.v = v + ef.v;
+		r.mV = mV + ef.mV;
 #ifndef NDEBUG
-		r.vPrecise = vPrecise + ef.vPrecise;
+		r.mVPrecise = mVPrecise + ef.mVPrecise;
 #endif  // DEBUG
 		// Interval arithemetic addition, with the result rounded away from
 		// the value r.v in order to be conservative.
-		r.low = NextFloatDown(LowerBound() + ef.LowerBound());
-		r.high = NextFloatUp(UpperBound() + ef.UpperBound());
+		r.mLow = NextFloatDown(LowerBound() + ef.LowerBound());
+		r.mHigh = NextFloatUp(UpperBound() + ef.UpperBound());
 		//r.Check();
 		return r;
 	}
 
-	explicit operator real() const { return v; }
-	real GetAbsoluteError() const { return high - low; }
-	real UpperBound() const { return high; }
-	real LowerBound() const { return low; }
+	explicit operator real() const { return mV; }
+	real GetAbsoluteError() const { return mHigh - mLow; }
+	real UpperBound() const { return mHigh; }
+	real LowerBound() const { return mLow; }
 
 #ifndef NDEBUG
 	real GetRelativeError() const {
-		return std::abs((vPrecise - v) / vPrecise);
+		return std::abs((mVPrecise - mV) / mVPrecise);
 	}
-	long double PreciseValue() const { return vPrecise; }
+	long double PreciseValue() const { return mVPrecise; }
 #endif
 
 	EReal operator-(EReal ef) const {
 		EReal r;
-		r.v = v - ef.v;
+		r.mV = mV - ef.mV;
 #ifndef NDEBUG
-		r.vPrecise = vPrecise - ef.vPrecise;
+		r.mVPrecise = mVPrecise - ef.mVPrecise;
 #endif
-		r.low = NextFloatDown(LowerBound() - ef.UpperBound());
-		r.high = NextFloatUp(UpperBound() - ef.LowerBound());
+		r.mLow = NextFloatDown(LowerBound() - ef.UpperBound());
+		r.mHigh = NextFloatUp(UpperBound() - ef.LowerBound());
 		//r.Check();
 		return r;
 	}
 	EReal operator*(EReal ef) const {
 		EReal r;
-		r.v = v * ef.v;
+		r.mV = mV * ef.mV;
 #ifndef NDEBUG
-		r.vPrecise = vPrecise * ef.vPrecise;
+		r.mVPrecise = mVPrecise * ef.mVPrecise;
 #endif
 		real prod[4] = {
 			LowerBound() * ef.LowerBound(), UpperBound() * ef.LowerBound(),
 			LowerBound() * ef.UpperBound(), UpperBound() * ef.UpperBound() };
-		r.low = NextFloatDown(
+		r.mLow = NextFloatDown(
 			std::min(std::min(prod[0], prod[1]), std::min(prod[2], prod[3])));
-		r.high = NextFloatUp(
+		r.mHigh = NextFloatUp(
 			std::max(std::max(prod[0], prod[1]), std::max(prod[2], prod[3])));
 		//r.Check();
 		return r;
@@ -90,23 +90,23 @@ public:
 
 	EReal operator/(EReal ef) const {
 		EReal r;
-		r.v = v / ef.v;
+		r.mV = mV / ef.mV;
 #ifndef NDEBUG
-		r.vPrecise = vPrecise / ef.vPrecise;
+		r.mVPrecise = mVPrecise / ef.mVPrecise;
 #endif
-		if (ef.low < 0 && ef.high > 0) {
+		if (ef.mLow < 0 && ef.mHigh > 0) {
 			// Bah. The interval we're dividing by straddles zero, so just
 			// return an interval of everything.
-			r.low = -Infinity;
-			r.high = Infinity;
+			r.mLow = -Infinity;
+			r.mHigh = Infinity;
 		}
 		else {
 			real div[4] = {
 				LowerBound() / ef.LowerBound(), UpperBound() / ef.LowerBound(),
 				LowerBound() / ef.UpperBound(), UpperBound() / ef.UpperBound() };
-			r.low = NextFloatDown(
+			r.mLow = NextFloatDown(
 				std::min(std::min(div[0], div[1]), std::min(div[2], div[3])));
-			r.high = NextFloatUp(
+			r.mHigh = NextFloatUp(
 				std::max(std::max(div[0], div[1]), std::max(div[2], div[3])));
 		}
 		//r.Check();
@@ -114,16 +114,16 @@ public:
 	}
 	EReal operator-() const {
 		EReal r;
-		r.v = -v;
+		r.mV = -mV;
 #ifndef NDEBUG
-		r.vPrecise = -vPrecise;
+		r.mVPrecise = -mVPrecise;
 #endif
-		r.low = -high;
-		r.high = -low;
+		r.mLow = -mHigh;
+		r.mHigh = -mLow;
 		//r.Check();
 		return r;
 	}
-	GYT_FORCE_INLINE bool operator==(EReal fe) const { return v == fe.v; }
+	GYT_FORCE_INLINE bool operator==(EReal fe) const { return mV == fe.mV; }
 //	FORCE_INLINE void Check() const {
 //		if (!std::isinf(low) && !std::isnan(low) && !std::isinf(high) &&
 //			!std::isnan(high))
@@ -137,32 +137,32 @@ public:
 //	}
 	EReal(const EReal &ef) {
 		//ef.Check();
-		v = ef.v;
-		low = ef.low;
-		high = ef.high;
+		mV = ef.mV;
+		mLow = ef.mLow;
+		mHigh = ef.mHigh;
 #ifndef NDEBUG
-		vPrecise = ef.vPrecise;
+		mVPrecise = ef.mVPrecise;
 #endif
 	}
 	EReal &operator=(const EReal &ef) {
 		//ef.Check();
 		if (&ef != this) {
-			v = ef.v;
-			low = ef.low;
-			high = ef.high;
+			mV = ef.mV;
+			mLow = ef.mLow;
+			mHigh = ef.mHigh;
 #ifndef NDEBUG
-			vPrecise = ef.vPrecise;
+			mVPrecise = ef.mVPrecise;
 #endif
 		}
 		return *this;
 	}
 
 	friend std::ostream &operator<<(std::ostream &os, const EReal &ef) {
-		printf("v=%f (%a) - [%f, %f]",	ef.v, ef.v, ef.low, ef.high);
+		printf("v=%f (%a) - [%f, %f]",	ef.mV, ef.mV, ef.mLow, ef.mHigh);
 		//os << "v=" << ef.v << " - "
 		//	<< "[" << ef.low << ", " << ef.high << "] ";
 #ifndef NDEBUG
-		printf(", precise=%.30Lf", ef.vPrecise);
+		printf(", precise=%.30Lf", ef.mVPrecise);
 		//os << ", precise=" << ef.vPrecise;
 #endif // !NDEBUG
 		return os;
@@ -170,9 +170,9 @@ public:
 
 private:
 	// EReal Private Data
-	real v, low, high;
+	real mV, mLow, mHigh;
 #ifndef NDEBUG
-	long double vPrecise;
+	long double mVPrecise;
 #endif  // NDEBUG
 	friend GYT_FORCE_INLINE EReal Sqrt(EReal fe);
 	friend GYT_FORCE_INLINE EReal Abs(EReal fe);
@@ -190,41 +190,41 @@ GYT_FORCE_INLINE EReal operator-(float f, EReal fe) { return EReal(f) - fe; }
 
 GYT_FORCE_INLINE EReal Sqrt(EReal fe) {
 	EReal r;
-	r.v = std::sqrt(fe.v);
+	r.mV = std::sqrt(fe.mV);
 #ifndef NDEBUG
-	r.vPrecise = std::sqrt(fe.vPrecise);
+	r.mVPrecise = std::sqrt(fe.mVPrecise);
 #endif
-	r.low = NextFloatDown(std::sqrt(fe.low));
-	r.high = NextFloatUp(std::sqrt(fe.high));
+	r.mLow = NextFloatDown(std::sqrt(fe.mLow));
+	r.mHigh = NextFloatUp(std::sqrt(fe.mHigh));
 	//r.Check();
 	return r;
 }
 
 GYT_FORCE_INLINE EReal Abs(EReal fe) {
-	if (fe.low >= 0)
+	if (fe.mLow >= 0)
 		// The entire interval is greater than zero, so we're all set.
 		return fe;
-	else if (fe.high <= 0) {
+	else if (fe.mHigh <= 0) {
 		// The entire interval is less than zero.
 		EReal r;
-		r.v = -fe.v;
+		r.mV = -fe.mV;
 #ifndef NDEBUG
-		r.vPrecise = -fe.vPrecise;
+		r.mVPrecise = -fe.mVPrecise;
 #endif
-		r.low = -fe.high;
-		r.high = -fe.low;
+		r.mLow = -fe.mHigh;
+		r.mHigh = -fe.mLow;
 		//r.Check();
 		return r;
 	}
 	else {
 		// The interval straddles zero.
 		EReal r;
-		r.v = std::abs(fe.v);
+		r.mV = std::abs(fe.mV);
 #ifndef NDEBUG
-		r.vPrecise = std::abs(fe.vPrecise);
+		r.mVPrecise = std::abs(fe.mVPrecise);
 #endif
-		r.low = 0;
-		r.high = std::max(-fe.low, fe.high);
+		r.mLow = 0;
+		r.mHigh = std::max(-fe.mLow, fe.mHigh);
 		//r.Check();
 		return r;
 	}
@@ -233,7 +233,7 @@ GYT_FORCE_INLINE EReal Abs(EReal fe) {
 GYT_FORCE_INLINE bool Quadratic(EReal A, EReal B, EReal C, EReal *t0, EReal *t1);
 GYT_FORCE_INLINE bool Quadratic(EReal A, EReal B, EReal C, EReal *t0, EReal *t1) {
 	// Find quadratic discriminant
-	double discrim = (double)B.v * (double)B.v - 4. * (double)A.v * (double)C.v;
+	double discrim = (double)B.mV * (double)B.mV - 4. * (double)A.mV * (double)C.mV;
 	if (discrim < 0.) return false;
 	double rootDiscrim = std::sqrt(discrim);
 
