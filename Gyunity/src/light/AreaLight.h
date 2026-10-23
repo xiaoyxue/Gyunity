@@ -18,14 +18,14 @@ public:
 	AreaLight(const std::shared_ptr<Shape>& pShape) : mShape(pShape) {}
 	AreaLight(const std::shared_ptr<Shape>& pShape, const Vec3 & Lemit) : mShape(pShape), mLemit(Lemit) {}
 
-	Vec3 Sample_Li(const Intersection &isect, Vec3 *wi, real *pdf, Intersection *lightPoint, const Vec2 &u) const override 
+	Vec3 SampleLi(const Intersection &isect, Vec3 *wi, real *pdf, Intersection *lightPoint, const Vec2 &u) const override 
 	{
 		*lightPoint = mShape->Sample(isect, pdf, u);
 		*wi = (lightPoint->mPos - isect.mPos).Norm();
 		return Emission(*lightPoint, -*wi);
 	}
 
-	real Pdf_Li(const Intersection &isect, const Vec3 &wi) const override 
+	real PdfLi(const Intersection &isect, const Vec3 &wi) const override 
 	{
 		return mShape->Pdf(isect, wi);
 	}

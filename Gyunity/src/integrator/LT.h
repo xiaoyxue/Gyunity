@@ -211,7 +211,7 @@ public:
 
 		real pdfW;
 		Vec3 wi;
-		Vec3 We = camera.Sample_Wi(vertex.mIsect, &pdfW, &wi, Vec3(rand(), rand(), rand()));
+		Vec3 We = camera.SampleWi(vertex.mIsect, &pdfW, &wi, Vec3(rand(), rand(), rand()));
 		Vec3 f = vertex.mIsect.mBsdf->Evaluate(vertex.mIsect.mOutDir, wi);
 		Vec3 L = We * f * vertex.mThroughput * std::abs(Dot(wi, vertex.mIsect.mNormal)) / pdfW;
 

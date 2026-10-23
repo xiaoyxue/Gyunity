@@ -16,7 +16,7 @@ public:
 	virtual real G(const Vec3& wo, const Vec3& wi, const Vec3 &wh) const {
 		return 1 / (1 + Lambda(wo) + Lambda(wi));
 	}
-	virtual Vec3 Sample_wh(const Vec3& wo, const Vec2& u) const = 0;
+	virtual Vec3 SampleWh(const Vec3& wo, const Vec2& u) const = 0;
 	virtual real Pdf(const Vec3& wo, const Vec3& wh) const;
 
 protected:
@@ -43,7 +43,7 @@ public:
 	real D(const Vec3& wh) const;
 	real G1(const Vec3& v, const Vec3 &wh) const;
 	real G(const Vec3& wo, const Vec3& wi, const Vec3 &wh) const override;
-	Vec3 Sample_wh(const Vec3& wo, const Vec2& u) const;
+	Vec3 SampleWh(const Vec3& wo, const Vec2& u) const;
 	real Lambda(const Vec3& w) const;
 
 	static inline real RoughnessToAlpha(real roughness) {

@@ -4,7 +4,7 @@
 
 GYT_NAMESPACE_BEGIN
 
-inline uint32 reverse_bit32(uint32 n) {
+inline uint32 ReverseBit32(uint32 n) {
 	n = (n << 16) | (n >> 16);
 	n = ((n & 0x00ff00ff) << 8) | ((n & 0xff00ff00) >> 8);
 	n = ((n & 0x0f0f0f0f) << 4) | ((n & 0xf0f0f0f0) >> 4);
@@ -13,13 +13,13 @@ inline uint32 reverse_bit32(uint32 n) {
 	return n;
 }
 
-inline uint64 reverse_bit64(uint64 n) {
-	uint64 n0 = reverse_bit32((uint32)n);
-	uint64 n1 = reverse_bit32((uint32)(n >> 32));
+inline uint64 ReverseBit64(uint64 n) {
+	uint64 n0 = ReverseBit32((uint32)n);
+	uint64 n1 = ReverseBit32((uint32)(n >> 32));
 	return (n0 << 32) | n1;
 }
 
-inline uint64 van_der_corput(uint64 bits, const uint64 scramble)
+inline uint64 VanDerCorput(uint64 bits, const uint64 scramble)
 {
     bits = (bits << 32) | (bits >> 32);
     bits = ((bits & 0x0000ffff0000ffffULL) << 16) |

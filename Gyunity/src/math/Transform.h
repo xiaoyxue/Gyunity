@@ -123,7 +123,7 @@ GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &p, Vector3 *pError
 		std::abs(mMat(1, 2) * p.z) + std::abs(mMat(1, 3)));
 	real zAbsSum = (std::abs(mMat(2, 0) * p.x) + std::abs(mMat(2, 1) * p.y) +
 		std::abs(mMat(2, 2) * p.z) + std::abs(mMat(2, 3)));
-	*pError = gamma(3) * Vector3(xAbsSum, yAbsSum, zAbsSum);
+	*pError = Gamma(3) * Vector3(xAbsSum, yAbsSum, zAbsSum);
 	if(pp.w == 1 || pp.w == 0) {
 		return Vector3(pp.x, pp.y, pp.z);
 	}
@@ -138,22 +138,22 @@ GYT_FORCE_INLINE Vector3 Transform::operator()(const Vector3 &p, const Vector3 &
 	Vector4 pp(p.x, p.y, p.z, 1.0);
 	pp = mMat * pp;
 	absError->x =
-		(gamma(3) + (real)1) *
+		(Gamma(3) + (real)1) *
 		(std::abs(mMat(0, 0)) * pError.x + std::abs(mMat(0, 1)) * pError.y +
 			std::abs(mMat(0, 2)) * pError.z) +
-		gamma(3) * (std::abs(mMat(0, 0) * x) + std::abs(mMat(0, 1) * y) +
+		Gamma(3) * (std::abs(mMat(0, 0) * x) + std::abs(mMat(0, 1) * y) +
 			std::abs(mMat(0, 2) * z) + std::abs(mMat(0, 3)));
 	absError->y =
-		(gamma(3) + (real)1) *
+		(Gamma(3) + (real)1) *
 		(std::abs(mMat(1, 0)) * pError.x + std::abs(mMat(1, 1)) * pError.y +
 			std::abs(mMat(1, 2)) * pError.z) +
-		gamma(3) * (std::abs(mMat(1, 0) * x) + std::abs(mMat(1, 1) * y) +
+		Gamma(3) * (std::abs(mMat(1, 0) * x) + std::abs(mMat(1, 1) * y) +
 			std::abs(mMat(1, 2) * z) + std::abs(mMat(1, 3)));
 	absError->z =
-		(gamma(3) + (real)1) *
+		(Gamma(3) + (real)1) *
 		(std::abs(mMat(2, 0)) * pError.x + std::abs(mMat(2, 1)) * pError.y +
 			std::abs(mMat(2, 2)) * pError.z) +
-		gamma(3) * (std::abs(mMat(2, 0) * x) + std::abs(mMat(2, 1) * y) +
+		Gamma(3) * (std::abs(mMat(2, 0) * x) + std::abs(mMat(2, 1) * y) +
 			std::abs(mMat(2, 2) * z) + std::abs(mMat(2, 3)));
 
 	if (pp.w == 1.f || pp.w == 0) {
@@ -175,13 +175,13 @@ GYT_FORCE_INLINE Vector3 Transform::TransformVector(const Vector3 &v) const {
 GYT_FORCE_INLINE Vector3 Transform::TransformVector(const Vector3 &v, Vector3 *absError) const {
 	real x = v.x, y = v.y, z = v.z;
 	absError->x =
-		gamma(3) * (std::abs(mMat(0, 0) * v.x) + std::abs(mMat(0, 1) * v.y) +
+		Gamma(3) * (std::abs(mMat(0, 0) * v.x) + std::abs(mMat(0, 1) * v.y) +
 			std::abs(mMat(0, 2) * v.z));
 	absError->y =
-		gamma(3) * (std::abs(mMat(1, 0) * v.x) + std::abs(mMat(1, 1) * v.y) +
+		Gamma(3) * (std::abs(mMat(1, 0) * v.x) + std::abs(mMat(1, 1) * v.y) +
 			std::abs(mMat(1, 2) * v.z));
 	absError->z =
-		gamma(3) * (std::abs(mMat(2, 0) * v.x) + std::abs(mMat(2, 1) * v.y) +
+		Gamma(3) * (std::abs(mMat(2, 0) * v.x) + std::abs(mMat(2, 1) * v.y) +
 			std::abs(mMat(2, 2) * v.z));
 	Vector4 vv(v.x, v.y, v.z, 0);
 	vv = mMat * vv;
@@ -192,22 +192,22 @@ GYT_FORCE_INLINE Vector3 Transform::TransformVector(const Vector3 &v, const Vect
 	Vector3 *absError) const {
 	real x = v.x, y = v.y, z = v.z;
 	absError->x =
-		(gamma(3) + (real)1) *
+		(Gamma(3) + (real)1) *
 		(std::abs(mMat(0, 0)) * vError.x + std::abs(mMat(0, 1)) * vError.y +
 			std::abs(mMat(0, 2)) * vError.z) +
-		gamma(3) * (std::abs(mMat(0, 0) * v.x) + std::abs(mMat(0, 1) * v.y) +
+		Gamma(3) * (std::abs(mMat(0, 0) * v.x) + std::abs(mMat(0, 1) * v.y) +
 			std::abs(mMat(0, 2) * v.z));
 	absError->y =
-		(gamma(3) + (real)1) *
+		(Gamma(3) + (real)1) *
 		(std::abs(mMat(1, 0)) * vError.x + std::abs(mMat(1, 1)) * vError.y +
 			std::abs(mMat(1, 2)) * vError.z) +
-		gamma(3) * (std::abs(mMat(1, 0) * v.x) + std::abs(mMat(1, 1) * v.y) +
+		Gamma(3) * (std::abs(mMat(1, 0) * v.x) + std::abs(mMat(1, 1) * v.y) +
 			std::abs(mMat(1, 2) * v.z));
 	absError->z =
-		(gamma(3) + (real)1) *
+		(Gamma(3) + (real)1) *
 		(std::abs(mMat(2, 0)) * vError.x + std::abs(mMat(2, 1)) * vError.y +
 			std::abs(mMat(2, 2)) * vError.z) +
-		gamma(3) * (std::abs(mMat(2, 0) * v.x) + std::abs(mMat(2, 1) * v.y) +
+		Gamma(3) * (std::abs(mMat(2, 0) * v.x) + std::abs(mMat(2, 1) * v.y) +
 			std::abs(mMat(2, 2) * v.z));
 	Vector4 vv(v.x, v.y, v.z, 0);
 	vv = mMat * vv;

@@ -38,7 +38,7 @@ public:
 		return Vec3(value, value, value);
 	}
 
-	Vec3 Sample_Wi(const Intersection &isect, real *pdfW, Vec3 *wi, Vec3 u) const override 
+	Vec3 SampleWi(const Intersection &isect, real *pdfW, Vec3 *wi, Vec3 u) const override 
 	{
 		*wi = (mPos - isect.mPos);
 		real distance = wi->Length();

@@ -36,7 +36,7 @@ public:
 
 	static void WriteBmpFile(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY, real gamma = 2.2);
 
-	static int toInt(real x, real gamma = 2.2f);
+	static int ToInt(real x, real gamma = 2.2f);
 
 	static std::vector<Vec3> LoadImage(const std::string& filename, int resX, int resY);
 

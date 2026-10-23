@@ -3,7 +3,7 @@
 
 GYT_NAMESPACE_BEGIN
 
-Vec3 PointLight::Sample_Li(const Intersection& isect, Vec3* wi, real* pdf, Intersection* lightPoint, const Vec2& u) const 
+Vec3 PointLight::SampleLi(const Intersection& isect, Vec3* wi, real* pdf, Intersection* lightPoint, const Vec2& u) const 
 {
 	lightPoint->mPos = mLightPosition;
 	Vec3 dir = isect.mPos - mLightPosition;

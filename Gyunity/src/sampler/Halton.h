@@ -1441,7 +1441,7 @@ inline void HaltonSampler::init_tables(const std::vector<std::vector<uint16> >& 
 inline float HaltonSampler::halton2(uint64 index) const
 {
 
-	index = reverse_bit64(index);
+	index = ReverseBit64(index);
 	union Result
 	{
 		uint64 u;

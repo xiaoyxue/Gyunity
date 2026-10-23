@@ -21,7 +21,7 @@ public:
 	void SetPrimitives(const std::vector<std::shared_ptr<Primitive>>& a) override {}
 private:
 	// KdTreeAccel Private Methods
-	void buildTree(int nodeNum, const AABB& bounds,
+	void BuildTree(int nodeNum, const AABB& bounds,
 		const std::vector<AABB>& primBounds, int* primNums,
 		int nprims, int depth,
 		const std::unique_ptr<BoundEdge[]> edges[3], int* prims0,

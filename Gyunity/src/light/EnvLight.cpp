@@ -39,7 +39,7 @@ Vec3 EnvironmentLight::SampleLight(Intersection* isect, Vec3* dir, real* pdfPos,
 }
 
 
-Vec3 EnvironmentLight::Sample_Li(const Intersection& isect, Vec3* wi, real* pdf,
+Vec3 EnvironmentLight::SampleLi(const Intersection& isect, Vec3* wi, real* pdf,
 	Intersection* lightPoint, const Vec2& u) const 
 {
 	Vec3 sampledDir;
@@ -50,7 +50,7 @@ Vec3 EnvironmentLight::Sample_Li(const Intersection& isect, Vec3* wi, real* pdf,
 	return radiance;
 }
 
-real EnvironmentLight::Pdf_Li(const Intersection& isect, const Vec3& wi) const 
+real EnvironmentLight::PdfLi(const Intersection& isect, const Vec3& wi) const 
 {
 	return mEnvMap->PdfDir(wi);
 }

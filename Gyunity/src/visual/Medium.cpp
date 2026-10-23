@@ -5,7 +5,7 @@
 GYT_NAMESPACE_BEGIN
 
 // HenyeyGreenstein Method Definitions
-real HenyeyGreenstein::Sample_p(const Vec3& wo, Vec3* wi, const Vec2& u) const {
+real HenyeyGreenstein::SampleP(const Vec3& wo, Vec3* wi, const Vec2& u) const {
     // Compute $\cos \theta$ for Henyey--Greenstein sample
     real cosTheta;
     if (std::abs(mG) < 1e-3)

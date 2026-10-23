@@ -79,7 +79,7 @@ KdTreeAccel::KdTreeAccel(std::vector<std::shared_ptr<Primitive>> p,
 	for (size_t i = 0; i < mPrimitives.size(); ++i) primNums[i] = i;
 
 	// Start recursive construction of kd-tree
-	buildTree(0, mBounds, primBounds, primNums.get(), mPrimitives.size(),
+	BuildTree(0, mBounds, primBounds, primNums.get(), mPrimitives.size(),
 		maxDepth, edges, prims0.get(), prims1.get());
 }
 
@@ -100,7 +100,7 @@ void KdAccelNode::InitLeaf(int* primNums, int np,
 
 KdTreeAccel::~KdTreeAccel() { FreeAligned(mNodes); }
 
-void KdTreeAccel::buildTree(int nodeNum, const AABB& nodeBounds,
+void KdTreeAccel::BuildTree(int nodeNum, const AABB& nodeBounds,
 	const std::vector<AABB>& allPrimBounds,
 	int* primNums, int nPrimitives, int depth,
 	const std::unique_ptr<BoundEdge[]> edges[3],
@@ -215,11 +215,11 @@ retrySplit:
 	real tSplit = edges[bestAxis][bestOffset].t;
 	AABB bounds0 = nodeBounds, bounds1 = nodeBounds;
 	bounds0.maxPoint[bestAxis] = bounds1.minPoint[bestAxis] = tSplit;
-	buildTree(nodeNum + 1, bounds0, allPrimBounds, prims0, n0, depth - 1, edges,
+	BuildTree(nodeNum + 1, bounds0, allPrimBounds, prims0, n0, depth - 1, edges,
 		prims0, prims1 + nPrimitives, badRefines);
 	int aboveChild = mNextFreeNode;
 	mNodes[nodeNum].InitInterior(bestAxis, aboveChild, tSplit);
-	buildTree(aboveChild, bounds1, allPrimBounds, prims1, n1, depth - 1, edges,
+	BuildTree(aboveChild, bounds1, allPrimBounds, prims1, n1, depth - 1, edges,
 		prims0, prims1 + nPrimitives, badRefines);
 }
 

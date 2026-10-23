@@ -333,8 +333,8 @@ public:
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 
 	{
 		if (wo.z == 0) return 0.;
-		//Vec3 wh = distribution->Sample_wh(wo, Vec2(rand[0], rand[1]));
-		Vec3 wh = mDistribution->Sample_wh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
+		//Vec3 wh = distribution->SampleWh(wo, Vec2(rand[0], rand[1]));
+		Vec3 wh = mDistribution->SampleWh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
 		Vec3 microfacetPdf = mDistribution->Pdf(wo, wh);;
 		if (microfacetPdf == 0) return Vec3();
 
@@ -416,8 +416,8 @@ public:
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 
 	{
 		if (wo.z == 0) return 0.;
-		//Vec3 wh = distribution->Sample_wh(wo, Vec2(rand[0], rand[1]));
-		Vec3 wh = mDistribution->Sample_wh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
+		//Vec3 wh = distribution->SampleWh(wo, Vec2(rand[0], rand[1]));
+		Vec3 wh = mDistribution->SampleWh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
 		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaA / mEtaB) : (mEtaB / mEtaA);
 		if (!TransmissionBSDF::Refract(wo, Faceforward(wh, wo), eta, wi)) {
 			*pdf = 0;
@@ -544,7 +544,7 @@ public:
 
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 
 	{
-		Vec3 wh = mDistribution->Sample_wh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
+		Vec3 wh = mDistribution->SampleWh(Sgn(BSDFCoordinate::CosTheta(wo)) * wo, Vec2(rand[0], rand[1]));
 		real microfacetPdf = mDistribution->Pdf(wo, wh);
 		if (microfacetPdf == 0) return Vec3();
 
@@ -552,7 +552,7 @@ public:
 		real P = F;
 		*pdf = 0;
 		DEBUG_PIXEL_IF(ThreadIndex()) {
-			std::cout << "Sample_f fresnel : " << F << std::endl;
+			std::cout << "SampleF fresnel : " << F << std::endl;
 		}
 		if (rand[2] < P) {
 			if (wo.z == 0) return Vec3();
@@ -577,7 +577,7 @@ public:
 		{
 
 			DEBUG_PIXEL_IF(ThreadIndex()) {
-				std::cout << "Sample_f wo : " << wo << " Dot(wo, wh): " << Dot(wo, wh) << std::endl;
+				std::cout << "SampleF wo : " << wo << " Dot(wo, wh): " << Dot(wo, wh) << std::endl;
 			}
 
 			if (wo.z == 0) return Vec3();

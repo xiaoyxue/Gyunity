@@ -73,7 +73,7 @@ public:
 		Vec3 n = GetNorm(hit);
 		Vec3 nl = n.Dot(r.mDir) < 0 ? n : n * -1;
 		Vec3 wo = -1 * r.mDir;
-		Vec3 pError = Abs(mPos) * gamma(1) + Abs(scaledDir) * gamma(6);
+		Vec3 pError = Abs(mPos) * Gamma(1) + Abs(scaledDir) * Gamma(6);
 
 		//Compute dpdu, dpdv
 		//Vec3 pHit = hit - p;
@@ -177,7 +177,7 @@ public:
 		Vec3 hit = mPos + scaledDir;
 		Vec3 n = GetNorm(hit);
 		Vec3 nl = isect.mNormal;
-		Vec3 pError = Abs(mPos) * gamma(1) + Abs(scaledDir) * gamma(6);
+		Vec3 pError = Abs(mPos) * Gamma(1) + Abs(scaledDir) * Gamma(6);
 
 		isect.mPos = mObjectToWorld(hit, pError, &isect.mPointError);
 		isect.mNormal = mObjectToWorld.TransformNormal(n).Norm();
@@ -288,7 +288,7 @@ public:
 		ret.mNormal = nWorld;
 		ret.mAbsNormal = ret.mNormal;
 		//ret.pError = gamma(6) * Abs(pWorld) + gamma(6) * Abs(scaledDir);
-		ret.mPointError = gamma(5) * Abs(pWorld);
+		ret.mPointError = Gamma(5) * Abs(pWorld);
 		ret.mShapeId = mShapeId;
 		return ret;
 

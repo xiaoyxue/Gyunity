@@ -21,7 +21,7 @@ public:
 
 
 	// spatial hash function
-	inline uint32 hash(const int ix, const int iy, const int iz) {
+	inline uint32 Hash(const int ix, const int iy, const int iz) {
 		return (uint32)((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) % mHashNum;
 	}
 
@@ -88,7 +88,7 @@ public:
 					{
 						for (int ix = std::abs(int(BMin.x)); ix <= std::abs(int(BMax.x)); ix++)
 						{
-							int hv = hash(ix, iy, iz);
+							int hv = Hash(ix, iy, iz);
 							std::lock_guard<Spinlock> lock(mHashGridLocks[hv]);
 							mHashGrid[hv].push_back(hp.second);
 						}
@@ -100,7 +100,7 @@ public:
 	std::vector<T>& GetGrid(const Vec3 &point) {
 		Vec3 hh = (point - mHitPointsBBox.minPoint) * mInvHashCellSize;
 		int ix = std::abs(int(hh.x)), iy = std::abs(int(hh.y)), iz = std::abs(int(hh.z));
-		return mHashGrid[hash(ix, iy, iz)];
+		return mHashGrid[Hash(ix, iy, iz)];
 	}
 
 

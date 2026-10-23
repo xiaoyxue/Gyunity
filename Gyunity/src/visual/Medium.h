@@ -13,7 +13,7 @@ public:
     // PhaseFunction Interface
     virtual ~PhaseFunction() {};
     virtual real p(const Vec3& wo, const Vec3& wi) const = 0;
-    virtual real Sample_p(const Vec3& wo, Vec3* wi, const Vec2& u) const = 0;
+    virtual real SampleP(const Vec3& wo, Vec3* wi, const Vec2& u) const = 0;
 };
 
 
@@ -42,7 +42,7 @@ public:
     // HenyeyGreenstein Public Methods
     HenyeyGreenstein(real g) : mG(g) {}
     real p(const Vec3& wo, const Vec3& wi) const;
-    real Sample_p(const Vec3& wo, Vec3* wi, const Vec2& sample) const;
+    real SampleP(const Vec3& wo, Vec3* wi, const Vec2& sample) const;
 private:
     const real mG;
 };
