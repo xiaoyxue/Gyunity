@@ -43,9 +43,9 @@ TEST(TestTranslateNormal, TranslateNormal) {
 
 TEST(TestTranslateRay, TranslateRay) {
 	{
-		Vec3 origin(1, 2, 3);
-		Vec3 direction = Vec3(1, 0, 0);
-		Ray ray(origin, direction);
+		Vec3 orig(1, 2, 3);
+		Vec3 dir = Vec3(1, 0, 0);
+		Ray ray(orig, dir);
 		Transform transform = Transform::Translate(Vec3(1, 2, 3));
 		Vec3 originError, directionError;
 		Ray transformedRay = transform.TransformRay(ray, &originError, &directionError);
@@ -104,9 +104,9 @@ TEST(TestScaledNormal, ScaleNormal) {
 
 TEST(TestScaledRay, ScaleRay) {
 	{
-		Vec3 origin(1, 2, 3);
-		Vec3 direction = Vec3(1, 1, 1);
-		Ray ray(origin, direction);
+		Vec3 orig(1, 2, 3);
+		Vec3 dir = Vec3(1, 1, 1);
+		Ray ray(orig, dir);
 		Transform transform = Transform::Scale(1, 2, 3);
 		Vec3 originError, directionError;
 		Ray transformedRay = transform.TransformRay(ray, &originError, &directionError);

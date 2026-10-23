@@ -43,17 +43,17 @@ AABB Union(const AABB& a, const AABB& b) {
 	return AABB(minPoint, maxPoint);
 }
 
-AABB Union(const AABB& a, const Vec3& p) {
+AABB Union(const AABB& a, const Vec3& pos) {
 	AABB ret = a;
 	ret.minPoint = Vec3(
-		std::min(ret.minPoint.x, p.x),
-		std::min(ret.minPoint.y, p.y),
-		std::min(ret.minPoint.z, p.z)
+		std::min(ret.minPoint.x, pos.x),
+		std::min(ret.minPoint.y, pos.y),
+		std::min(ret.minPoint.z, pos.z)
 	);
 	ret.maxPoint = Vec3(
-		std::max(ret.maxPoint.x, p.x),
-		std::max(ret.maxPoint.y, p.y),
-		std::max(ret.maxPoint.z, p.z)
+		std::max(ret.maxPoint.x, pos.x),
+		std::max(ret.maxPoint.y, pos.y),
+		std::max(ret.maxPoint.z, pos.z)
 	);
 	return ret;
 }
