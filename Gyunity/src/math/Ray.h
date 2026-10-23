@@ -25,8 +25,8 @@ struct Ray {
 
 	Vec3 mOrig, mDir;
 	// Deprecated: mTmin. Self-intersection is avoided by offsetting the ray origin
-	// (OffsetRayOrigin), so new code should treat tmin as 0. Triangle no longer reads
-	// it; Sphere, HeartSurface, BVHAccel and Transform still do.
+	// (OffsetRayOrigin), so new code should treat tmin as 0. Triangle and BVHAccel no
+	// longer read it; Sphere, HeartSurface and Transform still do.
 	mutable real mTmin, mTmax;
 	const Medium* mMedium;
 };
