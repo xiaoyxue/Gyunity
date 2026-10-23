@@ -62,3 +62,28 @@ Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
 | `Gyunity` | The renderer itself, built as a static library: integrators, BSDFs and materials, lights, shapes, accelerators, samplers and math. |
 | `GyunityApp` | The application that sets up a scene, renders it and writes the image (`x64\<Config>\GyunityApp.exe`). Scenes are defined in `GyunityApp\CornellBox.h`, and `main.cpp` chooses the scene, camera and integrator. Run it from the `GyunityApp` folder so the `..\resources` paths resolve. |
 | `GyunityTest` | Unit tests (googletest). |
+
+## Scene builder
+`GyunityApp\SceneBuilder.h` provides material factories and ordered helpers for
+triangles, quads, spheres, meshes, area lights and environment lights. It does not
+initialize the scene or select its accelerator. Existing `CornellBox.h` scenes
+remain unchanged while they are migrated in separate steps.
+
+`AddCornellBox(builder)` adds the standard walls and ceiling light, matching
+`CornellBoxMeshEmpty`. `CornellBoxOptions` can omit the back wall or light and
+change the light's half-size and power multiplier (defaults: `0.25f` and `85`).
+For scenes whose objects precede the light, keep that insertion order:
+
+```cpp
+SceneBuilder builder(scene);
+AddCornellBoxWalls(builder);
+builder.AddMesh("meshs\\bunny3.obj", builder.Glass(Vec3(1), Vec3(1)),
+    Transform::Translate(Vec3(0, -0.5, 0)) * Transform::Scale(0.28, 0.28, 0.28));
+AddCornellBoxLight(builder, 85);
+```
+
+Resource paths are relative to `resources`; run from `GyunityApp` as before.
+Quads use triangles `(a, b, c)` and `(a, c, d)` with an explicit normal.
+Use `AddTriangle` for a different vertex order: even cyclic permutations can
+change floating-point results. Emitting quads register two area lights sharing
+the same shapes as their corresponding primitives.
