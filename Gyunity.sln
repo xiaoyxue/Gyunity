@@ -5,7 +5,7 @@ VisualStudioVersion = 17.14.36221.1 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Gyunity", "Gyunity\Gyunity.vcxproj", "{621CF667-B13C-4FB2-8C21-CA70D2FC4284}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Gyunity_exe", "Gyunity_exe\Gyunity_exe.vcxproj", "{FF11BF69-259E-4989-A91B-4107E3CEF697}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GyunityApp", "GyunityApp\GyunityApp.vcxproj", "{FF11BF69-259E-4989-A91B-4107E3CEF697}"
 	ProjectSection(ProjectDependencies) = postProject
 		{621CF667-B13C-4FB2-8C21-CA70D2FC4284} = {621CF667-B13C-4FB2-8C21-CA70D2FC4284}
 	EndProjectSection

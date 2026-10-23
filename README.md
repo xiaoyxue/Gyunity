@@ -55,3 +55,10 @@ Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
 1. Clone the repository: `git clone --recursive https://github.com/xiaoyxue/Gyunity.git`
 2. From the repository directory, run `.\init.ps1` in Developer PowerShell for VS, or `init.cmd` in Developer Command Prompt for VS. This recreates `external\build` and builds the dependencies in Debug and Release.
 3. Open `Gyunity.sln` and build the solution.
+
+## Projects
+| Project | What it is |
+|---|---|
+| `Gyunity` | The renderer itself, built as a static library: integrators, BSDFs and materials, lights, shapes, accelerators, samplers and math. |
+| `GyunityApp` | The application that sets up a scene, renders it and writes the image (`x64\<Config>\GyunityApp.exe`). Scenes are defined in `GyunityApp\CornellBox.h`, and `main.cpp` chooses the scene, camera and integrator. Run it from the `GyunityApp` folder so the `..\resources` paths resolve. |
+| `GyunityTest` | Unit tests (googletest). |
