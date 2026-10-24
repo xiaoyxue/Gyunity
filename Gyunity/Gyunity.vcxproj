@@ -187,6 +187,7 @@
     <ClCompile Include="src\volume\Homogeneous.cpp" />
     <ClCompile Include="src\image\ImageIO.cpp" />
     <ClCompile Include="src\integrator\Integrator.cpp" />
+    <ClCompile Include="src\integrator\BDPTPath.cpp" />
     <ClCompile Include="src\visual\Intersection.cpp" />
     <ClCompile Include="src\accelerator\KdTreeAccel.cpp" />
     <ClCompile Include="src\math\Linalg.cpp" />
@@ -224,6 +225,7 @@
     <ClInclude Include="src\ForwardDecl.h" />
     <ClInclude Include="src\integrator\LT.h" />
     <ClInclude Include="src\integrator\PathVertex.h" />
+    <ClInclude Include="src\integrator\BDPTPath.h" />
     <ClInclude Include="src\math\AABB.h" />
     <ClInclude Include="src\accelerator\Accelerator.h" />
     <ClInclude Include="src\light\AreaLight.h" />

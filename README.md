@@ -243,6 +243,37 @@ This does not change continuous environment-map sampling or introduce a new
 exception-handling framework. `LightProbabilityTest.cpp` covers analytical PMFs,
 sample/PDF agreement, hemisphere normalization, endpoint measures and failures.
 
+## Bidirectional subpath generation
+`integrator\BDPTPath.h` provides the next preparation step: `GenerateCameraPath`
+and `GenerateLightPath`, using LT's path vocabulary without a second rendering
+framework. No BDPT render mode is exposed until connections and MIS are complete.
+
+Each function fills a `std::vector<PathVertex>` and returns its vertex count,
+including its endpoint. `maxVertices` is a storage/extension budget, not the
+eventual renderer's scattering depth. Zero produces an empty path; `-1` reports
+an invalid or unsupported configuration with non-throwing logging. Discard partial
+output on `-1`. Keep the supplied `MemoryPool` alive until connections are finished.
+
+Camera paths use radiance transport and light paths use importance transport.
+For BDPT generation only, shading frames are explicitly built from geometric
+normals; interpolated shading-normal transport is not advertised as supported.
+Media, null-material boundaries and mixed delta/continuous BSDFs are rejected.
+Pure mirror/glass events remain supported. A zero-contribution sample stops
+extension without losing the surface vertex already reached.
+
+`mPdfFwd` stores the incoming density at a vertex and `mPdfPrev` stores the reverse
+density at that vertex from its successor. Finite destinations use geometric-normal
+area conversion. An environment endpoint stores its direction toward the map;
+its origin density is light-selection PMF times directional PDF, while the first
+surface density is launch-disk PDF times the projected normal, without inverse-square
+falloff. Delta-event densities are zero markers, separate from a point light's
+delta position. `mIsDelta` is set only when a specular scattering event was sampled.
+The existing LT implementation and its use of the original fields remain unchanged.
+
+`BDPTPathTest.cpp` checks forward/reverse densities, preservation of incoming
+directions, geometric conversion, budgets, endpoint metadata, explicit failures,
+glass transport modes, and environment launch/escape conventions.
+
 ## Scene regression
 Run the registered-scene regression without patching or recompiling `main.cpp`:
 
