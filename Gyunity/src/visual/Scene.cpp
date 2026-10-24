@@ -21,6 +21,7 @@ bool Scene::IntersectTr(Ray& ray, StateSequence& rand, Intersection* isect, Vec3
         // Initialize next ray segment or terminate transmittance computation
         if (!hitSurface) return false;
         if (isect->mPrimitive->GetMaterial() != nullptr) return true;
+        QueryIntersectionInfo(ray, isect);
         ray = isect->SpawnRay(ray.mDir);
     }
 }
