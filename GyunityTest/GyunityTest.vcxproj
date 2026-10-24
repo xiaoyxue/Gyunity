@@ -39,6 +39,7 @@
     <ClCompile Include="tests\MatrixTest.cpp" />
     <ClCompile Include="tests\SceneBuilderTest.cpp" />
     <ClCompile Include="tests\SceneRegistryTest.cpp" />
+    <ClCompile Include="tests\SphereLightPdfTest.cpp" />
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
     <ClCompile Include="test.cpp" />
     <ClCompile Include="tests\TransformTest.cpp" />

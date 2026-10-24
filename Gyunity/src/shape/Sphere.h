@@ -253,7 +253,7 @@ public:
 			else {
 				real s = wi.Length();
 				wi.Normalize();
-				*pdf *= s / std::abs((lightPoint.mPos - pCenter).Norm().Dot(-1 * wi));
+				*pdf *= s * s / std::abs(lightPoint.mNormal.Dot(-1 * wi));
 			}
 			if (std::isinf(*pdf)) *pdf = 0.f;
 			return lightPoint;
@@ -274,13 +274,13 @@ public:
 		Vec3 wi = sinAlpha * std::cos(phi) * localX + sinAlpha * std::sin(phi) * localY + cosTheta * localZ;
 		Vec3 nWorld = -1 * sinAlpha * std::cos(phi) * localX - sinAlpha * std::sin(phi) * localY - cosAlpha * localZ;
 		nWorld.Normalize();
-		Vec3 pWorld = pCenter + mRad * nWorld / nWorld.Length() + mRad * 1.5e-3 * nWorld.Norm();
+		Vec3 pWorld = pCenter + mRad * nWorld / nWorld.Length();
 		//Projection into surface and more convenient to calculate error
 		//Vec3 scaledDir = (pWorld - pCenter) * rad / Distance(pWorld, pCenter);
 		//pWorld = pWorld + scaledDir;
 		//Vec3 wi = sinTheta * std::cos(phi) * localX + sinTheta * std::sin(phi) * localY + cosTheta * localZ;
 		//Vec3 lightPoint = isect.hit + wi * s;
-		*pdf = 1 / (2 * PI * (1 - cosThetaMax));
+		*pdf = ConePdf(sin2ThetaMax);
 		Intersection ret;
 		ret.mPos = pWorld;
 		ret.mNormal = nWorld;
@@ -332,6 +332,13 @@ public:
 		//return ret;
 	}
 
+	real Pdf(const Intersection& isect, const Vec3& wi) const override {
+		const Vec3 center = mObjectToWorld(mCenter);
+		const real distance2 = (center - isect.mPos).Length2();
+		if (distance2 <= mRad * mRad) return Shape::Pdf(isect, wi);
+		return ConePdf(mRad * mRad / distance2);
+	}
+
 	Vec3 GetNorm(const Vec3 & point) const override {
 		//return (point - p).Norm();
 		if (mInside) return (mCenter - point).Norm();
@@ -344,6 +351,14 @@ public:
 
 	AABB ObjectBound() const override {
 		return mBbox;
+	}
+
+private:
+	static real ConePdf(real sin2ThetaMax) {
+		const real cosThetaMax = std::sqrt(std::max(1 - sin2ThetaMax, real(0)));
+		// Avoid cancellation in 1 - cosThetaMax for distant lights.
+		const real oneMinusCosThetaMax = sin2ThetaMax / (1 + cosThetaMax);
+		return 1 / (2 * PI * oneMinusCosThetaMax);
 	}
 };
 
