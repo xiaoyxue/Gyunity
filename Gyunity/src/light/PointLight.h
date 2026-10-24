@@ -1,5 +1,6 @@
 #pragma once
 #include "Light.h"
+#include "visual/Sampling.h"
 
 GYT_NAMESPACE_BEGIN
 
@@ -24,6 +25,13 @@ public:
 	}
 
 	Vec3 SampleLight(Intersection* isect, Vec3* dir, real* pdfPos, real* pdfDir, const Vec2& u, const Vec2& v) const override;
+
+	bool PdfLight(const Intersection& point, const Vec3& dir, real* pdfPos, real* pdfDir) const override {
+		// A discrete mass at the point source, never a finite-area density.
+		*pdfPos = point.mPos == mLightPosition ? 1 : 0;
+		*pdfDir = UniformSpherePdf();
+		return true;
+	}
 
 	Vec3 SampleOnePoint(Intersection* isect, real* pdf, const Vec2& u) const override 
 	{

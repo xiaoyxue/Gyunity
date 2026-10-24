@@ -83,8 +83,25 @@ public:
 		return (offset + du) / mCount;
 	}
 
+	bool DiscretePdf(int index, real* pdf) const {
+		if (index < 0 || index >= mCount) {
+			*pdf = 0;
+			GetDefaultLogger()->Error("Discrete PDF index is outside the distribution.", false);
+			return false;
+		}
+		// The constructor builds a uniform CDF when every weight is zero.
+		*pdf = mFuncInt > 0 ? mFunc[index] / (mFuncInt * mCount) : 1.f / mCount;
+		return true;
+	}
+
 	int SampleDiscrete(real u, real *pdf) const
 	{
+		if (!std::isfinite(u) || u < 0 || u > 1) {
+			if (pdf) *pdf = 0;
+			GetDefaultLogger()->Error("Discrete sample must be in [0, 1].", false);
+			return -1;
+		}
+		u = std::min(u, std::nextafter(real(1), real(0)));
 		// Find surrounding CDF segments and _offset_
 		//real *ptr = std::upper_bound(mCdf, mCdf + count + 1, u);
 		//int offset = std::max(0, int(ptr - mCdf - 1));
@@ -92,7 +109,7 @@ public:
 		int offset = std::max(0, int(std::distance(mCdf.begin(), it)) - 1);
 		GYT_DEBUG_ASSERT(offset < mCount);
 		GYT_DEBUG_ASSERT(u >= mCdf[offset] && u < mCdf[offset + 1]);
-		if (pdf) *pdf = mFunc[offset] / (mFuncInt * mCount);
+		if (pdf && !DiscretePdf(offset, pdf)) return -1;
 		return offset;
 	}
 

@@ -55,6 +55,18 @@ real EnvironmentLight::PdfLi(const Intersection& isect, const Vec3& wi) const
 	return mEnvMap->PdfDir(wi);
 }
 
+bool EnvironmentLight::PdfLight(const Intersection& point, const Vec3& dir, real* pdfPos, real* pdfDir) const {
+	if (!std::isfinite(mRadius) || mRadius <= 0) {
+		*pdfPos = *pdfDir = 0;
+		GetDefaultLogger()->Error("Environment emission PDF requires initialized, nonempty scene bounds.", false);
+		return false;
+	}
+	*pdfPos = 1 / (PI * mRadius * mRadius);
+	// Emitted rays travel into the scene, opposite the direction used to look up the map.
+	*pdfDir = mEnvMap->PdfDir(-dir);
+	return true;
+}
+
 
 Vec3 EnvironmentLight::Power() const 
 {
