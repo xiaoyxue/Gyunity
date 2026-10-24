@@ -1,4 +1,5 @@
 #pragma once
+#include "common/DebugUtils.h"
 #include <vector>
 #include "ForwardDecl.h"
 #include "Integrator.h"
@@ -193,7 +194,7 @@ public:
 
 		
 		//GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 428, 926, 563, 977, ThreadIndex());
-		GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 429, 640, 565, 644, ThreadIndex());
+		SelectDebugRegion(pRaster->x, pRaster->y, 429, 640, 565, 644);
 		
 
 		Ray ray = vertex.mIsect.SpawnRay(hitToCameraDir);
