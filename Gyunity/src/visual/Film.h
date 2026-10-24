@@ -121,7 +121,7 @@ public:
 		mFilename = pFileName;
 	}
 
-	void SaveImage();
+	bool SaveImage();
 
 private:
 

@@ -60,7 +60,7 @@ Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
 | Project | What it is |
 |---|---|
 | `Gyunity` | The renderer itself, built as a static library: integrators, BSDFs and materials, lights, shapes, accelerators, samplers and math. |
-| `GyunityApp` | The application that sets up a scene, renders it and writes the image (`x64\<Config>\GyunityApp.exe`). Scenes are defined in `GyunityApp\CornellBox.h`, and `main.cpp` chooses the scene, camera and integrator. Run it from the `GyunityApp` folder so the `..\resources` paths resolve. |
+| `GyunityApp` | The renderer application (`x64\<Config>\GyunityApp.exe`). Use `--scene` for registered builder scenes, or no arguments for the unchanged legacy demo in `main.cpp`. Run from `GyunityApp` so `..\resources` paths resolve. |
 | `GyunityTest` | Unit tests (googletest). |
 
 ## Scene builder
@@ -91,8 +91,8 @@ SceneBuilder builder(scene);
 CornellBoxScenes::GlassBunny(builder);
 ```
 
-The original code and `main.cpp` scene selection are retained unchanged for
-side-by-side comparison; the application has not switched to the new versions.
+The original scene classes and no-argument demo are retained for side-by-side
+comparison. The new versions are selected only through the opt-in `--scene` path.
 Use the same camera, accelerator and integrator when comparing a scene pair.
 `GyunityTest` compares primitive order, sampled geometry, materials and lights
 between all ten pairs, including image-texture UVs and fog scattering. Run it
@@ -132,3 +132,42 @@ shares the large inward-facing sphere walls used by `SphereBox` and `TriangleBox
 Its media must outlive the scene. `FogBunny` uses an immutable, static homogeneous
 medium and preserves the original material-free front boundary; use
 `VolPathTracing` to compare fog renders rather than the surface-only path tracer.
+
+## Named scenes and rendering
+`GyunityApp\SceneRegistry.h` maps names to builders, default cameras and required
+resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
+`empty`, `diffuse`, `water`, and `fog`. The sphere and triangle scenes use their
+large-room camera; all others use the standard Cornell camera. Fog automatically
+uses volume path tracing; the other scenes use surface path tracing.
+
+```powershell
+Set-Location GyunityApp
+..\x64\Release\GyunityApp.exe --list-scenes
+..\x64\Release\GyunityApp.exe --scene mesh --out "D:\Code\Graphics\Gyunity\Test\mesh.png"
+..\x64\Release\GyunityApp.exe --scene fog --accel kd --spp 128 --width 640 --height 360 --out "D:\Code\Graphics\Gyunity\Test\fog.png"
+```
+
+Defaults are 512x512, 64 samples per pixel, depth 8, and BVH. Use `--width`,
+`--height`, `--spp`, `--max-depth`, and `--accel bvh|kd` to override them.
+The sampler setup matches the regression harness (`RandomSampler(123)` with
+the renderer's existing per-tile cloning). `--out` is required and accepts
+lowercase `.png`, `.bmp`, or `.hdr`; output directories must already exist.
+Paths with spaces must be quoted. `--help` and `--list-scenes` are standalone
+commands. Invalid options, missing assets and failed image writes report an
+error and return a nonzero exit code; no image is silently substituted.
+
+Run the registered-scene regression without patching or recompiling `main.cpp`:
+
+```powershell
+# From the worktree root, after building Release|x64:
+.\GyunityTest\RunSceneRegression.ps1 `
+  -OutputDirectory "D:\Code\Graphics\Gyunity\Test\scene_registry_step4\renders" `
+  -ReferenceDirectory "D:\Code\Graphics\Gyunity\Test\remaining_scenes_step3"
+```
+
+The script enumerates `--list-scenes`, renders each scene with BVH and kd-tree
+through the actual application, and compares PNG file hashes against
+`old.<scene>.<accel>.png` references from the original scene harness. References
+must use the same image writer, cameras and default render settings. It writes
+logs, images and `comparisons.csv` only to the supplied output directory (use
+`Test` at the main repository root), and fails if any render or comparison fails.

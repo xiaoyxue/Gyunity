@@ -42,6 +42,7 @@
 #include "math\Filter.h"
 #include "integrator\VPT.h"
 #include "CornellBox.h"
+#include "SceneCommandLine.h"
 #include "integrator\LT.h"
 #include "common/Config.h"
 
@@ -784,6 +785,8 @@ void TestLightTracing(int argc, char* argv[]) {
 
 
 int main(int argc, char *argv[]) {
+	if (argc > 1) return RunSceneCommandLine(argc, argv);
+
 	//AABB aabb;
 	//aabb = Union(Union(aabb, Vec3(-1, -2, -2)), Vec3(1, 2, 3));
 	//std::cout << aabb << std::endl;

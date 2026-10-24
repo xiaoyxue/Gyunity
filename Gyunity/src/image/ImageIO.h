@@ -44,7 +44,7 @@ public:
 
 	static Array2D<Vec3> LoadTexture(std::string filename);
 
-	static void WriteImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY, real gamma = 2.2);
+	static bool WriteImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY, real gamma = 2.2);
 
 };
 
