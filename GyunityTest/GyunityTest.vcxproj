@@ -53,6 +53,7 @@
     <ClCompile Include="tests\LightTracingEmissionTest.cpp" />
     <ClCompile Include="tests\LightProbabilityTest.cpp" />
     <ClCompile Include="tests\BDPTPathTest.cpp" />
+    <ClCompile Include="tests\PixelDebugTest.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

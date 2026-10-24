@@ -1,4 +1,5 @@
 #pragma once
+#include "common/DebugUtils.h"
 
 #include "math/Linalg.h"
 #include "common/Core.h"
@@ -552,7 +553,7 @@ public:
 		real F = mFresnel.EvaluateScalar(Dot(wo, wh));
 		real P = F;
 		*pdf = 0;
-		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
+		if (IsPixelDebugEnabled()) {
 			std::cout << "SampleF fresnel : " << F << std::endl;
 		}
 		if (rand[2] < P) {
@@ -577,7 +578,7 @@ public:
 		else 
 		{
 
-			GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
+			if (IsPixelDebugEnabled()) {
 				std::cout << "SampleF wo : " << wo << " Dot(wo, wh): " << Dot(wo, wh) << std::endl;
 			}
 
