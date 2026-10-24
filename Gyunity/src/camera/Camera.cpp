@@ -5,10 +5,6 @@ GYT_NAMESPACE_BEGIN
 
 void ProjectiveCamera::Initialize() {
 
-	mCz = -(mPos - mLookAt).Norm(); // -1 * dir in raytracer
-	mCx = -Cross(mUp, mCz).Norm();
-	mCy = -Cross(mCz, mCx);
-
 	mCameraToWorld =
 		Transform(mCx.x, mCy.x, mCz.x, mPos.x,
 			mCx.y, mCy.y, mCz.y, mPos.y,
@@ -60,7 +56,7 @@ void ProjectiveCamera::Initialize() {
 
 
 ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> film, const Vec3& pos, const Vec3& cz, const Vec3& cx, const Vec3& cy, real pFovy, real filmDis)
-	: Camera(film, pos, cx, cy, cz, pFovy, filmDis)
+	: Camera(film, pos, cz, cx, cy, pFovy, filmDis)
 {
 	Initialize();
 }
@@ -68,8 +64,10 @@ ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> film, const Vec3& pos, 
 ProjectiveCamera::ProjectiveCamera(std::shared_ptr<Film> film, const Vec3& pos, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis)
 	: Camera(film, pos, lookAt, up,fovy, filmDis)
 {
+	mCz = -(mPos - mLookAt).Norm();
+	mCx = -Cross(mUp, mCz).Norm();
+	mCy = -Cross(mCz, mCx);
 	Initialize();
 }
 
 GYT_NAMESPACE_END
-
