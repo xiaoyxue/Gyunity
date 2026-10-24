@@ -23,6 +23,7 @@ bool Primitive::Intersect(const Ray& r) const {
 
 void Primitive::ComputeScatteringFunction(Intersection* isect, MemoryPool& arena,
 	TransportMode mode) const {
+	isect->mBsdf = nullptr;
 	if (mMaterial) {
 		mMaterial->ComputeScatteringFunction(isect, arena, mode);
 	}

@@ -16,6 +16,9 @@
     <ClCompile Include="tests\ConfigTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\BoundaryScatteringTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\MainExamplesTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
