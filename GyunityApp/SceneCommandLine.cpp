@@ -23,7 +23,28 @@ int ParseInteger(const std::string& option, const std::string& value, int minimu
 	return result;
 }
 
-void RenderScene(const SceneRenderOptions& options) {
+void RenderSceneCommand(const SceneRenderOptions& options) {
+	auto sampler = std::make_shared<RandomSampler>(123);
+	auto samplerEnum = std::make_shared<SamplerEnum>();
+	if (options.scene->usesVolume) {
+		VolPathTracing integrator(options.spp, options.maxDepth, sampler, samplerEnum, false);
+		RenderScene(options, integrator);
+	}
+	else {
+		PathTracing integrator(options.spp, options.maxDepth, sampler, samplerEnum);
+		RenderScene(options, integrator);
+	}
+}
+
+}
+
+void RenderScene(const SceneRenderOptions& options, Integrator& integrator) {
+	if (!options.scene) throw std::invalid_argument("A registered scene is required.");
+	if (options.width <= 0 || options.height <= 0 ||
+		static_cast<int64>(options.width) * options.height > std::numeric_limits<int>::max() / 3) {
+		throw std::invalid_argument("Image dimensions exceed the supported pixel count or are not positive.");
+	}
+	if (options.output.empty()) throw std::invalid_argument("An output filename is required.");
 	for (const auto* resource : options.scene->resources) {
 		if (resource && !std::ifstream(SceneBuilder::Resource(resource), std::ios::binary).good()) {
 			throw std::runtime_error("Cannot read resource '" + SceneBuilder::Resource(resource) +
@@ -34,15 +55,6 @@ void RenderScene(const SceneRenderOptions& options) {
 	auto film = std::make_shared<Film>(options.width, options.height, new BoxFilter());
 	auto scene = std::make_shared<Scene>();
 	auto camera = options.scene->camera.Create(film);
-	auto sampler = std::make_shared<RandomSampler>(123);
-	auto samplerEnum = std::make_shared<SamplerEnum>();
-	std::shared_ptr<Integrator> integrator;
-	if (options.scene->usesVolume) {
-		integrator = std::make_shared<VolPathTracing>(options.spp, options.maxDepth, sampler, samplerEnum, false);
-	}
-	else {
-		integrator = std::make_shared<PathTracing>(options.spp, options.maxDepth, sampler, samplerEnum);
-	}
 
 	SceneBuilder builder(scene);
 	options.scene->build(builder);
@@ -54,12 +66,10 @@ void RenderScene(const SceneRenderOptions& options) {
 	}
 	scene->Initialize();
 	film->SetFileName(options.output);
-	integrator->Render(*scene, *camera);
+	integrator.Render(*scene, *camera);
 	if (!film->SaveImage()) {
 		throw std::runtime_error("Cannot write image '" + options.output + "'. Check its directory and permissions.");
 	}
-}
-
 }
 
 SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv) {
@@ -125,13 +135,15 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 				"  --out FILE             Required .png, .bmp or .hdr output\n"
 				"Fog uses volume path tracing; other scenes use path tracing.\n"
 				"Run from GyunityApp for resource paths. Output directories must exist.\n"
-				"With no arguments, the original light-tracing demo is unchanged.\n";
+				"With no arguments, the builder-based PathTracing example runs the env scene\n"
+				"at 1024 x 1024, 100 spp, depth 10, BVH; output: CornellBoxPtEnvmap.bmp.\n"
+				"main.cpp also contains SPPM, LightTracing and VolPathTracing examples.\n";
 		}
 		else if (options.command == SceneCommand::List) {
 			for (const auto& scene : GetSceneRegistry()) std::cout << scene.name << '\n';
 		}
 		else if (options.command == SceneCommand::Render) {
-			RenderScene(options);
+			RenderSceneCommand(options);
 		}
 		else {
 			throw std::invalid_argument("No scene command supplied.");

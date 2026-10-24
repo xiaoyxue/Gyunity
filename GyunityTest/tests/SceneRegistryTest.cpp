@@ -63,8 +63,8 @@ TEST(SceneRegistry, CamerasMatchOriginalRegressionRays) {
 	}
 }
 
-TEST(SceneCommandLine, NoArgumentsRemainLegacy) {
-	EXPECT_EQ(Parse({}).command, SceneCommand::Legacy);
+TEST(SceneCommandLine, NoArgumentsSelectTheMainExample) {
+	EXPECT_EQ(Parse({}).command, SceneCommand::Example);
 }
 
 TEST(SceneCommandLine, InformationalCommandsDoNotRequireSceneOrOutput) {

@@ -60,7 +60,7 @@ Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
 | Project | What it is |
 |---|---|
 | `Gyunity` | The renderer itself, built as a static library: integrators, BSDFs and materials, lights, shapes, accelerators, samplers and math. |
-| `GyunityApp` | The renderer application (`x64\<Config>\GyunityApp.exe`). Use `--scene` for registered builder scenes, or no arguments for the unchanged legacy demo in `main.cpp`. Run from `GyunityApp` so `..\resources` paths resolve. |
+| `GyunityApp` | The renderer application (`x64\<Config>\GyunityApp.exe`). Use `--scene` for registered builder scenes, or no arguments for the PathTracing example in `main.cpp`. Run from `GyunityApp` so `..\resources` paths resolve. |
 | `GyunityTest` | Unit tests (googletest). |
 
 ## Scene builder
@@ -91,8 +91,10 @@ SceneBuilder builder(scene);
 CornellBoxScenes::GlassBunny(builder);
 ```
 
-The original scene classes and no-argument demo are retained for side-by-side
-comparison. The new versions are selected only through the opt-in `--scene` path.
+The original scene classes and entry-point source (`GyunityApp\main_lagcy.cpp`)
+are retained for side-by-side comparison. The legacy source is excluded from
+compilation in every configuration. Both the new `main.cpp` examples and the
+`--scene` path use the builder versions.
 Use the same camera, accelerator and integrator when comparing a scene pair.
 `GyunityTest` compares primitive order, sampled geometry, materials and lights
 between all ten pairs, including image-texture UVs and fog scattering. Run it
@@ -156,6 +158,53 @@ Paths with spaces must be quoted. `--help` and `--list-scenes` are standalone
 commands. Invalid options, missing assets and failed image writes report an
 error and return a nonzero exit code; no image is silently substituted.
 
+## C++ integrator examples
+`GyunityApp\main.cpp` keeps four runnable mock examples. With no arguments,
+`main()` calls `TestPathTracing()` instead of the previous LightTracing demo.
+To select another C++ example, replace that call with `TestSPPM()`,
+`TestLightTracing()`, or `TestVolPathTracing()` and rebuild. Explicit CLI
+arguments still use `RunSceneCommandLine`; they do not select these examples.
+
+| Function | Builder scene | Default settings | Output |
+|---|---|---|---|
+| `TestPathTracing` | `env` | 1024x1024, 100 spp, depth 10 | `CornellBoxPtEnvmap.bmp` |
+| `TestSPPM` | `mesh` | 1024x1024, 256 iterations, 300000 photons/stage, depth 20, radius 0.05, alpha 0.66666667 | `CornellBoxSppmTest3.bmp` |
+| `TestLightTracing` | `mesh` | 1024x1024, 512 spp, depth 15 | `CornellBoxLT16.bmp` |
+| `TestVolPathTracing` | `fog` | 1024x1024, 2000 spp, depth 8 | `MediaTestFogEquiAngular12.bmp` |
+
+All examples use BVH, a box filter and the registered scene camera. PathTracing,
+LightTracing and VolPathTracing retain `RandomSampler(123)`; SPPM retains
+Halton sampling, per-hit-point radius shrinking and glossy-ray tracing.
+VolPathTracing retains its volume-specific settings and the fog builder's
+long-lived medium. PT/VPT intentionally use the registry's look-at camera
+constructor, not the legacy basis constructor that rebuilds its basis from
+unset look-at/up vectors.
+
+Scene construction, asset checks and checked image saving are shared with the
+CLI through `RenderScene`. Run from `GyunityApp` for asset paths. Example functions
+accept an output filename, width, height and sample/iteration count; SPPM also
+accepts a photon budget. For a small render, the selected call can be:
+
+```cpp
+TestPathTracing("D:\\Code\\Graphics\\Gyunity\\Test\\example.png", 64, 64, 4);
+```
+
+The settings above intentionally preserve the representative legacy demos and
+are separate from the CLI's 512x512 / 64 spp / depth-8 defaults. Missing resources
+or failed image writes report an error and return a nonzero application exit.
+
+The example smoke tests use small workloads through the same functions and
+check readable, nonblack HDR outputs. Set an existing output directory under the
+main checkout's `Test` to enable them; otherwise these render tests are skipped:
+
+```powershell
+# From the worktree's GyunityApp directory:
+$env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\scene_builder_main"
+..\x64\Debug\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
+..\x64\Release\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
+```
+
+## Scene regression
 Run the registered-scene regression without patching or recompiling `main.cpp`:
 
 ```powershell
