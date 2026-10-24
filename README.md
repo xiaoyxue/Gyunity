@@ -171,3 +171,29 @@ through the actual application, and compares PNG file hashes against
 must use the same image writer, cameras and default render settings. It writes
 logs, images and `comparisons.csv` only to the supplied output directory (use
 `Test` at the main repository root), and fails if any render or comparison fails.
+
+## Numerical rendering checks
+`GyunityTest\tests\RenderingNumericTest.cpp` checks mathematical correctness
+independently of old/new image equivalence. It covers the nine non-SPPM
+findings tracked in issues #93 through #101. Assertions describe the intended
+results, so unresolved defects cause failures rather than becoming accepted
+reference values. SPPM's intentionally lock-free accumulation is excluded.
+These checks run as part of the full suite as well; set the output directory
+when running all tests, and do not treat the current failing audit cases as a
+green regression baseline.
+
+Create an output directory under the main checkout's ignored `Test` folder,
+then run from the worktree's `GyunityApp` directory:
+
+```powershell
+$env:GYUNITY_TEST_OUTPUT_DIR = "D:\Code\Graphics\Gyunity\Test\math_render_numeric\manual"
+New-Item -ItemType Directory -Force $env:GYUNITY_TEST_OUTPUT_DIR | Out-Null
+..\x64\Debug\GyunityTest.exe --gtest_filter=RenderingNumeric.* `
+  "--gtest_output=xml:$env:GYUNITY_TEST_OUTPUT_DIR\results.xml"
+```
+
+The environment-light cases create a constant 4x4 HDR fixture in that directory.
+Other checks use deterministic geometry, material interactions and analytical
+PDFs. PBRT-v3 comparisons are separate reference probes; PBRT is not a build
+dependency of `GyunityTest`. In particular, matching PBRT behavior does not by
+itself establish geometric correctness for boundary rays.
