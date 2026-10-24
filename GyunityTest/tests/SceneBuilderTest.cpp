@@ -1,6 +1,6 @@
-#include "../../GyunityApp/SceneBuilder.h"
-#include "../../GyunityApp/CornellBox.h"
-#include "../../GyunityApp/CornellBoxScenes.h"
+#include "../../GyunityApp/scenes/SceneBuilder.h"
+#include "../../GyunityApp/legacy/CornellBox.h"
+#include "../../GyunityApp/scenes/CornellBoxScenes.h"
 #include "accelerator/BVHAccel.h"
 #include "gtest/gtest.h"
 

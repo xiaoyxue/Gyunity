@@ -1,5 +1,5 @@
 #pragma once
-#include "SceneRegistry.h"
+#include "scenes/SceneRegistry.h"
 #include "integrator/Integrator.h"
 
 enum class SceneCommand { Example, Help, List, Render };

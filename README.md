@@ -63,15 +63,22 @@ Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
 | `GyunityApp` | The renderer application (`x64\<Config>\GyunityApp.exe`). Use `--scene` for registered builder scenes, or no arguments for the PathTracing example in `main.cpp`. Run from `GyunityApp` so `..\resources` paths resolve. |
 | `GyunityTest` | Unit tests (googletest). |
 
+The app keeps `main.cpp` and `SceneCommandLine.*` at its root. Builder-based
+scene headers live in `GyunityApp\scenes`; the unchanged original scene header
+and entry point live in `GyunityApp\legacy`. Tracked `.vcxproj.filters` mirror
+these app folders in Visual Studio and group `GyunityTest`'s existing `tests`
+folder and shared application source. Filters organize Solution Explorer only;
+compilation and legacy exclusion remain controlled by the `.vcxproj` files.
+
 ## Scene builder
-`GyunityApp\SceneBuilder.h` provides material factories and ordered helpers for
+`GyunityApp\scenes\SceneBuilder.h` provides material factories and ordered helpers for
 triangles, quads, spheres, meshes, area lights and environment lights. It does not
-initialize the scene or select its accelerator. Existing `CornellBox.h` scenes
+initialize the scene or select its accelerator. Existing `legacy\CornellBox.h` scenes
 remain unchanged while they are migrated in separate steps.
 
-`GyunityApp\CornellBoxScenes.h` adds parallel, builder-based versions:
+`GyunityApp\scenes\CornellBoxScenes.h` adds parallel, builder-based versions:
 
-| Original class in `CornellBox.h` | New function |
+| Original class in `legacy\CornellBox.h` | New function |
 |---|---|
 | `CornellBoxMesh` | `CornellBoxScenes::GlassBunny` |
 | `CornellBoxMeshWithSlope` | `CornellBoxScenes::Slope` |
@@ -91,7 +98,7 @@ SceneBuilder builder(scene);
 CornellBoxScenes::GlassBunny(builder);
 ```
 
-The original scene classes and entry-point source (`GyunityApp\main_lagcy.cpp`)
+The original scene classes and entry-point source (`GyunityApp\legacy\main_lagcy.cpp`)
 are retained for side-by-side comparison. The legacy source is excluded from
 compilation in every configuration. Both the new `main.cpp` examples and the
 `--scene` path use the builder versions.
@@ -136,7 +143,7 @@ medium and preserves the original material-free front boundary; use
 `VolPathTracing` to compare fog renders rather than the surface-only path tracer.
 
 ## Named scenes and rendering
-`GyunityApp\SceneRegistry.h` maps names to builders, default cameras and required
+`GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
 `empty`, `diffuse`, `water`, and `fog`. The sphere and triangle scenes use their
 large-room camera; all others use the standard Cornell camera. Fog automatically
