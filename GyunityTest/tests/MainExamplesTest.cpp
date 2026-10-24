@@ -44,7 +44,7 @@ TEST(MainExamples, ExplicitCommandsStillUseTheSceneCli) {
 
 TEST(MainExamples, DefaultOutputUsesTheMainCheckoutTestDirectory) {
 	for (const auto* filename : { "CornellBoxPtEnvmap.bmp", "CornellBoxSppmTest.bmp",
-		"CornellBoxLT.bmp", "MediaTestFogEquiAngular.bmp" }) {
+		"CornellBoxLT.bmp", "MediaTestFogEquiAngular.bmp", "CornellBoxBdpt.bmp" }) {
 		const auto output = ExampleOutputPath(filename);
 		const auto suffix = std::string("\\Test\\") + filename;
 		ASSERT_GE(output.size(), suffix.size());
@@ -137,6 +137,52 @@ TEST_F(MainExampleRenders, VolumePathTracing) {
 TEST_F(MainExampleRenders, ImageWriteErrorsPropagate) {
 	EXPECT_THROW(TestLightTracing(Output("nonexistent-main-example-subdirectory\\failed.png"), 8, 8, 1),
 		std::runtime_error);
+}
+
+TEST(MainExamples, BidirectionalExampleRejectsVolumeAndUnknownScenes) {
+	EXPECT_FALSE(TestBidirectionalPathTracing("fog", "unused.png", 16, 16, 4));
+	EXPECT_FALSE(TestBidirectionalPathTracing("missing", "unused.png", 16, 16, 4));
+}
+
+TEST_F(MainExampleRenders, BidirectionalAllSurfaceScenes) {
+	int count = 0;
+	for (const auto& scene : GetSceneRegistry()) {
+		if (scene.usesVolume) continue;
+		SCOPED_TRACE(scene.name);
+		for (auto accelerator : { SceneAccelerator::Bvh, SceneAccelerator::Kd }) {
+			const std::string filename = outputDirectory + "\\bdpt-" + scene.name +
+				(accelerator == SceneAccelerator::Bvh ? "-bvh.hdr" : "-kd.hdr");
+			ASSERT_TRUE(TestBidirectionalPathTracing(scene.name, filename, 16, 16, 4, 4, accelerator));
+			int width = 0, height = 0, channels = 0;
+			std::unique_ptr<float, decltype(&stbi_image_free)> pixels(
+				stbi_loadf(filename.c_str(), &width, &height, &channels, 3), stbi_image_free);
+			ASSERT_NE(pixels, nullptr);
+			ASSERT_EQ(width, 16);
+			ASSERT_EQ(height, 16);
+			bool nonblack = false;
+			for (int i = 0; i < width * height * 3; ++i) {
+				ASSERT_TRUE(std::isfinite(pixels.get()[i]));
+				nonblack = nonblack || pixels.get()[i] > 0;
+			}
+			EXPECT_TRUE(nonblack);
+		}
+		++count;
+	}
+	EXPECT_EQ(count, 10);
+}
+
+TEST_F(MainExampleRenders, FailedCheckedIntegratorDoesNotWriteImage) {
+	class FailedIntegrator : public Integrator {
+	public:
+		void Render(const Scene&, const Camera&) override { ADD_FAILURE() << "Unchecked rendering was called."; }
+		bool RenderChecked(const Scene&, const Camera&) override { return false; }
+	} integrator;
+	SceneRenderOptions options;
+	options.scene = &FindScene("empty");
+	options.width = options.height = 4;
+	options.output = Output("must-not-write-failed-render.hdr");
+	EXPECT_FALSE(RenderScene(options, integrator));
+	EXPECT_FALSE(std::ifstream(options.output).good());
 }
 
 }

@@ -117,6 +117,24 @@ inline void Water(SceneBuilder& builder) {
 	AddCornellBoxLight(builder, 350, 0.15f);
 }
 
+inline void RoughGlassLucyAndPurpleBunny(SceneBuilder& builder) {
+	AddCornellBoxWalls(builder);
+	auto roughGlass = builder.RoughDielectric(Vec3(1), Vec3(1), 0.02, 0.02, 1.5);
+	const Transform lucyTransform =
+		Transform::Translate(Vec3(-0.4, 0, 0)) *
+		Transform::Translate(Vec3(0, -1, 0)) *
+		Transform::RotateY(75) *
+		Transform::Scale(0.0017, 0.0017, 0.0017);
+	builder.AddMesh("meshs\\Alucy.obj", roughGlass, lucyTransform);
+
+	const Vec3 purple(0.9999f, 0.75f, 0.9999f);
+	auto purpleGlass = builder.Glass(purple, purple);
+	const Transform bunnyTransform =
+		Transform::Translate(Vec3(0.52, -0.92, 0.3)) * Transform::Scale(0.22, 0.22, 0.22);
+	builder.AddMesh("meshs\\bunny3.obj", purpleGlass, bunnyTransform);
+	AddCornellBoxLight(builder, 85);
+}
+
 inline void FogBunny(SceneBuilder& builder) {
 	AddCornellBoxWalls(builder);
 	// MediumInterface borrows its pointers, so this immutable medium outlives every scene.

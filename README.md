@@ -166,7 +166,7 @@ commands. Invalid options, missing assets and failed image writes report an
 error and return a nonzero exit code; no image is silently substituted.
 
 ## C++ integrator examples
-`GyunityApp\main.cpp` keeps four runnable mock examples. With no arguments,
+`GyunityApp\main.cpp` keeps five runnable mock examples. With no arguments,
 `main()` calls `TestPathTracing()` instead of the previous LightTracing demo.
 To select another C++ example, replace that call with `TestSPPM()`,
 `TestLightTracing()`, or `TestVolPathTracing()` and rebuild. Explicit CLI
@@ -178,6 +178,7 @@ arguments still use `RunSceneCommandLine`; they do not select these examples.
 | `TestSPPM` | `mesh` | 1024x1024, 256 iterations, 300000 photons/stage, depth 20, radius 0.05, alpha 0.66666667 | `Test\CornellBoxSppmTest.bmp` |
 | `TestLightTracing` | `mesh` | 1024x1024, 512 spp, depth 15 | `Test\CornellBoxLT.bmp` |
 | `TestVolPathTracing` | `fog` | 1024x1024, 2000 spp, depth 8 | `Test\MediaTestFogEquiAngular.bmp` |
+| `TestBidirectionalPathTracing` | Any non-volume scene; default `mesh` | 1024x1024, 256 spp, depth 8 | `Test\CornellBoxBdpt.bmp` |
 
 Default outputs always go to `Test` at the **main repository root**, not the
 working directory or a worktree's root. The examples locate the main checkout
@@ -219,8 +220,8 @@ $env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\scene_builde
 ```
 
 ## Bidirectional probability interfaces
-The first BDPT preparation step adds deterministic probability queries without
-adding a selectable, incomplete BDPT renderer. Existing PT/LT paths remain in use.
+BDPT uses deterministic probability queries without changing the existing PT/LT
+sampling conventions.
 
 - `Scene::LightSelectionPdf(lightIndex, &pdf)` evaluates the PMF of a registered
   light slot from the same distribution as `SampleOneLight`; before initialization
@@ -246,7 +247,7 @@ sample/PDF agreement, hemisphere normalization, endpoint measures and failures.
 ## Bidirectional subpath generation
 `integrator\BDPTPath.h` provides the next preparation step: `GenerateCameraPath`
 and `GenerateLightPath`, using LT's path vocabulary without a second rendering
-framework. No BDPT render mode is exposed until connections and MIS are complete.
+framework. These helpers back `BidirectionalPathTracing`.
 
 Each function fills a `std::vector<PathVertex>` and returns its vertex count,
 including its endpoint. `maxVertices` is a storage/extension budget, not the
@@ -274,13 +275,14 @@ The existing LT implementation and its use of the original fields remain unchang
 directions, geometric conversion, budgets, endpoint metadata, explicit failures,
 glass transport modes, and environment launch/escape conventions.
 
-## Finite-light BDPT
-`BidirectionalPathTracing(sampler, maxDepth, spp)` now supplies the finite-light
-rendering step. `RenderChecked(scene, camera)` returns success/failure explicitly;
-only save its film on success. The inherited `Render` entry point logs failures,
-but this experimental integrator is not yet wired into default app selection.
-Area lights and point lights are supported; environment connections, media and
-mixed delta/continuous BSDFs remain explicitly unsupported in this step.
+## Bidirectional path tracing
+`BidirectionalPathTracing(sampler, maxDepth, spp)` supports finite area/point
+lights and one environment light, alone or mixed with finite lights.
+`RenderChecked(scene, camera)` returns success/failure explicitly; the shared
+`RenderScene` checks this result before saving the film. Other integrators retain
+their existing behavior through the default checked-render adapter.
+Media, mixed delta/continuous BSDFs and multiple environment maps are explicitly
+unsupported. Environment emission requires finite nonempty scene bounds.
 
 The renderer generates both subpaths, evaluates supported connections at
 `depth = s + t - 2`, adds each camera-sample sum once and normalizes camera splats
@@ -298,10 +300,51 @@ zero-density events are distinct from delta-event markers. Point-light camera-hi
 strategies, specular connections, `(1,1)` and `t=0` are excluded.
 
 The implementation reuses generated endpoints, so its conditional endpoint PDFs
-are not copied from PBRT's endpoint-resampling branch. Independent product tests
-cover diffuse paths, unequal emitter PMFs, point sources and a mirror chain;
-additional tests check visibility, camera bounds and 16x16 rendering. This is not
-yet the complete environment-enabled BDPT described in #111.
+are not copied from PBRT's endpoint-resampling branch. Environment connections use
+the stored map direction and its selection-weighted directional PDF, not the
+position of a finite helper point. Emitted environment paths use projected
+launch-disk density at the first surface. Camera misses retain accumulated
+throughput and evaluate the environment in the recorded direction.
+
+Independent product tests cover diffuse paths, unequal emitter PMFs, point
+sources, mirror chains and environment strategies. Analytical constant-environment
+diffuse, mirror, glass and mixed point-light checks supplement the 16x16 smoke
+renders. Environment rotation remains an existing unsupported map feature; use
+zero rotation rather than treating PT agreement as a rotation reference.
+
+`TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
+width, height, spp, depth and accelerator. It covers all nine original surface
+scenes plus `lucy-bunny`, rejects `fog`, and does not change the default no-argument
+PT example or the CLI's existing integrator selection. To select the new example
+in `main`, replace the default render call with:
+
+```cpp
+if (!TestBidirectionalPathTracing("lucy-bunny",
+    ExampleOutputPath("CornellBoxBdptLucyBunny.png"))) return 1;
+```
+
+The example defaults to **1024x1024 and 256 spp**. Tests pass explicit smaller
+settings. `lucy-bunny` contains rough-glass Lucy and a purple-glass bunny inside
+the Cornell box, illuminated only by its ceiling area light, with no added HDR.
+
+BDPT reports progress to stderr using the same `Percentage:` label as PT.
+It starts at 0%, advances monotonically as tiles finish all their samples, and
+prints 100% only after every worker succeeds. Output is throttled to 0.1 percentage
+point steps instead of printing for every sample. This measures completed tiles,
+not estimated time remaining; different paths can take different amounts of time.
+Scene loading precedes this render progress, and image saving follows it.
+Each 32x32 tile owns a sampler clone and memory pool, matching PT's scheduling
+granularity. Progress is completed tiles divided by total tiles; partial edge
+tiles count as one tile each. Camera splats
+can land outside the tile and still use the film's synchronization.
+Tile-based seeds change the random sequence from the older row-based version;
+the estimator and normalization are unchanged, but image hashes need not match.
+`ProgressReporter` owns counting, synchronization, throttled output and completion
+state; the renderer only calls `Advance()` for each finished tile and
+`Finish(success)` after joining workers. Failed renders report the completed
+work-unit count without a 100% message. If stderr
+is redirected to a log, monitor that log (for example with `Get-Content -Wait`)
+or use `Tee-Object` to retain both console output and a log.
 
 ## Pixel debug selection
 Pixel diagnostics are local to the calling thread, including calls outside TBB.
@@ -325,6 +368,25 @@ Run the registered-scene regression without patching or recompiling `main.cpp`:
   -OutputDirectory "D:\Code\Graphics\Gyunity\Test\scene_registry_step4\renders" `
   -ReferenceDirectory "D:\Code\Graphics\Gyunity\Test\remaining_scenes_step3"
 ```
+
+Use `-Scenes mesh,slope,sphere,env,triangle,textured,empty,diffuse,water,fog` when
+comparing against the historical ten-scene references; `lucy-bunny` is new and
+has no original-scene baseline. Without `-Scenes`, the runner requires references
+for every registered scene rather than silently skipping missing references.
+
+A Python equivalent is available without additional packages:
+
+```powershell
+uv run --no-project .\GyunityTest\RunSceneRegression.py `
+  --output-directory "D:\Code\Graphics\Gyunity\Test\python-scene-regression" `
+  --reference-directory "D:\Code\Graphics\Gyunity\Test\remaining_scenes_step3" `
+  --scenes mesh slope sphere env triangle textured empty diffuse water fog
+```
+
+It uses Python 3.11 or newer and standard-library modules only. Like the PS1
+version, it invokes the actual app, preserves reference files, writes per-render
+logs and a CSV report, and fails on unknown scenes, missing references, render
+errors or hash mismatches. Both scripts remain supported.
 
 The script enumerates `--list-scenes`, renders each scene with BVH and kd-tree
 through the actual application, and compares PNG file hashes against

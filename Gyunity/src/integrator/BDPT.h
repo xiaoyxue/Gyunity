@@ -15,7 +15,7 @@ public:
 	BidirectionalPathTracing(std::shared_ptr<Sampler> sampler, int maxDepth, int spp)
 		: mSampler(sampler), mMaxDepth(maxDepth), mSpp(spp) {}
 	void Render(const Scene& scene, const Camera& camera) override;
-	bool RenderChecked(const Scene& scene, const Camera& camera);
+	bool RenderChecked(const Scene& scene, const Camera& camera) override;
 
 private:
 	std::shared_ptr<Sampler> mSampler;

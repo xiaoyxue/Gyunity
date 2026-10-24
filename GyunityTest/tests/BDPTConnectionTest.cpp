@@ -337,3 +337,103 @@ TEST(FiniteBDPTRender, TinyCornellBoxRunsBothSubpathsAndConnections) {
 	}
 	EXPECT_GT(sum, 0);
 }
+
+TEST(FiniteBDPTRender, ProgressIsMonotonicAndCompletesOnlyOnce) {
+	auto scene = std::make_shared<Scene>();
+	scene->SetAccelerator(std::make_shared<BruteForce>());
+	scene->Initialize();
+	PinHoleCamera camera(std::make_shared<Film>(64, 32), Vec3(0, 0, 3), Vec3(0),
+		Vec3(0, 1, 0), 53.13010235415597f, 1);
+	BidirectionalPathTracing integrator(std::make_shared<RandomSampler>(123), 0, 1);
+	testing::internal::CaptureStderr();
+	const bool rendered = integrator.RenderChecked(*scene, camera);
+	const std::string output = testing::internal::GetCapturedStderr();
+	ASSERT_TRUE(rendered);
+	EXPECT_NE(output.find("Rendering BDPT (64 x 32, 1 spp, depth 0)"), std::string::npos);
+	const std::string label = "Percentage:";
+	size_t cursor = 0;
+	double previous = -1;
+	int reports = 0, completions = 0;
+	while ((cursor = output.find(label, cursor)) != std::string::npos) {
+		cursor += label.size();
+		char* end = nullptr;
+		const double percentage = std::strtod(output.c_str() + cursor, &end);
+		ASSERT_NE(end, output.c_str() + cursor);
+		ASSERT_EQ(*end, '%');
+		EXPECT_GT(percentage, previous);
+		EXPECT_LE(percentage, 100);
+		if (reports == 0) EXPECT_EQ(percentage, 0);
+		if (percentage == 100) ++completions;
+		previous = percentage;
+		++reports;
+	}
+	EXPECT_GT(reports, 2);
+	EXPECT_LE(reports, 1001);
+	EXPECT_EQ(completions, 1);
+	EXPECT_EQ(previous, 100);
+	EXPECT_EQ(output.back(), '\n');
+}
+
+TEST(FiniteBDPTRender, FailedRenderNeverReportsCompletion) {
+	class InvalidRayCamera : public PinHoleCamera {
+	public:
+		using PinHoleCamera::PinHoleCamera;
+		Ray GenerateRay(int, int, const Vec2&, real) const override {
+			return Ray(Vec3(0), Vec3(0));
+		}
+	};
+	auto scene = std::make_shared<Scene>();
+	scene->SetAccelerator(std::make_shared<BruteForce>());
+	scene->Initialize();
+	InvalidRayCamera camera(std::make_shared<Film>(8, 8), Vec3(0, 0, 3), Vec3(0),
+		Vec3(0, 1, 0), 53.13010235415597f, 1);
+	BidirectionalPathTracing integrator(std::make_shared<RandomSampler>(123), 0, 1);
+	testing::internal::CaptureStderr();
+	const bool rendered = integrator.RenderChecked(*scene, camera);
+	const std::string output = testing::internal::GetCapturedStderr();
+	EXPECT_FALSE(rendered);
+	EXPECT_EQ(output.find("100.0%"), std::string::npos);
+	EXPECT_NE(output.find("failed after 0 of 1 work units."), std::string::npos);
+}
+
+TEST(FiniteBDPTRender, TilesCoverPartialEdgesAndCloneOneSamplerPerTile) {
+	struct SampleCounts {
+		std::array<std::atomic<int>, 4> clones;
+		std::vector<std::atomic<int>> pixels;
+		std::atomic<int> invalid{0};
+		SampleCounts() : pixels(35 * 33) {
+			for (auto& count : clones) count = 0;
+			for (auto& count : pixels) count = 0;
+		}
+	};
+	class CountingSampler : public Sampler {
+	public:
+		explicit CountingSampler(std::shared_ptr<SampleCounts> counts) : mCounts(counts) {}
+		real Sample(unsigned int dimension, unsigned long long instance) override {
+			if (dimension == 0) {
+				const auto pixel = instance / 3;
+				if (pixel >= mCounts->pixels.size()) ++mCounts->invalid;
+				else ++mCounts->pixels[static_cast<size_t>(pixel)];
+			}
+			return 0.5f;
+		}
+		std::shared_ptr<Sampler> Clone(uint32 seed) override {
+			if (seed >= mCounts->clones.size()) ++mCounts->invalid;
+			else ++mCounts->clones[seed];
+			return std::make_shared<CountingSampler>(mCounts);
+		}
+	private:
+		std::shared_ptr<SampleCounts> mCounts;
+	};
+	auto scene = std::make_shared<Scene>();
+	scene->SetAccelerator(std::make_shared<BruteForce>());
+	scene->Initialize();
+	PinHoleCamera camera(std::make_shared<Film>(35, 33), Vec3(0, 0, 3), Vec3(0),
+		Vec3(0, 1, 0), 53.13010235415597f, 1);
+	auto counts = std::make_shared<SampleCounts>();
+	BidirectionalPathTracing integrator(std::make_shared<CountingSampler>(counts), 0, 3);
+	ASSERT_TRUE(integrator.RenderChecked(*scene, camera));
+	EXPECT_EQ(counts->invalid.load(), 0);
+	for (const auto& count : counts->clones) EXPECT_EQ(count.load(), 1);
+	for (const auto& count : counts->pixels) EXPECT_EQ(count.load(), 3);
+}

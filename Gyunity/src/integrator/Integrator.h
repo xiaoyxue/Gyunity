@@ -18,6 +18,10 @@ class Integrator
 {
 public:
 	virtual void Render(const Scene &scene, const Camera &camera) = 0;
+	virtual bool RenderChecked(const Scene& scene, const Camera& camera) {
+		Render(scene, camera);
+		return true;
+	}
 
 	virtual ~Integrator() {}
 
