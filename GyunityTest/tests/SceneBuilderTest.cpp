@@ -1,5 +1,7 @@
 #include "../../GyunityApp/SceneBuilder.h"
 #include "../../GyunityApp/CornellBox.h"
+#include "../../GyunityApp/CornellBoxScenes.h"
+#include "accelerator/BVHAccel.h"
 #include "gtest/gtest.h"
 
 namespace {
@@ -49,6 +51,96 @@ void ExpectMaterialEqual(const Material& actual, const Material& expected) {
 			}
 		}
 	}
+}
+
+void ExpectSceneEqual(Scene& actual, Scene& expected) {
+	const auto& actualPrimitives = actual.GetPrimitives();
+	const auto& expectedPrimitives = expected.GetPrimitives();
+	ASSERT_EQ(actualPrimitives.size(), expectedPrimitives.size());
+	for (size_t i = 0; i < actualPrimitives.size(); ++i) {
+		SCOPED_TRACE(i);
+		const auto& actualPrimitive = actualPrimitives[i];
+		const auto& expectedPrimitive = expectedPrimitives[i];
+		ExpectShapeEqual(*actualPrimitive->GetShape(), *expectedPrimitive->GetShape());
+		EXPECT_EQ(actualPrimitive->mPrimId, expectedPrimitive->mPrimId);
+		EXPECT_EQ(actualPrimitive->GetShape()->mShapeId, expectedPrimitive->GetShape()->mShapeId);
+		EXPECT_EQ(actualPrimitive->IsLight(), expectedPrimitive->IsLight());
+		// Mesh triangles share one material; compare it once per contiguous group.
+		if (i == 0 || actualPrimitive->GetMaterial() != actualPrimitives[i - 1]->GetMaterial() ||
+			expectedPrimitive->GetMaterial() != expectedPrimitives[i - 1]->GetMaterial()) {
+			ExpectMaterialEqual(*actualPrimitive->GetMaterial(), *expectedPrimitive->GetMaterial());
+		}
+	}
+
+	// Environment light power depends on the initialized scene bounds.
+	actual.SetAccelerator(std::make_shared<BVHAccel>(actualPrimitives));
+	expected.SetAccelerator(std::make_shared<BVHAccel>(expectedPrimitives));
+	actual.Initialize();
+	expected.Initialize();
+
+	const auto& actualLights = actual.GetLights();
+	const auto& expectedLights = expected.GetLights();
+	ASSERT_EQ(actualLights.size(), expectedLights.size());
+	for (size_t i = 0; i < actualLights.size(); ++i) {
+		const auto& actualLight = actualLights[i];
+		const auto& expectedLight = expectedLights[i];
+		EXPECT_EQ(actualLight->IsAreaLight(), expectedLight->IsAreaLight());
+		EXPECT_EQ(actualLight->IsEnvironmentLight(), expectedLight->IsEnvironmentLight());
+		ExpectVectorEqual(actualLight->Emission(), expectedLight->Emission());
+		ExpectVectorEqual(actualLight->Power(), expectedLight->Power());
+		for (size_t j = 0; j < actualPrimitives.size(); ++j) {
+			EXPECT_EQ(actualPrimitives[j]->GetLight() == actualLight.get(),
+				expectedPrimitives[j]->GetLight() == expectedLight.get());
+		}
+		if (actualLight->IsEnvironmentLight() && expectedLight->IsEnvironmentLight()) {
+			EXPECT_EQ(actual.GetEnvironmentLight(), actualLight.get());
+			for (const Vec3& direction : { Vec3(1, 0, 0), Vec3(0, 1, 0), Vec3(0, 0, -1), Vec3(1, 2, 3).Norm() }) {
+				ExpectVectorEqual(actualLight->Emission(direction), expectedLight->Emission(direction));
+			}
+		}
+	}
+}
+
+TEST(CornellBoxScenes, GlassBunnyMatchesOriginal) {
+	ASSERT_TRUE(std::ifstream(SceneBuilder::Resource("meshs\\bunny3.obj")).good())
+		<< "Run GyunityTest from the GyunityApp directory so scene resources resolve.";
+	auto original = std::make_shared<Scene>();
+	CornellBoxMesh::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::GlassBunny(builder);
+	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, SlopeMatchesOriginal) {
+	auto original = std::make_shared<Scene>();
+	CornellBoxMeshWithSlope::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::Slope(builder);
+	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, SphereBoxMatchesOriginal) {
+	auto original = std::make_shared<Scene>();
+	CornellBoxSphere::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::SphereBox(builder);
+	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, EnvironmentMatchesOriginal) {
+	for (const auto* path : { "meshs\\bunny3.obj", "meshs\\Alucy.obj", "media\\pictures\\uffizi-large.hdr" }) {
+		ASSERT_TRUE(std::ifstream(SceneBuilder::Resource(path)).good())
+			<< "Run GyunityTest from GyunityApp; missing resource: " << path;
+	}
+	auto original = std::make_shared<Scene>();
+	EnvironmentMapScene::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::Environment(builder);
+	ExpectSceneEqual(*scene, *original);
 }
 
 TEST(SceneBuilder, ConstantTexturesAndResourcePaths) {
