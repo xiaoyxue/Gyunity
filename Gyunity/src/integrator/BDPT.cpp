@@ -1,4 +1,6 @@
 #include "BDPT.h"
+#include "TiledIntegrator.h"
+#include "system/ProgressReporter.h"
 #include "light/PointLight.h"
 #include <atomic>
 #include <cmath>
@@ -18,6 +20,16 @@ bool Finite(const Vec3& value) {
 }
 
 bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
+	if (from.mType == PathVertexType::Environment || to.mType == PathVertexType::Environment) {
+		if (from.mType == PathVertexType::Environment && to.mType == PathVertexType::Environment) {
+			return Fail("BDPT cannot connect two environment endpoints.");
+		}
+		*dir = from.mType == PathVertexType::Environment ? -from.mDirection : to.mDirection;
+		if (!Finite(*dir) || std::abs(dir->Length2() - 1) > 1e-4f) {
+			return Fail("BDPT environment endpoint requires a unit map direction.");
+		}
+		return true;
+	}
 	const Vec3 offset = to.mIsect.mPos - from.mIsect.mPos;
 	const real length2 = offset.Length2();
 	if (!std::isfinite(length2) || length2 <= 0) return Fail("BDPT connection endpoints must be distinct and finite.");
@@ -56,7 +68,7 @@ bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVerte
 			selectionPdf += slotPdf;
 		}
 	}
-	*pdf = selectionPdf * positionPdf;
+	*pdf = selectionPdf * (light.mType == PathVertexType::Environment ? directionPdf : positionPdf);
 	return true;
 }
 
@@ -64,6 +76,12 @@ bool PdfToward(const PathVertex& vertex, const PathVertex* previous, const PathV
 	Vec3 wi;
 	if (!Direction(vertex, next, &wi)) return false;
 	real directionalPdf = 0;
+	if (vertex.mType == PathVertexType::Environment) {
+		if (!vertex.mLight) return Fail("BDPT environment endpoint has no light reference.");
+		real positionPdf, emissionPdf;
+		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &emissionPdf)) return false;
+		return ConvertDensity(positionPdf, vertex, next, pdf);
+	}
 	if (vertex.mType == PathVertexType::Light || (!previous && vertex.mLight)) {
 		real positionPdf;
 		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &directionalPdf)) return false;
@@ -83,7 +101,9 @@ bool PdfToward(const PathVertex& vertex, const PathVertex* previous, const PathV
 
 bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, size_t s, size_t t) {
 	if (t == 0 || s + t < 2) return false;
-	if (s == 0) return cameraEnd.mLight && cameraEnd.mLight->IsAreaLight();
+	if (s == 0) return cameraEnd.mLight &&
+		(cameraEnd.mLight->IsAreaLight() || cameraEnd.mType == PathVertexType::Environment);
+	if (cameraEnd.mType == PathVertexType::Environment) return false;
 	if (s == 1 && t == 1) return false;
 	if (s == 1) return lightEnd && lightEnd->mLight && Connectible(cameraEnd);
 	return lightEnd && Connectible(*lightEnd) && Connectible(cameraEnd);
@@ -145,7 +165,8 @@ bool GeometryTerm(const PathVertex& first, const PathVertex& second, real* value
 	*value = 0;
 	Vec3 dir;
 	if (!Direction(first, second, &dir)) return false;
-	*value = 1 / (second.mIsect.mPos - first.mIsect.mPos).Length2();
+	*value = first.mType == PathVertexType::Environment || second.mType == PathVertexType::Environment
+		? 1 : 1 / (second.mIsect.mPos - first.mIsect.mPos).Length2();
 	if (Surface(first)) *value *= std::abs(Dot(first.mIsect.mGeometryNormal, dir));
 	if (Surface(second)) *value *= std::abs(Dot(second.mIsect.mGeometryNormal, dir));
 	return std::isfinite(*value) || Fail("BDPT geometry factor is not finite.");
@@ -157,10 +178,14 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	if (!Counts(lightPath, cameraPath, s, t)) return Fail("BDPT MIS received invalid vertex counts.");
 	const size_t count = static_cast<size_t>(s) + t;
 	for (int i = 0; i < s; ++i) {
-		if (lightPath[i].mType == PathVertexType::Environment) return Fail("Environment BDPT connections are not implemented yet.");
+		if (lightPath[i].mType == PathVertexType::Environment && i != 0) {
+			return Fail("An environment can only be the light subpath origin.");
+		}
 	}
 	for (int i = 0; i < t; ++i) {
-		if (cameraPath[i].mType == PathVertexType::Environment) return Fail("Environment BDPT connections are not implemented yet.");
+		if (cameraPath[i].mType == PathVertexType::Environment && i != t - 1) {
+			return Fail("An environment can only be the camera subpath endpoint.");
+		}
 	}
 
 	const PathVertex* lightEnd = s > 0 ? &lightPath[s - 1] : nullptr;
@@ -214,16 +239,19 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 	if (!Counts(lightPath, cameraPath, s, t)) return Fail("BDPT connection received invalid vertex counts.");
 	if (static_cast<int64>(s) + t < 2 || (s == 1 && t == 1)) return true;
 	const PathVertex& pt = cameraPath[t - 1];
-	if (pt.mType == PathVertexType::Environment ||
-		(s > 0 && lightPath[0].mType == PathVertexType::Environment)) {
-		return Fail("Environment BDPT connections are not implemented yet.");
-	}
+	if (pt.mType == PathVertexType::Environment && s != 0) return true;
 	Vec3 value(0);
 	if (s == 0) {
-		if (!pt.mLight || !pt.mLight->IsAreaLight()) return true;
-		Vec3 dir;
-		if (!Direction(pt, cameraPath[t - 2], &dir)) return false;
-		value = pt.mThroughput * pt.mLight->Emission(pt.mIsect, dir);
+		if (!pt.mLight) return true;
+		if (pt.mType == PathVertexType::Environment) {
+			value = pt.mThroughput * pt.mLight->Emission(pt.mDirection);
+		}
+		else {
+			if (!pt.mLight->IsAreaLight()) return true;
+			Vec3 dir;
+			if (!Direction(pt, cameraPath[t - 2], &dir)) return false;
+			value = pt.mThroughput * pt.mLight->Emission(pt.mIsect, dir);
+		}
 	}
 	else {
 		const PathVertex& qs = lightPath[s - 1];
@@ -244,7 +272,8 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 			real originPdf;
 			if (!LightOriginPdf(scene, qs, pt, &originPdf)) return false;
 			if (originPdf <= 0) return true;
-			const Vec3 emission = qs.mLight->IsAreaLight() ?
+			const Vec3 emission = qs.mType == PathVertexType::Environment ?
+				qs.mLight->Emission(qs.mDirection) : qs.mLight->IsAreaLight() ?
 				qs.mLight->Emission(qs.mIsect, toCamera) : qs.mLight->Emission();
 			real geometry;
 			if (!GeometryTerm(qs, pt, &geometry)) return false;
@@ -261,7 +290,12 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 				qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi) *
 				pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -wi);
 		}
-		if (value != Vec3(0) && !VisibilityTester(qs.mIsect, pt.mIsect).Unoccluded(scene)) return true;
+		if (value != Vec3(0)) {
+			if (qs.mType == PathVertexType::Environment) {
+				if (scene.Intersect(pt.mIsect.SpawnRay(qs.mDirection))) return true;
+			}
+			else if (!VisibilityTester(qs.mIsect, pt.mIsect).Unoccluded(scene)) return true;
+		}
 	}
 	if (!Finite(value)) return Fail("BDPT connection contribution is not finite.");
 	if (value == Vec3(0)) return true;
@@ -279,9 +313,24 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 	if (!mSampler || mSpp <= 0 || mMaxDepth < 0 || mMaxDepth > std::numeric_limits<int>::max() - 2) {
 		return Fail("BDPT requires a sampler, positive sample count and valid maximum depth.");
 	}
-	for (const auto& light : scene.GetLights()) {
-		if (!light->IsAreaLight() && !dynamic_cast<const PointLight*>(light.get())) {
-			return Fail("This BDPT step supports finite area and point lights only.");
+	int environments = 0;
+	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
+		const auto& light = scene.GetLights()[i];
+		if (!light->IsAreaLight() && !light->IsEnvironmentLight() && !dynamic_cast<const PointLight*>(light.get())) {
+			return Fail("BDPT supports area lights, point lights and an environment light.");
+		}
+		if (light->IsEnvironmentLight()) ++environments;
+		for (size_t j = 0; j < i; ++j) {
+			if (scene.GetLights()[j] == light) return Fail("BDPT requires each light to be registered once.");
+		}
+	}
+	if (environments > 1) return Fail("BDPT currently supports one environment light per scene.");
+	if (environments == 1) {
+		Vec3 center;
+		real radius;
+		scene.GetBoundingSphere(&center, &radius);
+		if (!Finite(center) || !std::isfinite(radius) || radius <= 0) {
+			return Fail("Environment BDPT requires finite nonempty scene bounds.");
 		}
 	}
 	for (const auto& primitive : scene.GetPrimitives()) {
@@ -290,40 +339,59 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 		}
 	}
 	const int width = camera.GetFilm()->mResX, height = camera.GetFilm()->mResY;
+	if (width <= 0 || height <= 0) return Fail("BDPT requires positive image dimensions.");
+	const int tileSize = 32;
+	std::vector<Tile> tiles;
+	for (int y = 0; y < height;) {
+		const int maxY = y + std::min(tileSize, height - y);
+		for (int x = 0; x < width;) {
+			const int maxX = x + std::min(tileSize, width - x);
+			tiles.emplace_back(x, y, maxX, maxY);
+			x = maxX;
+		}
+		y = maxY;
+	}
+	ProgressReporter progress(fmt::format("Rendering BDPT ({} x {}, {} spp, depth {})",
+		width, height, mSpp, mMaxDepth), tiles.size());
 	std::atomic<bool> success(true);
-	ParallelFor(0, height, [&](int y) {
-		auto sampler = mSampler->Clone(y);
+	ParallelFor(size_t(0), tiles.size(), [&](size_t tileIndex) {
+		if (!success) return;
+		const Tile& tile = tiles[tileIndex];
+		auto sampler = mSampler->Clone(static_cast<uint32>(tileIndex));
 		MemoryPool arena;
 		std::vector<PathVertex> lightPath, cameraPath;
-		for (int x = 0; x < width && success; ++x) {
-			for (int sample = 0; sample < mSpp && success; ++sample) {
-				RandomStateSequence rand(sampler, (int64(y) * width + x) * mSpp + sample);
-				const real u = rand(), v = rand();
-				const Ray ray = camera.GenerateRay(x, y, Vec2(u, v));
-				const int nCamera = GenerateCameraPath(scene, camera, rand, arena, ray, mMaxDepth + 2, cameraPath);
-				const int nLight = GenerateLightPath(scene, rand, arena, mMaxDepth + 1, lightPath);
-				if (nCamera < 0 || nLight < 0) { success = false; break; }
-				Vec3 value(0);
-				for (int t = 1; t <= nCamera && success; ++t) {
-					for (int s = 0; s <= nLight && success; ++s) {
-						const int64 depth = static_cast<int64>(s) + t - 2;
-						if (depth < 0 || depth > mMaxDepth || (s == 1 && t == 1)) continue;
-						Vec3 contribution;
-						Vec2 raster;
-						if (!ConnectPaths(scene, camera, lightPath, cameraPath, s, t, &contribution, &raster)) {
-							success = false;
-							break;
+		for (int y = tile.minY; y < tile.maxY && success; ++y) {
+			for (int x = tile.minX; x < tile.maxX && success; ++x) {
+				for (int sample = 0; sample < mSpp && success; ++sample) {
+					RandomStateSequence rand(sampler, (int64(y) * width + x) * mSpp + sample);
+					const real u = rand(), v = rand();
+					const Ray ray = camera.GenerateRay(x, y, Vec2(u, v));
+					const int nCamera = GenerateCameraPath(scene, camera, rand, arena, ray, mMaxDepth + 2, cameraPath);
+					const int nLight = GenerateLightPath(scene, rand, arena, mMaxDepth + 1, lightPath);
+					if (nCamera < 0 || nLight < 0) { success = false; break; }
+					Vec3 value(0);
+					for (int t = 1; t <= nCamera && success; ++t) {
+						for (int s = 0; s <= nLight && success; ++s) {
+							const int64 depth = static_cast<int64>(s) + t - 2;
+							if (depth < 0 || depth > mMaxDepth || (s == 1 && t == 1)) continue;
+							Vec3 contribution;
+							Vec2 raster;
+							if (!ConnectPaths(scene, camera, lightPath, cameraPath, s, t, &contribution, &raster)) {
+								success = false;
+								break;
+							}
+							if (t == 1) camera.GetFilm()->AddSplat(raster.x, raster.y, contribution / real(mSpp));
+							else value += contribution;
 						}
-						if (t == 1) camera.GetFilm()->AddSplat(raster.x, raster.y, contribution / real(mSpp));
-						else value += contribution;
 					}
+					if (success) camera.GetFilm()->AddSample(x + u, y + v, value);
+					arena.Reset();
 				}
-				if (success) camera.GetFilm()->AddSample(x + u, y + v, value);
-				arena.Reset();
 			}
 		}
+		if (success) progress.Advance();
 	});
-	return success;
+	return progress.Finish(success);
 }
 
 GYT_NAMESPACE_END

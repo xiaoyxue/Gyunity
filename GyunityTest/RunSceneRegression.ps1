@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)] [string] $OutputDirectory,
     [Parameter(Mandatory)] [string] $ReferenceDirectory,
-    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
+    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
+    [string[]] $Scenes = @()
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -12,8 +13,12 @@ if (-not (Test-Path -LiteralPath $exe)) { throw "Build $Configuration|x64 before
 if ($output -eq $reference) { throw 'Use separate output and reference directories.' }
 
 # Get names from the same registry used for rendering; never patch main.cpp.
-$scenes = @(& $exe --list-scenes)
-if ($LASTEXITCODE -ne 0 -or $scenes.Count -eq 0) { throw 'Cannot list registered scenes.' }
+$registered = @(& $exe --list-scenes)
+if ($LASTEXITCODE -ne 0 -or $registered.Count -eq 0) { throw 'Cannot list registered scenes.' }
+$scenes = if ($Scenes.Count -gt 0) { $Scenes } else { $registered }
+foreach ($scene in $scenes) {
+    if ($scene -notin $registered) { throw "Unknown scene requested for regression: $scene" }
+}
 foreach ($scene in $scenes) {
     foreach ($accel in 'bvh', 'kd') {
         $baseline = Join-Path $reference "old.$scene.$accel.png"

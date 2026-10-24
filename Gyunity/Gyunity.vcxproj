@@ -184,6 +184,7 @@
     <ClCompile Include="src\numeric\EFloat.cpp" />
     <ClCompile Include="src\light\EnvLight.cpp" />
     <ClCompile Include="src\system\Threading.cpp" />
+    <ClCompile Include="src\system\ProgressReporter.cpp" />
     <ClCompile Include="src\volume\Homogeneous.cpp" />
     <ClCompile Include="src\image\ImageIO.cpp" />
     <ClCompile Include="src\integrator\Integrator.cpp" />
@@ -292,6 +293,7 @@
     <ClInclude Include="src\simd\SSE.h" />
     <ClInclude Include="src\texture\Texture.h" />
     <ClInclude Include="src\system\Threading.h" />
+    <ClInclude Include="src\system\ProgressReporter.h" />
     <ClInclude Include="src\integrator\TiledIntegrator.h" />
     <ClInclude Include="src\math\Transform.h" />
     <ClInclude Include="src\shape\Triangle.h" />

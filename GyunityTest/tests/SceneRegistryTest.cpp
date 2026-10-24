@@ -16,15 +16,16 @@ void ExpectVector(const Vec3& actual, const Vec3& expected) {
 	EXPECT_EQ(actual.z, expected.z);
 }
 
-TEST(SceneRegistry, NamesMapToAllTenBuilders) {
+TEST(SceneRegistry, NamesMapToAllBuilders) {
 	const std::pair<const char*, void (*)(SceneBuilder&)> expected[] = {
 		{ "mesh", CornellBoxScenes::GlassBunny }, { "slope", CornellBoxScenes::Slope },
 		{ "sphere", CornellBoxScenes::SphereBox }, { "env", CornellBoxScenes::Environment },
 		{ "triangle", CornellBoxScenes::TriangleBox }, { "textured", CornellBoxScenes::TexturedSpheres },
 		{ "empty", CornellBoxScenes::Empty }, { "diffuse", CornellBoxScenes::DiffuseBunny },
-		{ "water", CornellBoxScenes::Water }, { "fog", CornellBoxScenes::FogBunny }
+		{ "water", CornellBoxScenes::Water }, { "fog", CornellBoxScenes::FogBunny },
+		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny }
 	};
-	ASSERT_EQ(GetSceneRegistry().size(), 10u);
+	ASSERT_EQ(GetSceneRegistry().size(), 11u);
 	std::set<std::string> names;
 	for (const auto& scene : GetSceneRegistry()) EXPECT_TRUE(names.insert(scene.name).second);
 	for (const auto& entry : expected) {

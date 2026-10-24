@@ -17,5 +17,5 @@ struct SceneRenderOptions {
 };
 
 SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv);
-void RenderScene(const SceneRenderOptions& options, Gyunity::Integrator& integrator);
+bool RenderScene(const SceneRenderOptions& options, Gyunity::Integrator& integrator);
 int RunSceneCommandLine(int argc, const char* const* argv);
