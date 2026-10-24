@@ -1,5 +1,6 @@
 #pragma once
 #include "SceneBuilder.h"
+#include "volume/Homogeneous.h"
 
 // Parallel versions of CornellBox.h scenes; the original classes remain available.
 namespace CornellBoxScenes {
@@ -26,18 +27,9 @@ inline void Slope(SceneBuilder& builder) {
 }
 
 inline void SphereBox(SceneBuilder& builder) {
-	auto red = builder.Diffuse(Vec3(.75f, .25f, .25f));
-	auto blue = builder.Diffuse(Vec3(.25f, .25f, .75f));
-	auto white = builder.Diffuse(Vec3(.75f, .75f, .75f));
+	AddCornellSphereWalls(builder);
 	auto fullWhite = builder.Diffuse(Vec3(1, 1, 1));
 	auto glass = builder.Glass(Vec3(1, 1, 1), Vec3(1, 1, 1));
-
-	// Giant inward-facing spheres form the left, right, back, floor and ceiling.
-	builder.AddSphere(Vec3(1e5f + 1, 40.8f, 81.6f), 1e5f, red, true);
-	builder.AddSphere(Vec3(-1e5f + 99, 40.8f, 81.6f), 1e5f, blue, true);
-	builder.AddSphere(Vec3(50, 40.8f, 1e5), 1e5f, white, true);
-	builder.AddSphere(Vec3(50, 1e5, 81.6f), 1e5f, white, true);
-	builder.AddSphere(Vec3(50, -1e5f + 81.6f, 81.6f), 1e5f, white, true);
 
 	builder.AddSphere(Vec3(23, 0.0f, 98), 9.5f, fullWhite);
 	builder.AddSphere(Vec3(73, 26.5f, 78), 16.5f, glass);
@@ -69,6 +61,72 @@ inline void Environment(SceneBuilder& builder) {
 		Transform::Scale(0.0019, 0.0019, 0.0019);
 	builder.AddMesh("meshs\\Alucy.obj", roughGlass, lucyTransform);
 	builder.AddEnvironmentLight("media\\pictures\\uffizi-large.hdr", 0);
+}
+
+inline void TriangleBox(SceneBuilder& builder) {
+	AddCornellSphereWalls(builder);
+	const Transform triangleTransform = Transform::Translate(Vec3(27, 16.5, 47)) * Transform::RotateY(30);
+	const Vec3 top = triangleTransform(Vec3(10, 20, 0));
+	const Vec3 bottomLeft = triangleTransform(Vec3(-10, 0, 0));
+	const Vec3 bottomRight = triangleTransform(Vec3(10, 0, 0));
+	const Vec3 normal = Cross(bottomLeft - top, bottomRight - top).Norm();
+	builder.AddTriangle(top, bottomLeft, bottomRight, normal, builder.Diffuse(Vec3(.25f, .25f, .75f)));
+	builder.AddSphere(Vec3(23, 0.0f, 98), 9.5f, builder.Diffuse(Vec3(1, 1, 1)));
+	builder.AddSphereLight(Vec3(50, 81.6f - 16.5f, 81.6f), 8.f, Vec3(0.3f, 0.3f, 0.3f) * 100);
+}
+
+inline void TexturedSpheres(SceneBuilder& builder) {
+	AddCornellBoxWalls(builder);
+	builder.AddSphere(Vec3(0.5f, -0.6f, 0.3f), 0.35f, builder.Glass(Vec3(1, 1, 1), Vec3(1, 1, 1)));
+	auto mappedDiffuse = builder.Diffuse(builder.ImageColor("texture_images\\sphere_mapping_8k.jpg"));
+	const Transform sphereTransform =
+		Transform::Translate(Vec3(-0.5f, -0.6f, -0.3f)) * Transform::RotateY(220) * Transform::Scale(1, 1, 1);
+	builder.AddSphere(Vec3(0, 0, 0), 0.35f, mappedDiffuse, sphereTransform);
+	AddCornellBoxLight(builder, 100);
+}
+
+inline void Empty(SceneBuilder& builder) {
+	AddCornellBox(builder);
+}
+
+inline void DiffuseBunny(SceneBuilder& builder) {
+	AddCornellBoxWalls(builder);
+	const Transform bunnyTransform =
+		Transform::Translate(Vec3(0, -0.5, 0)) * Transform::Scale(0.28, 0.28, 0.28);
+	builder.AddMesh("meshs\\bunny3.obj", builder.Diffuse(Vec3(.5f, .5f, .5f)), bunnyTransform);
+	AddCornellBoxLight(builder, 85);
+}
+
+inline void Water(SceneBuilder& builder) {
+	AddCornellBoxWalls(builder);
+	auto water = builder.Glass(Vec3(1, 1, 1), Vec3(1, 1, 1), 1.f, 1.33);
+	const Transform waterTransform =
+		Transform::Translate(Vec3(0, -0.35, 0)) *
+		Transform::Scale(0.02, 0.02, 0.02) *
+		Transform::Translate(Vec3(-50, 0, 50)) *
+		Transform::RotateX(-90) *
+		Transform::Scale(1, 2, 1);
+	builder.AddMesh("meshs\\water.obj", water, waterTransform);
+
+	const Transform lucyTransform =
+		Transform::Translate(Vec3(-0.3, 0, -0.2)) *
+		Transform::Translate(Vec3(0, -1, 0)) *
+		Transform::RotateY(70) *
+		Transform::Scale(0.0017, 0.0017, 0.0017);
+	builder.AddMesh("meshs\\Alucy.obj", builder.Diffuse(Vec3(.5f, .5f, .5f)), lucyTransform);
+	AddCornellBoxLight(builder, 350, 0.15f);
+}
+
+inline void FogBunny(SceneBuilder& builder) {
+	AddCornellBoxWalls(builder);
+	// MediumInterface borrows its pointers, so this immutable medium outlives every scene.
+	static const HomogeneousMedium fog(Vec3(0, 0, 0), Vec3(1, 1, 1), 0);
+	builder.AddQuad(Vec3(-1, -1, 1), Vec3(1, -1, 1), Vec3(1, 1, 1), Vec3(-1, 1, 1),
+		Vec3(0, 0, 1), nullptr, MediumInterface(&fog, nullptr));
+	const Transform bunnyTransform =
+		Transform::Translate(Vec3(0, -0.5, 0)) * Transform::Scale(0.28, 0.28, 0.28);
+	builder.AddMesh("meshs\\bunny3.obj", builder.Diffuse(Vec3(.5f, .5f, .5f)), bunnyTransform);
+	AddCornellBoxLight(builder, 85);
 }
 
 }

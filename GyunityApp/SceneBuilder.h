@@ -12,6 +12,7 @@
 #include "light/AreaLight.h"
 #include "light/EnvLight.h"
 #include "texture/ConstantTexture.h"
+#include "texture/ImageTexture.h"
 #include <string>
 
 using namespace Gyunity;
@@ -32,8 +33,15 @@ public:
 		return std::make_shared<ConstantTexture<real>>(value);
 	}
 
+	static std::shared_ptr<Texture<Vec3>> ImageColor(const std::string& path) {
+		return std::make_shared<ImageTexture<Vec3>>(Resource(path));
+	}
+
+	static std::shared_ptr<Material> Diffuse(const std::shared_ptr<Texture<Vec3>>& reflectance) {
+		return std::make_shared<DiffuseMaterial>(reflectance);
+	}
 	static std::shared_ptr<Material> Diffuse(const Vec3& kd) {
-		return std::make_shared<DiffuseMaterial>(ConstantColor(kd));
+		return Diffuse(ConstantColor(kd));
 	}
 	static std::shared_ptr<Material> Mirror(const Vec3& kr) {
 		return std::make_shared<MirrorMaterial>(ConstantColor(kr));
@@ -53,15 +61,17 @@ public:
 		return std::make_shared<PlasticMaterial>(ConstantColor(kd), ConstantColor(ks), ConstantValue(roughness));
 	}
 
-	void AddTriangle(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& normal, const std::shared_ptr<Material>& material) {
-		mScene->AddPrimitive(std::make_shared<Primitive>(MakeTriangle(a, b, c, normal), material));
+	// MediumInterface is non-owning; its media must outlive the scene.
+	void AddTriangle(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& normal,
+		const std::shared_ptr<Material>& material, MediumInterface medium = MediumInterface()) {
+		mScene->AddPrimitive(std::make_shared<Primitive>(MakeTriangle(a, b, c, normal), material, nullptr, medium));
 	}
 
 	// Two triangles: (a, b, c) and (a, c, d).
 	void AddQuad(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d, const Vec3& normal,
-		const std::shared_ptr<Material>& material) {
-		AddTriangle(a, b, c, normal, material);
-		AddTriangle(a, c, d, normal, material);
+		const std::shared_ptr<Material>& material, MediumInterface medium = MediumInterface()) {
+		AddTriangle(a, b, c, normal, material, medium);
+		AddTriangle(a, c, d, normal, material, medium);
 	}
 
 	// An emitting quad: triangles (a, b, c) and (a, c, d), each with its own area light.
@@ -80,6 +90,12 @@ public:
 	// inside: the sphere is seen from inside (e.g. a giant sphere used as a wall).
 	void AddSphere(const Vec3& center, real radius, const std::shared_ptr<Material>& material, bool inside = false) {
 		mScene->AddPrimitive(std::make_shared<Primitive>(MakeSphere(center, radius, inside), material));
+	}
+
+	void AddSphere(const Vec3& center, real radius, const std::shared_ptr<Material>& material,
+		const Transform& objectToWorld, bool inside = false) {
+		auto shape = std::make_shared<Sphere>(objectToWorld, Inverse(objectToWorld), radius, center, inside);
+		mScene->AddPrimitive(std::make_shared<Primitive>(shape, material));
 	}
 
 	void AddSphereLight(const Vec3& center, real radius, const Vec3& emission) {
@@ -131,6 +147,18 @@ inline void AddCornellBoxWalls(SceneBuilder& b, bool includeBackWall = true) {
 	}
 	b.AddQuad(p0, p4, p5, p1, Vec3(0, 1, 0), white);    // floor
 	b.AddQuad(p3, p7, p6, p2, Vec3(0, -1, 0), white);   // ceiling
+}
+
+inline void AddCornellSphereWalls(SceneBuilder& builder) {
+	auto red = builder.Diffuse(Vec3(.75f, .25f, .25f));
+	auto blue = builder.Diffuse(Vec3(.25f, .25f, .75f));
+	auto white = builder.Diffuse(Vec3(.75f, .75f, .75f));
+	// Giant inward-facing spheres form the left, right, back, floor and ceiling.
+	builder.AddSphere(Vec3(1e5f + 1, 40.8f, 81.6f), 1e5f, red, true);
+	builder.AddSphere(Vec3(-1e5f + 99, 40.8f, 81.6f), 1e5f, blue, true);
+	builder.AddSphere(Vec3(50, 40.8f, 1e5), 1e5f, white, true);
+	builder.AddSphere(Vec3(50, 1e5, 81.6f), 1e5f, white, true);
+	builder.AddSphere(Vec3(50, -1e5f + 81.6f, 81.6f), 1e5f, white, true);
 }
 
 inline void AddCornellBoxLight(SceneBuilder& b, real power = 85, real halfSize = 0.25f) {
