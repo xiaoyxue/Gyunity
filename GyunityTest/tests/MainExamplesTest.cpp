@@ -31,6 +31,7 @@ TEST(MainExamples, ExplicitCommandsStillUseTheSceneCli) {
 	const auto usage = testing::internal::GetCapturedStdout();
 	EXPECT_EQ(helpResult, 0);
 	EXPECT_NE(usage.find("builder-based PathTracing example"), std::string::npos);
+	EXPECT_NE(usage.find("Test\\CornellBoxPtEnvmap.bmp in the main checkout"), std::string::npos);
 	EXPECT_NE(usage.find("SPPM, LightTracing and VolPathTracing"), std::string::npos);
 
 	argv[1] = invalid;
@@ -39,6 +40,22 @@ TEST(MainExamples, ExplicitCommandsStillUseTheSceneCli) {
 	const auto error = testing::internal::GetCapturedStderr();
 	EXPECT_EQ(invalidResult, 1);
 	EXPECT_NE(error.find("Unknown option"), std::string::npos);
+}
+
+TEST(MainExamples, DefaultOutputUsesTheMainCheckoutTestDirectory) {
+	for (const auto* filename : { "CornellBoxPtEnvmap.bmp", "CornellBoxSppmTest.bmp",
+		"CornellBoxLT.bmp", "MediaTestFogEquiAngular.bmp" }) {
+		const auto output = ExampleOutputPath(filename);
+		const auto suffix = std::string("\\Test\\") + filename;
+		ASSERT_GE(output.size(), suffix.size());
+		EXPECT_EQ(output.substr(output.size() - suffix.size()), suffix);
+		const auto root = output.substr(0, output.size() - suffix.size());
+		struct _stat info;
+		ASSERT_EQ(_stat((root + "\\.git").c_str(), &info), 0);
+		EXPECT_NE(info.st_mode & _S_IFDIR, 0);
+		ASSERT_EQ(_stat((root + "\\Test").c_str(), &info), 0);
+		EXPECT_NE(info.st_mode & _S_IFDIR, 0);
+	}
 }
 
 TEST(MainExamples, SharedRendererRejectsInvalidSetup) {

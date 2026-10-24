@@ -167,10 +167,16 @@ arguments still use `RunSceneCommandLine`; they do not select these examples.
 
 | Function | Builder scene | Default settings | Output |
 |---|---|---|---|
-| `TestPathTracing` | `env` | 1024x1024, 100 spp, depth 10 | `CornellBoxPtEnvmap.bmp` |
-| `TestSPPM` | `mesh` | 1024x1024, 256 iterations, 300000 photons/stage, depth 20, radius 0.05, alpha 0.66666667 | `CornellBoxSppmTest3.bmp` |
-| `TestLightTracing` | `mesh` | 1024x1024, 512 spp, depth 15 | `CornellBoxLT16.bmp` |
-| `TestVolPathTracing` | `fog` | 1024x1024, 2000 spp, depth 8 | `MediaTestFogEquiAngular12.bmp` |
+| `TestPathTracing` | `env` | 1024x1024, 100 spp, depth 10 | `Test\CornellBoxPtEnvmap.bmp` |
+| `TestSPPM` | `mesh` | 1024x1024, 256 iterations, 300000 photons/stage, depth 20, radius 0.05, alpha 0.66666667 | `Test\CornellBoxSppmTest.bmp` |
+| `TestLightTracing` | `mesh` | 1024x1024, 512 spp, depth 15 | `Test\CornellBoxLT.bmp` |
+| `TestVolPathTracing` | `fog` | 1024x1024, 2000 spp, depth 8 | `Test\MediaTestFogEquiAngular.bmp` |
+
+Default outputs always go to `Test` at the **main repository root**, not the
+working directory or a worktree's root. The examples locate the main checkout
+from the executable's ancestors, skipping nested worktrees' `.git` files, and
+create `Test` if necessary. Keep worktrees under the main checkout's `.worktree`
+directory as described in `AGENTS.md`. Default filenames have no numeric suffix.
 
 All examples use BVH, a box filter and the registered scene camera. PathTracing,
 LightTracing and VolPathTracing retain `RandomSampler(123)`; SPPM retains
@@ -183,7 +189,8 @@ unset look-at/up vectors.
 Scene construction, asset checks and checked image saving are shared with the
 CLI through `RenderScene`. Run from `GyunityApp` for asset paths. Example functions
 accept an output filename, width, height and sample/iteration count; SPPM also
-accepts a photon budget. For a small render, the selected call can be:
+accepts a photon budget. An explicitly supplied output path is used unchanged.
+For a small render, the selected call can be:
 
 ```cpp
 TestPathTracing("D:\\Code\\Graphics\\Gyunity\\Test\\example.png", 64, 64, 4);

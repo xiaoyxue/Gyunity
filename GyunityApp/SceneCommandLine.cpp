@@ -136,7 +136,8 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 				"Fog uses volume path tracing; other scenes use path tracing.\n"
 				"Run from GyunityApp for resource paths. Output directories must exist.\n"
 				"With no arguments, the builder-based PathTracing example runs the env scene\n"
-				"at 1024 x 1024, 100 spp, depth 10, BVH; output: CornellBoxPtEnvmap.bmp.\n"
+				"at 1024 x 1024, 100 spp, depth 10, BVH;\n"
+				"output: Test\\CornellBoxPtEnvmap.bmp in the main checkout (also from worktrees).\n"
 				"main.cpp also contains SPPM, LightTracing and VolPathTracing examples.\n";
 		}
 		else if (options.command == SceneCommand::List) {

@@ -6,9 +6,42 @@
 #include "sampler/Halton.h"
 #include "sampler/HaltonEnum.h"
 #include "sampler/SamplerEnum.h"
+#include <cerrno>
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
+#include <direct.h>
+#include <sys/stat.h>
 
 namespace {
+
+std::string ExampleOutputPath(const char* filename) {
+	char* executable = nullptr;
+	if (_get_pgmptr(&executable) != 0 || !executable) {
+		throw std::runtime_error("Cannot locate the executable for the example output directory.");
+	}
+	std::string directory(executable);
+	for (auto separator = directory.find_last_of("\\/"); separator != std::string::npos;
+		separator = directory.find_last_of("\\/")) {
+		directory.erase(separator);
+		const auto gitDirectory = directory + "\\.git";
+		struct _stat info;
+		const int result = _stat(gitDirectory.c_str(), &info);
+		if (result != 0 && errno != ENOENT && errno != ENOTDIR) {
+			throw std::runtime_error("Cannot inspect '" + gitDirectory + "': " + std::strerror(errno));
+		}
+		// Nested worktrees have .git files; the main checkout has the .git directory.
+		if (result == 0 && (info.st_mode & _S_IFDIR)) {
+			const auto outputDirectory = directory + "\\Test";
+			if ((_mkdir(outputDirectory.c_str()) != 0 && errno != EEXIST) ||
+				_stat(outputDirectory.c_str(), &info) != 0 || !(info.st_mode & _S_IFDIR)) {
+				throw std::runtime_error("Cannot create example output directory '" + outputDirectory + "'.");
+			}
+			return outputDirectory + '\\' + filename;
+		}
+	}
+	throw std::runtime_error("Cannot find the main checkout for example output. Pass an explicit output path.");
+}
 
 SceneRenderOptions ExampleOptions(const char* scene, const std::string& output, int width, int height) {
 	SceneRenderOptions options;
@@ -19,7 +52,7 @@ SceneRenderOptions ExampleOptions(const char* scene, const std::string& output, 
 	return options;
 }
 
-void TestPathTracing(const std::string& output = "CornellBoxPtEnvmap.bmp",
+void TestPathTracing(const std::string& output = ExampleOutputPath("CornellBoxPtEnvmap.bmp"),
 	int width = 1024, int height = 1024, int spp = 100) {
 	const auto options = ExampleOptions("env", output, width, height);
 	auto sampler = std::make_shared<RandomSampler>(123);
@@ -28,7 +61,7 @@ void TestPathTracing(const std::string& output = "CornellBoxPtEnvmap.bmp",
 	RenderScene(options, integrator);
 }
 
-void TestSPPM(const std::string& output = "CornellBoxSppmTest3.bmp",
+void TestSPPM(const std::string& output = ExampleOutputPath("CornellBoxSppmTest.bmp"),
 	int width = 1024, int height = 1024, int iterations = 256, int photonsPerStage = 300000) {
 	const auto options = ExampleOptions("mesh", output, width, height);
 	auto sampler = std::make_shared<HaltonSampler>(width, height);
@@ -38,7 +71,7 @@ void TestSPPM(const std::string& output = "CornellBoxSppmTest3.bmp",
 	RenderScene(options, integrator);
 }
 
-void TestLightTracing(const std::string& output = "CornellBoxLT16.bmp",
+void TestLightTracing(const std::string& output = ExampleOutputPath("CornellBoxLT.bmp"),
 	int width = 1024, int height = 1024, int spp = 512) {
 	const auto options = ExampleOptions("mesh", output, width, height);
 	auto sampler = std::make_shared<RandomSampler>(123);
@@ -46,7 +79,7 @@ void TestLightTracing(const std::string& output = "CornellBoxLT16.bmp",
 	RenderScene(options, integrator);
 }
 
-void TestVolPathTracing(const std::string& output = "MediaTestFogEquiAngular12.bmp",
+void TestVolPathTracing(const std::string& output = ExampleOutputPath("MediaTestFogEquiAngular.bmp"),
 	int width = 1024, int height = 1024, int spp = 2000) {
 	const auto options = ExampleOptions("fog", output, width, height);
 	auto sampler = std::make_shared<RandomSampler>(123);
