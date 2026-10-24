@@ -69,6 +69,34 @@ triangles, quads, spheres, meshes, area lights and environment lights. It does n
 initialize the scene or select its accelerator. Existing `CornellBox.h` scenes
 remain unchanged while they are migrated in separate steps.
 
+`GyunityApp\CornellBoxScenes.h` adds parallel, builder-based versions:
+
+| Original class in `CornellBox.h` | New function |
+|---|---|
+| `CornellBoxMesh` | `CornellBoxScenes::GlassBunny` |
+| `CornellBoxMeshWithSlope` | `CornellBoxScenes::Slope` |
+| `CornellBoxSphere` | `CornellBoxScenes::SphereBox` |
+| `EnvironmentMapScene` | `CornellBoxScenes::Environment` |
+
+Each new function accepts a `SceneBuilder&`. For example:
+
+```cpp
+SceneBuilder builder(scene);
+CornellBoxScenes::GlassBunny(builder);
+```
+
+The original code and `main.cpp` scene selection are retained unchanged for
+side-by-side comparison; the application has not switched to the new versions.
+Use the same camera, accelerator and integrator when comparing a scene pair.
+`GyunityTest` compares primitive order, sampled geometry, materials and lights
+between all four pairs. Run it from `GyunityApp` to resolve the scene assets:
+
+```powershell
+Set-Location GyunityApp
+..\x64\Debug\GyunityTest.exe
+..\x64\Release\GyunityTest.exe
+```
+
 `AddCornellBox(builder)` adds the standard walls and ceiling light, matching
 `CornellBoxMeshEmpty`. `CornellBoxOptions` can omit the back wall or light and
 change the light's half-size and power multiplier (defaults: `0.25f` and `85`).
