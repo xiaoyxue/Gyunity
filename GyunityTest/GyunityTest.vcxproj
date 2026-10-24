@@ -36,6 +36,7 @@
   <ItemGroup>
     <ClCompile Include="tests\BsdfTest.cpp" />
     <ClCompile Include="tests\ConfigTest.cpp" />
+    <ClCompile Include="tests\MainExamplesTest.cpp" />
     <ClCompile Include="tests\MatrixTest.cpp" />
     <ClCompile Include="tests\SceneBuilderTest.cpp" />
     <ClCompile Include="tests\SceneRegistryTest.cpp" />

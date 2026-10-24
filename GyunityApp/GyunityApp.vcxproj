@@ -152,13 +152,17 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="legacy\main_lagcy.cpp">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
     <ClCompile Include="SceneCommandLine.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="CornellBox.h" />
-    <ClInclude Include="CornellBoxScenes.h" />
-    <ClInclude Include="SceneBuilder.h" />
-    <ClInclude Include="SceneRegistry.h" />
+    <ClInclude Include="legacy\CornellBox.h" />
+    <ClInclude Include="scenes\CornellBoxScenes.h" />
+    <ClInclude Include="scenes\SceneBuilder.h" />
+    <ClInclude Include="scenes\SceneRegistry.h" />
     <ClInclude Include="SceneCommandLine.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
