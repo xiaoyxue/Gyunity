@@ -17,7 +17,7 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 		Intersection isect;
 		if (!scene.Intersect(ray, &isect)) {
 			if ((i == 0 || specularBounce) && scene.GetEnvironmentLight()) {
-				return throughput * scene.GetEnvironmentLight()->Emission(ray);
+				L += throughput * scene.GetEnvironmentLight()->Emission(ray);
 			}
 			break;
 		}

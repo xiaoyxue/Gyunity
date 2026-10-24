@@ -59,7 +59,7 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 		else {
 			if (!intersect) {
 				if ((i == 0 || specularBounce) && scene.GetEnvironmentLight()) {
-					return throughput * scene.GetEnvironmentLight()->Emission(ray);
+					L += throughput * scene.GetEnvironmentLight()->Emission(ray);
 				}
 				break;
 			}
