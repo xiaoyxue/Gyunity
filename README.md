@@ -77,6 +77,12 @@ remain unchanged while they are migrated in separate steps.
 | `CornellBoxMeshWithSlope` | `CornellBoxScenes::Slope` |
 | `CornellBoxSphere` | `CornellBoxScenes::SphereBox` |
 | `EnvironmentMapScene` | `CornellBoxScenes::Environment` |
+| `CornellBoxTriangle` | `CornellBoxScenes::TriangleBox` |
+| `CornellBoxTriangle2` | `CornellBoxScenes::TexturedSpheres` |
+| `CornellBoxMeshEmpty` | `CornellBoxScenes::Empty` |
+| `CornellBoxDiffuseBunny` | `CornellBoxScenes::DiffuseBunny` |
+| `CornellBoxWater` | `CornellBoxScenes::Water` |
+| `CornellBoxMedium` | `CornellBoxScenes::FogBunny` |
 
 Each new function accepts a `SceneBuilder&`. For example:
 
@@ -89,7 +95,8 @@ The original code and `main.cpp` scene selection are retained unchanged for
 side-by-side comparison; the application has not switched to the new versions.
 Use the same camera, accelerator and integrator when comparing a scene pair.
 `GyunityTest` compares primitive order, sampled geometry, materials and lights
-between all four pairs. Run it from `GyunityApp` to resolve the scene assets:
+between all ten pairs, including image-texture UVs and fog scattering. Run it
+from `GyunityApp` to resolve the scene assets:
 
 ```powershell
 Set-Location GyunityApp
@@ -115,3 +122,13 @@ Quads use triangles `(a, b, c)` and `(a, c, d)` with an explicit normal.
 Use `AddTriangle` for a different vertex order: even cyclic permutations can
 change floating-point results. Emitting quads register two area lights sharing
 the same shapes as their corresponding primitives.
+
+`ImageColor(path)` supplies an image texture to the `Diffuse(texture)` overload.
+The transformed `AddSphere(center, radius, material, objectToWorld)` overload
+retains the sphere's object-space texture mapping. `AddCornellSphereWalls`
+shares the large inward-facing sphere walls used by `SphereBox` and `TriangleBox`.
+
+`AddTriangle` and `AddQuad` accept an optional non-owning `MediumInterface`.
+Its media must outlive the scene. `FogBunny` uses an immutable, static homogeneous
+medium and preserves the original material-free front boundary; use
+`VolPathTracing` to compare fog renders rather than the surface-only path tracer.

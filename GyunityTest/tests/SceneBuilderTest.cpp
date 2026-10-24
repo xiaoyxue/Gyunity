@@ -27,13 +27,14 @@ void ExpectShapeEqual(const Shape& actual, const Shape& expected) {
 	}
 }
 
-void ExpectMaterialEqual(const Material& actual, const Material& expected) {
+void ExpectMaterialEqual(const Material& actual, const Material& expected, const Vec2& uv = Vec2(0.2f, 0.4f)) {
 	for (TransportMode mode : { TransportMode::Radiance, TransportMode::Importance }) {
 		MemoryPool actualPool, expectedPool;
 		Intersection actualPoint;
 		actualPoint.mNormal = actualPoint.mGeometryNormal = Vec3(0, 0, 1);
 		actualPoint.mShadingDpDu = Vec3(1, 0, 0);
 		actualPoint.mShadingDpDv = Vec3(0, 1, 0);
+		actualPoint.mUv = uv;
 		Intersection expectedPoint = actualPoint;
 		actual.ComputeScatteringFunction(&actualPoint, actualPool, mode);
 		expected.ComputeScatteringFunction(&expectedPoint, expectedPool, mode);
@@ -53,6 +54,29 @@ void ExpectMaterialEqual(const Material& actual, const Material& expected) {
 	}
 }
 
+void ExpectMediumEqual(const Medium* actual, const Medium* expected) {
+	ASSERT_EQ(actual == nullptr, expected == nullptr);
+	if (!actual) return;
+	for (int seed : { 123, 456 }) {
+		RandomStateSequence actualSamples(std::make_shared<RandomSampler>(seed), 0);
+		RandomStateSequence expectedSamples(std::make_shared<RandomSampler>(seed), 0);
+		const Ray ray(Vec3(0, 0, 0), Vec3(0, 0, -1), 10);
+		ExpectVectorEqual(actual->Tr(ray, actualSamples), expected->Tr(ray, expectedSamples));
+		MemoryPool actualPool, expectedPool;
+		MediumIntersection actualPoint, expectedPoint;
+		ExpectVectorEqual(actual->Sample(ray, actualSamples, actualPool, &actualPoint),
+			expected->Sample(ray, expectedSamples, expectedPool, &expectedPoint));
+		ASSERT_EQ(actualPoint.IsValid(), expectedPoint.IsValid());
+		if (actualPoint.IsValid()) {
+			ExpectVectorEqual(actualPoint.mPos, expectedPoint.mPos);
+			for (const Vec3& dir : { Vec3(0, 0, 1), Vec3(1, 0, 0), Vec3(0, 0, -1) }) {
+				EXPECT_EQ(actualPoint.mPhase->Evaluate(Vec3(0, 0, 1), dir),
+					expectedPoint.mPhase->Evaluate(Vec3(0, 0, 1), dir));
+			}
+		}
+	}
+}
+
 void ExpectSceneEqual(Scene& actual, Scene& expected) {
 	const auto& actualPrimitives = actual.GetPrimitives();
 	const auto& expectedPrimitives = expected.GetPrimitives();
@@ -65,9 +89,13 @@ void ExpectSceneEqual(Scene& actual, Scene& expected) {
 		EXPECT_EQ(actualPrimitive->mPrimId, expectedPrimitive->mPrimId);
 		EXPECT_EQ(actualPrimitive->GetShape()->mShapeId, expectedPrimitive->GetShape()->mShapeId);
 		EXPECT_EQ(actualPrimitive->IsLight(), expectedPrimitive->IsLight());
+		ASSERT_EQ(actualPrimitive->GetMaterial() == nullptr, expectedPrimitive->GetMaterial() == nullptr);
+		ExpectMediumEqual(actualPrimitive->mMediumInterface.inside, expectedPrimitive->mMediumInterface.inside);
+		ExpectMediumEqual(actualPrimitive->mMediumInterface.outside, expectedPrimitive->mMediumInterface.outside);
 		// Mesh triangles share one material; compare it once per contiguous group.
-		if (i == 0 || actualPrimitive->GetMaterial() != actualPrimitives[i - 1]->GetMaterial() ||
-			expectedPrimitive->GetMaterial() != expectedPrimitives[i - 1]->GetMaterial()) {
+		if (actualPrimitive->GetMaterial() &&
+			(i == 0 || actualPrimitive->GetMaterial() != actualPrimitives[i - 1]->GetMaterial() ||
+				expectedPrimitive->GetMaterial() != expectedPrimitives[i - 1]->GetMaterial())) {
 			ExpectMaterialEqual(*actualPrimitive->GetMaterial(), *expectedPrimitive->GetMaterial());
 		}
 	}
@@ -141,6 +169,93 @@ TEST(CornellBoxScenes, EnvironmentMatchesOriginal) {
 	SceneBuilder builder(scene);
 	CornellBoxScenes::Environment(builder);
 	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, TriangleBoxMatchesOriginal) {
+	auto original = std::make_shared<Scene>();
+	CornellBoxTriangle::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::TriangleBox(builder);
+	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, TexturedSpheresMatchOriginal) {
+	ASSERT_TRUE(std::ifstream(SceneBuilder::Resource("texture_images\\sphere_mapping_8k.jpg")).good())
+		<< "Run GyunityTest from GyunityApp so scene resources resolve.";
+	auto original = std::make_shared<Scene>();
+	CornellBoxTriangle2::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::TexturedSpheres(builder);
+	ExpectSceneEqual(*scene, *original);
+	ASSERT_EQ(scene->GetPrimitives().size(), 14u);
+	const auto& actualSphere = scene->GetPrimitives()[11];
+	const auto& expectedSphere = original->GetPrimitives()[11];
+	for (const Vec2& uv : { Vec2(0, 0), Vec2(1, 1), Vec2(0.3f, 0.7f), Vec2(0.8f, 0.2f) }) {
+		ExpectMaterialEqual(*actualSphere->GetMaterial(), *expectedSphere->GetMaterial(), uv);
+	}
+	const Ray ray(Vec3(-0.5f, -0.6f, 3), Vec3(0, 0, -1));
+	Intersection actualHit, expectedHit;
+	real actualDistance, expectedDistance;
+	ASSERT_TRUE(actualSphere->GetShape()->Intersect(ray, &actualHit, &actualDistance));
+	ASSERT_TRUE(expectedSphere->GetShape()->Intersect(ray, &expectedHit, &expectedDistance));
+	EXPECT_EQ(actualDistance, expectedDistance);
+	ExpectVectorEqual(actualHit.mPos, expectedHit.mPos);
+	EXPECT_EQ(actualHit.mUv.x, expectedHit.mUv.x);
+	EXPECT_EQ(actualHit.mUv.y, expectedHit.mUv.y);
+}
+
+TEST(CornellBoxScenes, EmptyMatchesOriginal) {
+	auto original = std::make_shared<Scene>();
+	CornellBoxMeshEmpty::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::Empty(builder);
+	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, DiffuseBunnyMatchesOriginal) {
+	ASSERT_TRUE(std::ifstream(SceneBuilder::Resource("meshs\\bunny3.obj")).good())
+		<< "Run GyunityTest from GyunityApp so scene resources resolve.";
+	auto original = std::make_shared<Scene>();
+	CornellBoxDiffuseBunny::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::DiffuseBunny(builder);
+	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, WaterMatchesOriginal) {
+	for (const auto* path : { "meshs\\water.obj", "meshs\\Alucy.obj" }) {
+		ASSERT_TRUE(std::ifstream(SceneBuilder::Resource(path)).good())
+			<< "Run GyunityTest from GyunityApp; missing resource: " << path;
+	}
+	auto original = std::make_shared<Scene>();
+	CornellBoxWater::SetScene(original);
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	CornellBoxScenes::Water(builder);
+	ExpectSceneEqual(*scene, *original);
+}
+
+TEST(CornellBoxScenes, FogBunnyMatchesOriginalAfterBuilderDestruction) {
+	ASSERT_TRUE(std::ifstream(SceneBuilder::Resource("meshs\\bunny3.obj")).good())
+		<< "Run GyunityTest from GyunityApp so scene resources resolve.";
+	auto original = std::make_shared<Scene>();
+	CornellBoxMedium::SetScene(original);
+	std::unique_ptr<const Medium> originalMedium(original->GetPrimitives()[10]->mMediumInterface.inside);
+	auto scene = std::make_shared<Scene>();
+	{
+		SceneBuilder builder(scene);
+		CornellBoxScenes::FogBunny(builder);
+	}
+	ExpectSceneEqual(*scene, *original);
+	const auto& front = scene->GetPrimitives()[10];
+	EXPECT_EQ(front->GetMaterial(), nullptr);
+	EXPECT_EQ(front->mMediumInterface.outside, nullptr);
+	ASSERT_NE(front->mMediumInterface.inside, nullptr);
+	EXPECT_EQ(front->mMediumInterface.inside, scene->GetPrimitives()[11]->mMediumInterface.inside);
 }
 
 TEST(SceneBuilder, ConstantTexturesAndResourcePaths) {
