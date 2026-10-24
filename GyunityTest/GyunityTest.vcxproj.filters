@@ -22,6 +22,9 @@
     <ClCompile Include="tests\BDPTConnectionTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\PixelDebugTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\ConfigTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>

@@ -1,4 +1,5 @@
 #pragma once
+#include "common/DebugUtils.h"
 
 #include "texture/ImageTexture.h"
 #include "visual/Sampling.h"
@@ -44,7 +45,7 @@ public:
 				*pdfW = mDistribution->Pdf(uv[0], uv[1]) / (2 * PI * PI * sinTheta);
 
 		}
-		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
+		if (IsPixelDebugEnabled()) {
 			if (std::isnan(radiance.x)) {
 				std::cout << "Radiance: " << radiance << " dir: " << dir << " uv: " << uv << std::endl;
 			}
