@@ -19,7 +19,7 @@ public:
 	real mB1, mB2;
 	int64 mShapeId, mPrimId;
 	const Primitive *mPrimitive;
-	BSDF* mBsdf;
+	BSDF* mBsdf = nullptr;
 	MediumInterface mMediumInterface;
 	//bool mIsDelta = false;
 
