@@ -144,6 +144,7 @@ public:
 		return mIsDelta;
 	}
 	bool MatchScatterType(ScatterEventType flag) const;
+	bool HasMixedDeltaLobes() const;
 
 };
 

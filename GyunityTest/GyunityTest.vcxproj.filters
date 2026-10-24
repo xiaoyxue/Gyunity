@@ -16,6 +16,9 @@
     <ClCompile Include="tests\LightProbabilityTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\BDPTPathTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\ConfigTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
