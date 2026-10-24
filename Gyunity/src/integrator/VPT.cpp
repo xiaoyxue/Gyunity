@@ -7,7 +7,7 @@ GYT_NAMESPACE_BEGIN
 Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, MemoryPool& arena) const 
 {
 	Ray ray = r;
-	bool deltaBoundEvent = false;
+	bool specularBounce = false;
 	Vec3 throughput = Vec3(1, 1, 1);
 	Vec3 L;
 	for (int i = 0; i < mMaxDepth; ++i) {
@@ -37,13 +37,13 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 				Vec3 wi;
 				mi.mPhase->SampleP(-ray.mDir, &wi, Vec2(rand(), rand()));
 				ray = mi.SpawnRay(wi);
-				deltaBoundEvent = false;
+				specularBounce = false;
 				
 				//L += throughput * DirectIllumination(scene, mi, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand, true);
 				//Vec3 wi;
 				//mi.phase->SampleP(-ray.d, &wi, Vec2(rand(), rand()));
 				//ray = mi.SpawnRay(wi);
-				//deltaBoundEvent = false;
+				//specularBounce = false;
 
 			}
 			else {
@@ -52,13 +52,13 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 				Vec3 wi;
 				mi.mPhase->SampleP(-ray.mDir, &wi, Vec2(rand(), rand()));
 				ray = mi.SpawnRay(wi);
-				deltaBoundEvent = false;
+				specularBounce = false;
 			}
 
 		}
 		else {
 			if (!intersect) {
-				if ((i == 0 || deltaBoundEvent) && scene.GetEnvironmentLight()) {
+				if ((i == 0 || specularBounce) && scene.GetEnvironmentLight()) {
 					return throughput * scene.GetEnvironmentLight()->Emission(ray);
 				}
 				break;
@@ -72,9 +72,9 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 				continue;
 			}
 
-			if ((i == 0 || deltaBoundEvent) && isect.mPrimitive->IsLight()) {
-				const Light* emissionShape = isect.mPrimitive->GetLight();
-				L += throughput * emissionShape->Emission(isect, isect.mOutDir);
+			if ((i == 0 || specularBounce) && isect.mPrimitive->IsLight()) {
+				const Light* emitter = isect.mPrimitive->GetLight();
+				L += throughput * emitter->Emission(isect, isect.mOutDir);
 			}
 			else {
 				L += throughput * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand, true);
@@ -86,15 +86,15 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 			Vec3 f = bsdf->Sample(-ray.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()));
 			if (f == Vec3() || pdf == 0) break;
 			Vec3 estimation = f * std::abs(Dot(isect.mNormal, wi)) / pdf;
-			deltaBoundEvent = bsdf->IsDelta();
+			specularBounce = bsdf->IsDelta();
 
 			throughput = throughput * estimation;
 			ray = isect.SpawnRay(wi);
 		}
-		real p = std::min((real)1.0, (throughput).Y() / throughput.Y());
-		if (p < 1 && i > 5) {
-			if (rand() < p) {
-				throughput = throughput / p;
+		real survivalProb = std::min((real)1.0, (throughput).Y() / throughput.Y());
+		if (survivalProb < 1 && i > 5) {
+			if (rand() < survivalProb) {
+				throughput = throughput / survivalProb;
 			}
 			else {
 				break;
@@ -120,7 +120,7 @@ Vec3 VolPathTracing::ConnectToLight(const Scene &scene, StateSequence &rand,
 	//}
 	//VisibilityTester visibilityTester(isect, lightPoint);
 	//const MediumIntersection& mi = (const MediumIntersection&)isect;
-	//real p = mi.phase->p(mi.wo, wi);
+	//real p = mi.phase->Evaluate(mi.wo, wi);
 	//f = Vec3(p);
 	//return Le * f * visibilityTester.Tr(scene, rand) * cosTheta / dir.Length2() / lightPdf;
 
@@ -137,10 +137,10 @@ Vec3 VolPathTracing::ConnectToLight(const Scene &scene, StateSequence &rand,
 		}
 		VisibilityTester visibilityTester(isect, lightPoint);
 		const MediumIntersection& mi = (const MediumIntersection&)isect;
-		real p = mi.mPhase->p(mi.mOutDir, wi);
-		f = Vec3(p);
+		real phase = mi.mPhase->Evaluate(mi.mOutDir, wi);
+		f = Vec3(phase);
 		real geomTerm = std::abs(cosTheta) / dir.Length2();
-		real pdfPhase = p * geomTerm;
+		real pdfPhase = phase * geomTerm;
 		weight1 = (lightPoint.mNormal != Vec3()) ? PowerHeuristic(1, lightPdf, 1, pdfPhase) : 1;
 		L1 = Le * f * visibilityTester.Tr(scene, rand) * cosTheta / dir.Length2() / lightPdf;
 	}

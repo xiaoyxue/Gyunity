@@ -152,9 +152,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="SceneCommandLine.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CornellBox.h" />
+    <ClInclude Include="CornellBoxScenes.h" />
+    <ClInclude Include="SceneBuilder.h" />
+    <ClInclude Include="SceneRegistry.h" />
+    <ClInclude Include="SceneCommandLine.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

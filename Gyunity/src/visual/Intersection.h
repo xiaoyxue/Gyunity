@@ -28,20 +28,20 @@ public:
 		mNormal = mAbsNormal = mGeometryNormal = Vec3();
 	}
 
-	Intersection(const Vec3& hit, const Vec3& wo, const MediumInterface& medium) :
-		mPos(hit), mOutDir(wo), mMediumInterface(medium) {
+	Intersection(const Vec3& pos, const Vec3& wo, const MediumInterface& medium) :
+		mPos(pos), mOutDir(wo), mMediumInterface(medium) {
 		mNormal = mAbsNormal = mGeometryNormal = Vec3();
 	}
 
-	Intersection(const Vec3 &hit, const Vec3 &ng, const Vec3 &nl, const Vec3 &wo, const Vec3 &pError):
-		mPos(hit), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mPrimitive(nullptr){
+	Intersection(const Vec3 &pos, const Vec3 &ng, const Vec3 &absNormal, const Vec3 &wo, const Vec3 &pError):
+		mPos(pos), mGeometryNormal(ng), mAbsNormal(absNormal), mOutDir(wo), mPointError(pError), mPrimitive(nullptr){
 		mBsdf = nullptr;
 		mShapeId = -1;
 	}
 
-	Intersection(const Vec3& hit, const Vec3& ng, const Vec3& nl, 
+	Intersection(const Vec3& pos, const Vec3& ng, const Vec3& absNormal, 
 		const Vec3& dpdu, const Vec3& dpdv, const Vec3& wo, const Vec3& pError) :
-		mPos(hit), mDpDu(dpdu), mDpDv(dpdv), mGeometryNormal(ng), mAbsNormal(nl), mOutDir(wo), mPointError(pError), mPrimitive(nullptr) {
+		mPos(pos), mDpDu(dpdu), mDpDv(dpdv), mGeometryNormal(ng), mAbsNormal(absNormal), mOutDir(wo), mPointError(pError), mPrimitive(nullptr) {
 		mBsdf = nullptr;
 		mShapeId = -1;
 	}
@@ -59,19 +59,19 @@ public:
 	void ComputeScatteringFunction(MemoryPool &arena, TransportMode mode = TransportMode::Radiance);
 
 	Ray SpawnTo(const Intersection &it) const {
-		Vec3 origin = OffsetRayOrigin(mPos, mPointError, mAbsNormal, it.mPos - mPos);
-		Vec3 target = OffsetRayOrigin(it.mPos, it.mPointError, it.mAbsNormal, origin - it.mPos);
-		Vec3 d = target - origin;
-		real dis = d.Length();
-		Normalize(d);
-		return Ray(origin, d, dis - SHADOW_RAY_EPS, GetMedium(d));
-		//return Ray(origin, d, 1 - shadowRayEps, 0.f);
+		Vec3 orig = OffsetRayOrigin(mPos, mPointError, mAbsNormal, it.mPos - mPos);
+		Vec3 target = OffsetRayOrigin(it.mPos, it.mPointError, it.mAbsNormal, orig - it.mPos);
+		Vec3 dir = target - orig;
+		real dis = dir.Length();
+		Normalize(dir);
+		return Ray(orig, dir, dis - SHADOW_RAY_EPS, GetMedium(dir));
+		//return Ray(orig, dir, 1 - shadowRayEps, 0.f);
 	}
 
-	Ray SpawnRay(const Vec3 &d) const {
-		Vec3 o = OffsetRayOrigin(mPos, mPointError, mAbsNormal, d);
-		//Vec3 o = hit + d * 0.0001;
-		return Ray(o, d, INF, GetMedium(d));
+	Ray SpawnRay(const Vec3 &dir) const {
+		Vec3 orig = OffsetRayOrigin(mPos, mPointError, mAbsNormal, dir);
+		//Vec3 orig = hit + dir * 0.0001;
+		return Ray(orig, dir, INF, GetMedium(dir));
 	}
 
 	const Medium* GetMedium(const Vec3& w) const {
@@ -94,9 +94,9 @@ public:
 	// MediumInteraction Public Methods
 	MediumIntersection() : mPhase(nullptr) {}
 
-	MediumIntersection(const Vec3& p, const Vec3& wo, 
+	MediumIntersection(const Vec3& pos, const Vec3& wo, 
 		const Medium* medium, const PhaseFunction* phase)
-		: Intersection(p, wo, medium), mPhase(phase) {}
+		: Intersection(pos, wo, medium), mPhase(phase) {}
 
 	bool IsValid() const { return mPhase != nullptr; }
 

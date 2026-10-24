@@ -10,13 +10,13 @@ GYT_NAMESPACE_BEGIN
 Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, MemoryPool& arena) const
 {
 	Ray ray = r;
-	bool deltaBoundEvent = false;
+	bool specularBounce = false;
 	Vec3 throughput = Vec3(1, 1, 1);
 	Vec3 L;
 	for (int i = 0; i < mMaxDepth; ++i) {
 		Intersection isect;
 		if (!scene.Intersect(ray, &isect)) {
-			if ((i == 0 || deltaBoundEvent) && scene.GetEnvironmentLight()) {
+			if ((i == 0 || specularBounce) && scene.GetEnvironmentLight()) {
 				return throughput * scene.GetEnvironmentLight()->Emission(ray);
 			}
 			break;
@@ -30,9 +30,9 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 			std::cout << "wo: " << -ray.mDir << std::endl;
 		}
 
-		if ((i == 0 || deltaBoundEvent) && isect.mPrimitive->IsLight()) {
-			const Light* emissionShape = isect.mPrimitive->GetLight();
-			L += throughput * emissionShape->Emission(isect, isect.mOutDir);
+		if ((i == 0 || specularBounce) && isect.mPrimitive->IsLight()) {
+			const Light* emitter = isect.mPrimitive->GetLight();
+			L += throughput * emitter->Emission(isect, isect.mOutDir);
 		}
 		else if (!bsdf->IsDelta()) {
 			L += throughput * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
@@ -47,12 +47,12 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 		Vec3 f = bsdf->Sample(-ray.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()));
 		if (f == Vec3() || pdf == 0) break;
 		Vec3 estimation = f * std::abs(Dot(isect.mNormal, wi)) / pdf;
-		deltaBoundEvent = bsdf->IsDelta();
+		specularBounce = bsdf->IsDelta();
 
-		real p = std::min((real)1.0, (estimation * throughput).Y() / throughput.Y());
-		if (p < 1 && i > 5) {
-			if (rand() < p) {
-				throughput = throughput / p;
+		real survivalProb = std::min((real)1.0, (estimation * throughput).Y() / throughput.Y());
+		if (survivalProb < 1 && i > 5) {
+			if (rand() < survivalProb) {
+				throughput = throughput / survivalProb;
 			}
 			else {
 				break;
@@ -66,8 +66,8 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 	return L;
 }
 
-PathTracing::PathTracing(int samplePerPixel, int maxDepth, const std::shared_ptr<Sampler>& pSampler, const std::shared_ptr<SamplerEnum>& pSamplerEnum)
-	:TiledIntegrator(samplePerPixel, pSampler, pSamplerEnum), mMaxDepth(maxDepth)
+PathTracing::PathTracing(int samplePerPixel, int maxDepth, const std::shared_ptr<Sampler>& sampler, const std::shared_ptr<SamplerEnum>& samplerEnum)
+	:TiledIntegrator(samplePerPixel, sampler, samplerEnum), mMaxDepth(maxDepth)
 {
 
 }

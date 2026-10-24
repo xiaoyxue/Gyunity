@@ -1,4 +1,5 @@
 #include "BSDF.h"
+#include "visual/Rng.h"
 
 GYT_NAMESPACE_BEGIN
 
@@ -50,9 +51,9 @@ Vec3 FrConductor(real cosThetaI, const Vec3& etai, const Vec3& etat, const Vec3&
 	return 0.5 * (Rp + Rs);
 }
 
-void BSDF::Add(BxDF* bsdf) {
-	mBxdfs[mBsdfCnt++] = bsdf;
-	mIsDelta |= (bsdf->mScatterEventType & BSDF_SPECULAR);
+void BSDF::Add(BxDF* bxdf) {
+	mBxdfs[mBsdfCnt++] = bxdf;
+	mIsDelta |= (bxdf->mScatterEventType & BSDF_SPECULAR);
 }
 
 real BSDF::Pdf(const Vec3& wo, const Vec3& wi, ScatterEventType flag) const {
@@ -72,31 +73,44 @@ real BSDF::Pdf(const Vec3& wo, const Vec3& wi, ScatterEventType flag) const {
 }
 
 Vec3 BSDF::Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand, ScatterEventType flags) const {
-	int sampleIndex = rand[0] * mBsdfCnt;
-	Vec3 woLocal = WorldToLocal(wo);
-	Vec3 wiLocal;
-	BxDF* bxdf = mBxdfs[sampleIndex];
-
 	*pdf = 0;
+	int matchingComps = 0;
+	for (int i = 0; i < mBsdfCnt; ++i)
+		if (mBxdfs[i]->MatchesTypes(flags)) ++matchingComps;
+	if (matchingComps == 0) return Vec3();
 
-	Vec3 f = bxdf->Sample(woLocal, &wiLocal, pdf, Vec3(rand[0], rand[1], rand[2]));
-	*wi = LocalToWorld(wiLocal);
-
-	for (int i = 0; i < mBsdfCnt; ++i) {
-		if (i != sampleIndex) {
-			*pdf += mBxdfs[i]->Pdf(woLocal, wiLocal);
+	// Choose a lobe among those matching flags with rand[0], then remap rand[0]
+	// to [0, 1) so the chosen lobe samples its whole distribution.
+	int comp = std::min((int)(rand[0] * matchingComps), matchingComps - 1);
+	BxDF* bxdf = nullptr;
+	for (int i = 0, count = comp; i < mBsdfCnt; ++i) {
+		if (mBxdfs[i]->MatchesTypes(flags) && count-- == 0) {
+			bxdf = mBxdfs[i];
+			break;
 		}
 	}
-	*pdf /= mBsdfCnt;
+	real remapped = std::min(rand[0] * matchingComps - comp, ONE_MINUS_EPSILON);
 
-	if (!bxdf->IsDelta()) {
+	Vec3 woLocal = WorldToLocal(wo);
+	Vec3 wiLocal;
+	Vec3 f = bxdf->Sample(woLocal, &wiLocal, pdf, Vec3(remapped, rand[1], rand[2]));
+	*wi = LocalToWorld(wiLocal);
+
+	// A delta lobe's pdf can't be combined with the other lobes' densities.
+	if (!bxdf->IsDelta() && matchingComps > 1) {
+		for (int i = 0; i < mBsdfCnt; ++i)
+			if (mBxdfs[i] != bxdf && mBxdfs[i]->MatchesTypes(flags))
+				*pdf += mBxdfs[i]->Pdf(woLocal, wiLocal);
+	}
+	if (matchingComps > 1) *pdf /= matchingComps;
+
+	if (!bxdf->IsDelta() && matchingComps > 1) {
 		bool reflect = Dot(*wi, mGeometryNormal) * Dot(wo, mGeometryNormal) > 0;
-
 		for (int i = 0; i < mBsdfCnt; ++i) {
-			if((reflect && (mBxdfs[i]->mScatterEventType & BSDF_REFLECTION)) ||
+			if (mBxdfs[i] == bxdf || !mBxdfs[i]->MatchesTypes(flags)) continue;
+			if ((reflect && (mBxdfs[i]->mScatterEventType & BSDF_REFLECTION)) ||
 				(!reflect && (mBxdfs[i]->mScatterEventType & BSDF_TRANSMISSION)))
-				if(i != sampleIndex) f += mBxdfs[i]->Evaluate(woLocal, wiLocal);
-				//f += bxdfs[i]->f(woLocal, wiLocal);
+				f += mBxdfs[i]->Evaluate(woLocal, wiLocal);
 		}
 	}
 

@@ -44,13 +44,13 @@ void SPPM::GeneratePhoton(const Scene& scene, Ray* pr, Vec3* f, real u, const Ve
 
 void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray, int64 pixel, MemoryPool& arena) {
 	Ray r = ray;
-	bool deltaBoundEvent = false;
+	bool specularBounce = false;
 	Vec3 importance(1.0, 1.0, 1.0);
 	for (int i = 0; i < mMaxDepth; ++i) {
 		Intersection isect;
 		if (!scene.Intersect(r, &isect)) {
 			//Environment 
-			if ((i == 0 || deltaBoundEvent) && scene.GetEnvironmentLight()) {
+			if ((i == 0 || specularBounce) && scene.GetEnvironmentLight()) {
 				mDirectillum[pixel] += importance * scene.GetEnvironmentLight()->Emission(r);
 			}
 			return;
@@ -69,7 +69,7 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			//r.d = wi;
 			//r = Ray(isect.hit, wi, INF, isect.rayEps);
 			r = isect.SpawnRay(wi);
-			deltaBoundEvent = true;
+			specularBounce = true;
 		}
 		else if (mTraceGlossyRay && bsdf->MatchScatterType(ScatterEventType::BSDF_GLOSSY) && i < mMaxDepth - 1) {
 			//Trace the ray, when bsdf is glossy
@@ -81,7 +81,7 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			if (f == Vec3() || pdf == 0) return;
 			importance = f * std::abs(wi.Dot(isect.mNormal)) * importance / pdf;
 			r = isect.SpawnRay(wi);
-			deltaBoundEvent = false;
+			specularBounce = false;
 		}
 		else {
 			HPoint& hp = mHitPoints[pixel];
@@ -92,9 +92,9 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			hp.pix = pixel;
 			hp.outDir = -1 * r.mDir;
 			mHitPoints[pixel] = hp;
-			if ((i == 0 || deltaBoundEvent) && isect.mPrimitive->IsLight()) {
-				const Light* emissionShape = isect.mPrimitive->GetLight();
-				mDirectillum[hp.pix] = mDirectillum[hp.pix] + importance * emissionShape->Emission(isect, isect.mOutDir);
+			if ((i == 0 || specularBounce) && isect.mPrimitive->IsLight()) {
+				const Light* emitter = isect.mPrimitive->GetLight();
+				mDirectillum[hp.pix] = mDirectillum[hp.pix] + importance * emitter->Emission(isect, isect.mOutDir);
 				
 			}
 			else {
@@ -128,34 +128,34 @@ void SPPM::TracePhoton(const Scene& scene, StateSequence& rand, const Ray& ray, 
 		else {
 			if (i > 0) {
 				std::vector<HPoint*>& hp = mHashGrid.GetGrid(isect.mPos);
-				for (HPoint* hitpoint : hp) {
+				for (HPoint* hitPoint : hp) {
 					//Use spinlock, but racing condition is rare when using QMC
-					//std::lock_guard<Spinlock> lock(mPixelLocks[hitpoint->pix]);
-					Vec3 v = hitpoint->pos - isect.mPos;
-					//if ((hitpoint->nrm.Dot(isect.n) > PhtotonEdgeEps) && (v.Dot(v) <= radius2[hitpoint->pix])) {
-					if ((hitpoint->nrm.Dot(isect.mAbsNormal) > 0.0015) && (v.Dot(v) <= mRadius2[hitpoint->pix])) {
+					//std::lock_guard<Spinlock> lock(mPixelLocks[hitPoint->pix]);
+					Vec3 v = hitPoint->pos - isect.mPos;
+					//if ((hitPoint->nrm.Dot(isect.n) > PhtotonEdgeEps) && (v.Dot(v) <= radius2[hitPoint->pix])) {
+					if ((hitPoint->nrm.Dot(isect.mAbsNormal) > 0.0015) && (v.Dot(v) <= mRadius2[hitPoint->pix])) {
 						if (!mBatchShrink) {
-							// unlike N in the paper, hitpoint->n stores "N / ALPHA" to make it an integer value
-							real g = (mPhotonNums[hitpoint->pix] * mAlpha + mAlpha) / (mPhotonNums[hitpoint->pix] * mAlpha + 1.f);
-							mRadius2[hitpoint->pix] = mRadius2[hitpoint->pix] * g;
-							mPhotonNums[hitpoint->pix] += 1;
-							Vec3 contribution = hitpoint->importance * bsdf->Evaluate(hitpoint->outDir, -1 * r.mDir) * photonFlux;
-							mFlux[hitpoint->pix] = (mFlux[hitpoint->pix] + contribution) * g;
+							// unlike N in the paper, hitPoint->n stores "N / ALPHA" to make it an integer value
+							real g = (mPhotonNums[hitPoint->pix] * mAlpha + mAlpha) / (mPhotonNums[hitPoint->pix] * mAlpha + 1.f);
+							mRadius2[hitPoint->pix] = mRadius2[hitPoint->pix] * g;
+							mPhotonNums[hitPoint->pix] += 1;
+							Vec3 contribution = hitPoint->importance * bsdf->Evaluate(hitPoint->outDir, -1 * r.mDir) * photonFlux;
+							mFlux[hitPoint->pix] = (mFlux[hitPoint->pix] + contribution) * g;
 						}
 						else {
-							hitpoint->m++;
-							Vec3 contribution = hitpoint->importance * bsdf->Evaluate(hitpoint->outDir, -1 * r.mDir) * photonFlux;
-							mFlux[hitpoint->pix] = (mFlux[hitpoint->pix] + contribution);
+							hitPoint->m++;
+							Vec3 contribution = hitPoint->importance * bsdf->Evaluate(hitPoint->outDir, -1 * r.mDir) * photonFlux;
+							mFlux[hitPoint->pix] = (mFlux[hitPoint->pix] + contribution);
 						}
 					}
 				}
 			}
 		}
 		//real p = estimation.maxValue();
-		real p = std::min((real)1.0, (estimation * photonFlux).Y() / photonFlux.Y());
-		if (p < 1) {
-			if (rand() < p) {
-				photonFlux = photonFlux / p;
+		real survivalProb = std::min((real)1.0, (estimation * photonFlux).Y() / photonFlux.Y());
+		if (survivalProb < 1) {
+			if (rand() < survivalProb) {
+				photonFlux = photonFlux / survivalProb;
 			}
 			else {
 				break;
@@ -276,9 +276,9 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 	//GenerateRadiusImage(scene);
 }
 
-SPPM::SPPM(int iterations, int nPhotonsPerStage, int maxDepth, real initialRadius, real alpha, bool batchShrink, const std::shared_ptr<Sampler>& pSampler, const std::shared_ptr<SamplerEnum>& pSmplerEnum, bool traceGlossyRay /*= false*/)
+SPPM::SPPM(int iterations, int nPhotonsPerStage, int maxDepth, real initialRadius, real alpha, bool batchShrink, const std::shared_ptr<Sampler>& sampler, const std::shared_ptr<SamplerEnum>& samplerEnum, bool traceGlossyRay /*= false*/)
 	: mIterations(iterations), mPhotonsPerRenderStage(nPhotonsPerStage), mBatchShrink(batchShrink),
-	mMaxDepth(maxDepth), mInitialRadius(initialRadius), mAlpha(alpha), mSampler(pSampler), mSamplerEnum(pSmplerEnum), mTraceGlossyRay(traceGlossyRay)
+	mMaxDepth(maxDepth), mInitialRadius(initialRadius), mAlpha(alpha), mSampler(sampler), mSamplerEnum(samplerEnum), mTraceGlossyRay(traceGlossyRay)
 {
 
 }

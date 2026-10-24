@@ -33,9 +33,9 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 			}
 			else {
 				const MediumIntersection& mi = (const MediumIntersection&)isect;
-				real p = mi.mPhase->p(mi.mOutDir, wi);
-				f = Vec3(p);
-				scatteringPdf = p;
+				real phase = mi.mPhase->Evaluate(mi.mOutDir, wi);
+				f = Vec3(phase);
+				scatteringPdf = phase;
 			}
 			
 			if (f != Vec3()) {
@@ -69,9 +69,9 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		}
 		else {
 			const MediumIntersection& mi = (const MediumIntersection&)isect;
-			real p = mi.mPhase->SampleP(mi.mOutDir, &wi, Vec2(v[0], v[1]));
-			f = Vec3(p);
-			pdf = p;
+			real phase = mi.mPhase->SampleP(mi.mOutDir, &wi, Vec2(v[0], v[1]));
+			f = Vec3(phase);
+			pdf = phase;
 		}
 
 		Intersection intersection;
@@ -90,8 +90,8 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 					if (intersection.mPrimitive->IsLight() && intersection.mPrimitive->GetLight() == light) {
 						//std::cout << lightPdf << std::endl;
 						scene.QueryIntersectionInfo(ray, &intersection);
-						const Light* emissionShape = intersection.mPrimitive->GetLight();
-						L2 = emissionShape->Emission(intersection, -wi) * f * Tr * cosTheta / pdf;
+						const Light* emitter = intersection.mPrimitive->GetLight();
+						L2 = emitter->Emission(intersection, -wi) * f * Tr * cosTheta / pdf;
 					}
 				}
 				else if (scene.GetEnvironmentLight() == light) {

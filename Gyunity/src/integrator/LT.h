@@ -11,8 +11,8 @@ GYT_NAMESPACE_BEGIN
 class LightTracing : public Integrator {
 
 public:
-	LightTracing(std::shared_ptr<Sampler> pSampler, int maxDepth, int spp) :
-		mSampler(pSampler), mSpp(spp), mMaxDepth(maxDepth) { }
+	LightTracing(std::shared_ptr<Sampler> sampler, int maxDepth, int spp) :
+		mSampler(sampler), mSpp(spp), mMaxDepth(maxDepth) { }
 
 	void Render(const Scene& scene, const Camera& camera) override {
 

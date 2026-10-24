@@ -136,7 +136,7 @@ public:
 		return mFrame.LocalToWorld(v);
 	}
 	~BSDF(){}
-	void Add(BxDF* bsdf);
+	void Add(BxDF* bxdf);
 	real Pdf(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
 	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0), ScatterEventType flags = BSDF_ALL) const;
 	Vec3 Evaluate(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
@@ -277,29 +277,29 @@ public:
 		return Vec3();
 	}
 
-	real Fresnell(const Vec3 &wo, const Vec3 &td, const Vec3 &n, const Vec3 &nl) const 
+	real FresnelSchlick(const Vec3 &wo, const Vec3 &td, const Vec3 &normal, const Vec3 &absNormal) const 
 	{
-		bool into = (n.Dot(nl) > 0.0);
-		real nnt = into ? mNc / mNt : mNt / mNc, ddn = (-1 * wo).Dot(nl);//, cos2t;
+		bool into = (normal.Dot(absNormal) > 0.0);
+		real nnt = into ? mNc / mNt : mNt / mNc, ddn = (-1 * wo).Dot(absNormal);//, cos2t;
 		//cos2t = 1 - nnt * nnt*(1 - ddn * ddn);
-		real a = mNt - mNc, b = mNt + mNc, R0 = a * a / (b * b), c = 1 - (into ? -ddn : td.Dot(n));
+		real a = mNt - mNc, b = mNt + mNc, R0 = a * a / (b * b), c = 1 - (into ? -ddn : td.Dot(normal));
 		real Re = R0 + (1 - R0) * c * c* c * c * c;
 		return Re;
 	}
 
 	inline bool IsDelta() const override { return true; }
 
-	static bool Refract(const Vec3 &wi, const Vec3 &n, real eta, Vec3 *wt) 
+	static bool Refract(const Vec3 &wi, const Vec3 &normal, real eta, Vec3 *wt) 
 	{
 		// Compute $\cos \theta_\roman{t}$ using Snell's law
-		real cosThetaI = n.Dot(wi);
+		real cosThetaI = normal.Dot(wi);
 		real sin2ThetaI = std::max(real(0), real(1 - cosThetaI * cosThetaI));
 		real sin2ThetaT = eta * eta * sin2ThetaI;
 
 		// Handle total internal reflection for transmission
 		if (sin2ThetaT >= 1) return false;
 		real cosThetaT = std::sqrt(1 - sin2ThetaT);
-		*wt = eta * (-1 * wi) + (eta * cosThetaI - cosThetaT) * Vec3(n);
+		*wt = eta * (-1 * wi) + (eta * cosThetaI - cosThetaT) * Vec3(normal);
 		return true;
 	}
 };
@@ -322,11 +322,11 @@ public:
 	{
 		real pdf = 0;
 		Vec3 wh;
-		real dwh_dwi;
+		real dwhDwi;
 		wh = (wo + wi).Norm();
-		dwh_dwi = 1.f / (4 * Dot(wi, wh));
+		dwhDwi = 1.f / (4 * Dot(wi, wh));
 		wh = wh * Sgn(BSDFCoordinate::CosTheta(wh));
-		pdf = std::abs(mDistribution->Pdf(wo, wh) * dwh_dwi);
+		pdf = std::abs(mDistribution->Pdf(wo, wh) * dwhDwi);
 		return pdf;
 	}
 
@@ -438,9 +438,9 @@ public:
 		wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
 		// Compute change of variables _dwh\_dwi_ for microfacet transmission
 		real sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);
-		real dwh_dwi = std::abs((eta * eta * Dot(wi, wh)) / (sqrtDenom * sqrtDenom));
+		real dwhDwi = std::abs((eta * eta * Dot(wi, wh)) / (sqrtDenom * sqrtDenom));
 
-		return mDistribution->Pdf(wo, wh) * dwh_dwi;
+		return mDistribution->Pdf(wo, wh) * dwhDwi;
 	}
 };
 
@@ -517,10 +517,10 @@ public:
 		bool reflect = BSDFCoordinate::CosTheta(wo) * BSDFCoordinate::CosTheta(wi) > 0;
 		real pdf = 0;
 		Vec3 wh;
-		real dwh_dwi ;
+		real dwhDwi ;
 		if (reflect) {
 			wh = (wo + wi).Norm();
-			dwh_dwi = 1.f / (4 * Dot(wi, wh));
+			dwhDwi = 1.f / (4 * Dot(wi, wh));
 		}
 		else {
 			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
@@ -528,12 +528,12 @@ public:
 
 			// Compute change of variables _dwh\_dwi_ for microfacet transmission
 			real sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);
-			dwh_dwi = std::abs((eta * eta * Dot(wi, wh)) / (sqrtDenom * sqrtDenom));
+			dwhDwi = std::abs((eta * eta * Dot(wi, wh)) / (sqrtDenom * sqrtDenom));
 		}
 
 		wh = wh * Sgn(BSDFCoordinate::CosTheta(wh));
 
-		pdf = std::abs(mDistribution->Pdf(wo, wh) * dwh_dwi);
+		pdf = std::abs(mDistribution->Pdf(wo, wh) * dwhDwi);
 
 		real F = mFresnel.EvaluateScalar(Dot(wo, wh));
 
@@ -561,9 +561,9 @@ public:
 
 			if (!SameHemisphere(wo, *wi)) return Vec3(0, 0, 0);
 			
-			real dwh_dwi = 1.f / (4 * Dot(*wi, wh));
+			real dwhDwi = 1.f / (4 * Dot(*wi, wh));
 
-			*pdf = P * std::abs(mDistribution->Pdf(wo, wh) * dwh_dwi);
+			*pdf = P * std::abs(mDistribution->Pdf(wo, wh) * dwhDwi);
 
 			real cosThetaO = BSDFCoordinate::AbsCosTheta(wo), cosThetaI = BSDFCoordinate::AbsCosTheta(*wi);
 
@@ -593,8 +593,8 @@ public:
 
 			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
 			real sqrtDenom = Dot(wo, wh) + eta * Dot(*wi, wh);
-			real dwh_dwi = std::abs((eta * eta * Dot(*wi, wh)) / (sqrtDenom * sqrtDenom));
-			*pdf = std::abs((1 - P) * mDistribution->Pdf(wo, wh) * dwh_dwi);
+			real dwhDwi = std::abs((eta * eta * Dot(*wi, wh)) / (sqrtDenom * sqrtDenom));
+			*pdf = std::abs((1 - P) * mDistribution->Pdf(wo, wh) * dwhDwi);
 
 
 			real cosThetaO = BSDFCoordinate::CosTheta(wo);

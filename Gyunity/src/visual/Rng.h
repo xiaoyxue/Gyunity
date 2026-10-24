@@ -74,30 +74,30 @@ class Pcg32 {
                            begin + UniformUInt32((uint32_t)(it - begin + 1)));
     }
     void Advance(int64_t idelta) {
-        uint64 cur_mult = GYT_PCG32_MULT, cur_plus = mInc, acc_mult = 1u,
+        uint64 curMult = GYT_PCG32_MULT, cur_plus = mInc, acc_mult = 1u,
                  acc_plus = 0u, delta = (uint64)idelta;
         while (delta > 0) {
             if (delta & 1) {
-                acc_mult *= cur_mult;
-                acc_plus = acc_plus * cur_mult + cur_plus;
+                acc_mult *= curMult;
+                acc_plus = acc_plus * curMult + cur_plus;
             }
-            cur_plus = (cur_mult + 1) * cur_plus;
-            cur_mult *= cur_mult;
+            cur_plus = (curMult + 1) * cur_plus;
+            curMult *= curMult;
             delta /= 2;
         }
         mState = acc_mult * mState + acc_plus;
     }
     int64_t operator-(const Pcg32 &other) const {
-        uint64 cur_mult = GYT_PCG32_MULT, cur_plus = mInc, cur_state = other.mState,
+        uint64 curMult = GYT_PCG32_MULT, cur_plus = mInc, cur_state = other.mState,
                  the_bit = 1u, distance = 0u;
         while (mState != cur_state) {
             if ((mState & the_bit) != (cur_state & the_bit)) {
-                cur_state = cur_state * cur_mult + cur_plus;
+                cur_state = cur_state * curMult + cur_plus;
                 distance |= the_bit;
             }
             the_bit <<= 1;
-            cur_plus = (cur_mult + 1ULL) * cur_plus;
-            cur_mult *= cur_mult;
+            cur_plus = (curMult + 1ULL) * cur_plus;
+            curMult *= curMult;
         }
         return (int64_t)distance;
     }

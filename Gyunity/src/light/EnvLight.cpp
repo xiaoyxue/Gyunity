@@ -27,10 +27,10 @@ Vec3 EnvironmentLight::SampleLight(Intersection* isect, Vec3* dir, real* pdfPos,
 	*dir = -sampledDir;
 	isect->mNormal = *dir;
 
-	Vec3 v1, v2;
-	CoordinateSystem(-*dir, &v1, &v2);
-	Vec2 cd = ConcentricSampleDisk(v);
-	Vec3 pDisk = mCenter + mRadius * (cd.x * v1 + cd.y * v2);
+	Vec3 tangent, bitangent;
+	CoordinateSystem(-*dir, &tangent, &bitangent);
+	Vec2 diskSample = ConcentricSampleDisk(v);
+	Vec3 pDisk = mCenter + mRadius * (diskSample.x * tangent + diskSample.y * bitangent);
 	isect->mPos = pDisk + mRadius * (-*dir);
 
 	*pdfPos = 1 / (PI * mRadius * mRadius);

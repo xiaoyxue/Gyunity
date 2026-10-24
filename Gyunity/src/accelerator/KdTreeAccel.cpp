@@ -174,10 +174,10 @@ retrySplit:
 				(d[otherAxis0] + d[otherAxis1]));
 			real pBelow = belowSA * invTotalSA;
 			real pAbove = aboveSA * invTotalSA;
-			real eb = (nAbove == 0 || nBelow == 0) ? mEmptyBonus : 0;
+			real emptyBonus = (nAbove == 0 || nBelow == 0) ? mEmptyBonus : 0;
 			real cost =
 				mTraversalCost +
-				mIsectCost * (1 - eb) * (pBelow * nBelow + pAbove * nAbove);
+				mIsectCost * (1 - emptyBonus) * (pBelow * nBelow + pAbove * nAbove);
 
 			// Update best split if this is lowest cost so far
 			if (cost < bestCost) {

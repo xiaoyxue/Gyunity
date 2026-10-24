@@ -30,9 +30,9 @@ Vec3 UniformSampleSphere(const Vec2 &u) {
 }
 
 Vec3 CosineSampleHemisphere(const Vec2 &u) {
-	Vec2 d = ConcentricSampleDisk(u);
-	real z = std::sqrt(std::max((real)0, 1 - d.x * d.x - d.y * d.y));
-	return Vec3(d.x, d.y, z);
+	Vec2 diskSample = ConcentricSampleDisk(u);
+	real z = std::sqrt(std::max((real)0, 1 - diskSample.x * diskSample.x - diskSample.y * diskSample.y));
+	return Vec3(diskSample.x, diskSample.y, z);
 }
 
 Vec2 UniformSampleTriangle(const Vec2& u) {

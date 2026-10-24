@@ -18,13 +18,13 @@ real HenyeyGreenstein::SampleP(const Vec3& wo, Vec3* wi, const Vec2& u) const {
     // Compute direction _wi_ for Henyey--Greenstein sample
     real sinTheta = std::sqrt(std::max((real)0, 1 - cosTheta * cosTheta));
     real phi = 2 * PI * u[1];
-    Vec3 v1, v2;
-    CoordinateSystem(wo, &v1, &v2);
-    *wi = SphericalDirection(sinTheta, cosTheta, phi, v1, v2, -wo);
+    Vec3 tangent, bitangent;
+    CoordinateSystem(wo, &tangent, &bitangent);
+    *wi = SphericalDirection(sinTheta, cosTheta, phi, tangent, bitangent, -wo);
     return PhaseHG(-cosTheta, mG);
 }
 
-real HenyeyGreenstein::p(const Vec3& wo, const Vec3& wi) const {
+real HenyeyGreenstein::Evaluate(const Vec3& wo, const Vec3& wi) const {
     return PhaseHG(Dot(wo, wi), mG);
 }
 

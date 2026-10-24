@@ -48,16 +48,16 @@ Vec3 HomogeneousMedium::EquiAngularSampling(
     Vec3 lightPos = lightPoint.mPos;
     real delta = Dot(lightPos - ray.mOrig, ray.mDir);
     real D = (ray.mOrig + delta * ray.mDir - lightPos).Length();
-    real theta_a = std::atan2(0.f - delta, D);
-    real theta_b = std::atan2(tMax - delta, D);
+    real thetaA = std::atan2(0.f - delta, D);
+    real thetaB = std::atan2(tMax - delta, D);
     real u = rand();
-    real tau = D * std::tan((1 - u) * theta_a + u * theta_b);
+    real tau = D * std::tan((1 - u) * thetaA + u * thetaB);
     real t = delta + tau;
     bool sampleMedia = t < ray.mTmax;
     Vec3 Tr = sampleMedia ? Exp(-mSigmaT * t) : this->Tr(ray, rand);
     real pdf = sampleMedia ?
-        D / ((theta_b - theta_a) * (D * D + tau * tau))
-        : 1 - (std::atan2(std::min(tMax, ray.mTmax) - delta, D) - theta_a) / (theta_b - theta_a);
+        D / ((thetaB - thetaA) * (D * D + tau * tau))
+        : 1 - (std::atan2(std::min(tMax, ray.mTmax) - delta, D) - thetaA) / (thetaB - thetaA);
     if(sampleMedia) *mi = MediumIntersection(ray(t), -ray.mDir, this, GYT_MEMORY_POOL_ALLOC(arena, HenyeyGreenstein)(mG));
 
     return sampleMedia ? Tr * mSigmaS / pdf : this->Tr(ray, rand) / pdf;

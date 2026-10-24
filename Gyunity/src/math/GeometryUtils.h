@@ -17,8 +17,8 @@ GYT_FORCE_INLINE void CoordinateSystem(const Vec3 &v1, Vec3 *v2, Vec3 *v3) {
 }
 
 
-GYT_FORCE_INLINE Vec3 Reflect(const Vec3 &inDir, const Vec3 &n) {
-	return 2.f * inDir.Dot(n) * n - inDir;
+GYT_FORCE_INLINE Vec3 Reflect(const Vec3 &inDir, const Vec3 &normal) {
+	return 2.f * inDir.Dot(normal) * normal - inDir;
 }
 
 
@@ -36,31 +36,31 @@ GYT_FORCE_INLINE bool SameHemisphere(const Vec3& w, const Vec3& wp) {
 	return w.z * wp.z > 0;
 }
 
-GYT_FORCE_INLINE Vec3 OffsetRayOrigin(const Vec3 &p, const Vec3 &pError,
-	const Vec3 &n, const Vec3 &w) {
-	real d = Dot(Abs(n), pError);
+GYT_FORCE_INLINE Vec3 OffsetRayOrigin(const Vec3 &pos, const Vec3 &pError,
+	const Vec3 &normal, const Vec3 &w) {
+	real offsetDist = Dot(Abs(normal), pError);
 #ifdef GYT_USING_DOUBLE
 	// We have tons of precision; for now bump up the offset a bunch just
 	// to be extra sure that we start on the right side of the surface
 	// (In case of any bugs in the epsilons code...)
-	d *= 1024.;
+	offsetDist *= 1024.;
 #endif
-	Vec3 offset = d * n;// +n * 1e-4f;
+	Vec3 offset = offsetDist * normal;// +normal * 1e-4f;
 
-	if (Dot(w, n) < 0) {
+	if (Dot(w, normal) < 0) {
 		offset = -offset;
 	}
-	Vec3 po = p + offset;
+	Vec3 offsetPos = pos + offset;
 
 	// Round offset point _po_ away from _p_
 	for (int i = 0; i < 3; ++i) {
 		if (offset[i] > 0)
-			po[i] = NextFloatUp(po[i]);
+			offsetPos[i] = NextFloatUp(offsetPos[i]);
 		else if (offset[i] < 0)
-			po[i] = NextFloatDown(po[i]);
+			offsetPos[i] = NextFloatDown(offsetPos[i]);
 	}
 
-	return po;
+	return offsetPos;
 }
 
 GYT_FORCE_INLINE Vec3 Faceforward(const Vec3& v, const Vec3& v2) {
