@@ -46,6 +46,7 @@
     <ClCompile Include="tests\TransformTest.cpp" />
     <ClCompile Include="tests\BoundaryTransmittanceTest.cpp" />
     <ClCompile Include="tests\VectorTest.cpp" />
+    <ClCompile Include="tests\LightTracingEmissionTest.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -118,8 +118,7 @@ public:
 			light->SampleOnLight(&isect, &dir, &pdfA, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
 		}
 		else {
-			Le = light->Emission();
-			light->SampleLight(&isect, &dir, &pdfA, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
+			Le = light->SampleLight(&isect, &dir, &pdfA, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
 		}
 		lightPath[0].mIsect = isect;
 		lightPath[0].mPdfFwd = pdfA;
