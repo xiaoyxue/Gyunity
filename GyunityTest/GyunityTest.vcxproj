@@ -42,6 +42,7 @@
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
     <ClCompile Include="test.cpp" />
     <ClCompile Include="tests\TransformTest.cpp" />
+    <ClCompile Include="tests\BoundaryTransmittanceTest.cpp" />
     <ClCompile Include="tests\VectorTest.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup />
