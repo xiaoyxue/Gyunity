@@ -3,9 +3,9 @@
 
 GYT_NAMESPACE_BEGIN
 
-void Film::SaveImage() {
+bool Film::SaveImage() {
 	WriteToPixelBuffer();
-	ImageIO::WriteImage(mFilename, mImageBuffer, mResX, mResY);
+	return ImageIO::WriteImage(mFilename, mImageBuffer, mResX, mResY);
 }
 
 GYT_NAMESPACE_END

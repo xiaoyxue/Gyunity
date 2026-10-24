@@ -114,8 +114,9 @@ Array2D<Vec3> ImageIO::LoadTexture(std::string filename) {
 }
 
 
-void ImageIO::WriteImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY, real gamma) {
+bool ImageIO::WriteImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY, real gamma) {
 	static const int channels = 3;
+	if (filename.size() < 4) return false;
 	std::string suffix = filename.substr(filename.length() - 4);
 	if (suffix == ".hdr") {
 		std::vector<float> dataToWrite(resX * resY * channels);
@@ -127,7 +128,7 @@ void ImageIO::WriteImage(const std::string& filename, const std::vector<Vec3>& i
 				}
 			}
 		}
-		stbi_write_hdr(filename.c_str(), resX, resY, channels, &dataToWrite[0]);
+		return stbi_write_hdr(filename.c_str(), resX, resY, channels, &dataToWrite[0]) != 0;
 	}
 	else {
 		std::vector<unsigned char> dataToWrite(resX * resY * channels);
@@ -140,11 +141,12 @@ void ImageIO::WriteImage(const std::string& filename, const std::vector<Vec3>& i
 			}
 		}
 		if (suffix == ".bmp") {
-			stbi_write_bmp(filename.c_str(), resX, resY, channels, &dataToWrite[0]);
+			return stbi_write_bmp(filename.c_str(), resX, resY, channels, &dataToWrite[0]) != 0;
 		}
 		else if (suffix == ".png") {
-			stbi_write_png(filename.c_str(), resX, resY, channels, &dataToWrite[0], channels * resX);
+			return stbi_write_png(filename.c_str(), resX, resY, channels, &dataToWrite[0], channels * resX) != 0;
 		}
+		return false;
 	}
 }
 
