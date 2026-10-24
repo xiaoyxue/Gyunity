@@ -274,6 +274,35 @@ The existing LT implementation and its use of the original fields remain unchang
 directions, geometric conversion, budgets, endpoint metadata, explicit failures,
 glass transport modes, and environment launch/escape conventions.
 
+## Finite-light BDPT
+`BidirectionalPathTracing(sampler, maxDepth, spp)` now supplies the finite-light
+rendering step. `RenderChecked(scene, camera)` returns success/failure explicitly;
+only save its film on success. The inherited `Render` entry point logs failures,
+but this experimental integrator is not yet wired into default app selection.
+Area lights and point lights are supported; environment connections, media and
+mixed delta/continuous BSDFs remain explicitly unsupported in this step.
+
+The renderer generates both subpaths, evaluates supported connections at
+`depth = s + t - 2`, adds each camera-sample sum once and normalizes camera splats
+once by samples per pixel. It does not call the PT direct-light estimator.
+Only geometric-normal shading is used by its path builders.
+
+`MisWeight` follows the original PBRT-v3 balance heuristic: walk neighboring
+strategies in both directions using forward/reverse density ratios, then evaluate
+`1 / (1 + sumRatios)`. Scalar accumulation uses double precision. Only temporary
+connection-adjacent densities are changed in separate light/camera MIS snapshots.
+These snapshots replace PBRT's `ScopedAssignment` restoration mechanism: the
+input paths are const and never modified, including on early returns. Endpoint
+and predecessor references and the two ratio walks follow PBRT's ordering. Ordinary
+zero-density events are distinct from delta-event markers. Point-light camera-hit
+strategies, specular connections, `(1,1)` and `t=0` are excluded.
+
+The implementation reuses generated endpoints, so its conditional endpoint PDFs
+are not copied from PBRT's endpoint-resampling branch. Independent product tests
+cover diffuse paths, unequal emitter PMFs, point sources and a mirror chain;
+additional tests check visibility, camera bounds and 16x16 rendering. This is not
+yet the complete environment-enabled BDPT described in #111.
+
 ## Scene regression
 Run the registered-scene regression without patching or recompiling `main.cpp`:
 
