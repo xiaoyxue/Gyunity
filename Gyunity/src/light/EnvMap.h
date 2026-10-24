@@ -1,6 +1,8 @@
 #pragma once
 
 #include "texture/ImageTexture.h"
+#include "visual/Sampling.h"
+#include "system/Threading.h"
 
 GYT_NAMESPACE_BEGIN
 
@@ -17,7 +19,7 @@ public:
 		real uv[2];
 		real pdf;
 		mDistribution->SampleContinuous(u[0], u[1], uv, &pdf);
-		real sinTheta = SinTheta(uv[1], mImage->Height());
+		real sinTheta = SinTheta(uv[1]);
 		if (sinTheta == 0)
 			*pdfW = 0;
 		else
@@ -34,7 +36,7 @@ public:
 
 		if (pdfW) {
 			Vec2 uv = DirToLatLong(normDir);
-			real sinTheta = SinTheta(uv[1], mImage->Height());
+			real sinTheta = SinTheta(uv[1]);
 
 			if (sinTheta == 0) 
 				*pdfW = 0;
@@ -53,7 +55,7 @@ public:
 	real PdfDir(const Vec3& dir) const {
 		Vec3 normDir = dir.Norm();
 		Vec2 uv = DirToLatLong(normDir);
-		real sinTheta = SinTheta(uv[1], mImage->Height());
+		real sinTheta = SinTheta(uv[1]);
 		if (sinTheta == 0)
 			return 0;
 		else 
@@ -116,14 +118,9 @@ private:
 	}
 
 
-	real SinTheta(const real v, const real height) const {
-		real result;
-		if (v < 1)
-			result = std::sin(PI * (int)((v * height) + 0.5f) / (real)(height));
-		else
-			result = std::sin(PI * (real)((height - 1) + 0.5f) / (real)(height));
-
-		return result;
+	real SinTheta(real v) const {
+		if (v <= 0 || v >= 1) return 0;
+		return std::sin(PI * v);
 	}
 
 public:
