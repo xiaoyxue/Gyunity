@@ -35,6 +35,7 @@
   <PropertyGroup Label="UserMacros" />
   <ItemGroup>
     <ClCompile Include="tests\BsdfTest.cpp" />
+    <ClCompile Include="tests\EnvironmentAccumulationTest.cpp" />
     <ClCompile Include="tests\ConfigTest.cpp" />
     <ClCompile Include="tests\BoundaryScatteringTest.cpp" />
     <ClCompile Include="tests\MainExamplesTest.cpp" />
