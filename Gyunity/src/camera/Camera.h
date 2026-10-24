@@ -32,7 +32,7 @@ public:
 	}
 
 	Camera(std::shared_ptr<Film> film, const Vec3& pos, const Vec3& cz, const Vec3& cx, const Vec3& cy, real fovy, real filmDis) :
-		mPos(pos), mCx(cx), mCy(cy), mCz(cz), mFovy(fovy), mFilmDistance(filmDis) {
+		mPos(pos), mLookAt(pos + cz), mUp(cy), mCx(cx), mCy(cy), mCz(cz), mFovy(fovy), mFilmDistance(filmDis) {
 		mFilm = film;
 	}
 	Camera(std::shared_ptr<Film> film, const Vec3& pos, const Vec3& lookAt, const Vec3& up, real fovy, real filmDis) :
