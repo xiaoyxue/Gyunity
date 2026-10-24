@@ -218,6 +218,31 @@ $env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\scene_builde
 ..\x64\Release\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
 ```
 
+## Bidirectional probability interfaces
+The first BDPT preparation step adds deterministic probability queries without
+adding a selectable, incomplete BDPT renderer. Existing PT/LT paths remain in use.
+
+- `Scene::LightSelectionPdf(lightIndex, &pdf)` evaluates the PMF of a registered
+  light slot from the same distribution as `SampleOneLight`; before initialization
+  both use uniform selection.
+- `Light::PdfLight(point, dir, &pdfPos, &pdfDir)` evaluates conditional emitted-ray
+  densities, without sampling or including the light-selection PMF. `dir` is a
+  unit direction emitted by the light, matching `SampleLight`.
+- Area-light position density is per unit area; point-light position is a
+  **discrete mass** (one at the emitter), distinguished by `IsDeltaLight()`.
+  Do not combine that mass with continuous area densities.
+- Environment position density is for the auxiliary launch disk; the direction
+  query evaluates the map at `-dir`. It does not depend on a finite helper
+  endpoint's distance and is not a physical area-emitter density.
+
+New queries return `bool`; unsupported or invalid queries return `false`, set
+their output densities to zero and log with exceptions disabled. A successful
+query may legitimately produce a zero density. Discrete sampling now handles
+an exact-one input and the constructor's existing all-zero uniform-CDF case.
+This does not change continuous environment-map sampling or introduce a new
+exception-handling framework. `LightProbabilityTest.cpp` covers analytical PMFs,
+sample/PDF agreement, hemisphere normalization, endpoint measures and failures.
+
 ## Scene regression
 Run the registered-scene regression without patching or recompiling `main.cpp`:
 

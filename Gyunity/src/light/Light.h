@@ -22,6 +22,13 @@ public:
 	}
 	virtual Vec3 SampleLi(const Intersection &isect, Vec3 *wi, real *pdf, Intersection *lightPoint, const Vec2 &u) const = 0;
 	virtual real PdfLi(const Intersection &isect, const Vec3 &wi) const = 0;
+	// Conditional emission densities: area (or delta-position mass) and solid angle.
+	// The emitter point and outward unit direction use the same convention as SampleLight.
+	virtual bool PdfLight(const Intersection& point, const Vec3& dir, real* pdfPos, real* pdfDir) const {
+		*pdfPos = *pdfDir = 0;
+		GetDefaultLogger()->Error("This light does not support deterministic emission PDF evaluation.", false);
+		return false;
+	}
 	//virtual int64 GetId() const = 0;
 	virtual Vec3 Power() const = 0;
 	virtual bool IsAreaLight() const { return false; }
