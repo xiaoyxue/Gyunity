@@ -49,6 +49,7 @@
     <ClCompile Include="..\GyunityApp\NativeScene.cpp" />
     <ClCompile Include="tests\NativeSceneTest.cpp" />
     <ClCompile Include="tests\VeachMisSceneTest.cpp" />
+    <ClCompile Include="tests\VeachBidirSceneTest.cpp" />
     <ClCompile Include="test.cpp" />
     <ClCompile Include="tests\TransformTest.cpp" />
     <ClCompile Include="tests\BoundaryTransmittanceTest.cpp" />

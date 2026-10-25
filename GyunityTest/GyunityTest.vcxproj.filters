@@ -70,5 +70,8 @@
     <ClCompile Include="tests\VeachMisSceneTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\VeachBidirSceneTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
