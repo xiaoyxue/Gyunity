@@ -46,6 +46,8 @@
     <ClCompile Include="tests\SceneRegistryTest.cpp" />
     <ClCompile Include="tests\SphereLightPdfTest.cpp" />
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
+    <ClCompile Include="..\GyunityApp\NativeScene.cpp" />
+    <ClCompile Include="tests\NativeSceneTest.cpp" />
     <ClCompile Include="test.cpp" />
     <ClCompile Include="tests\TransformTest.cpp" />
     <ClCompile Include="tests\BoundaryTransmittanceTest.cpp" />
@@ -59,7 +61,11 @@
     <ClCompile Include="tests\ProgressReporterTest.cpp" />
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp" />
   </ItemGroup>
-  <ItemDefinitionGroup />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

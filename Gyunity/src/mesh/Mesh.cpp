@@ -4,7 +4,7 @@
 
 GYT_NAMESPACE_BEGIN
 
-void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
+void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices, bool faceNormals) {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
@@ -43,7 +43,7 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices) {
 				float vy = attrib.vertices[3 * idx.vertex_index + 1];
 				float vz = attrib.vertices[3 * idx.vertex_index + 2];
 				mVertices.push_back(Vec3(vx, vy, vz));
-				if (idx.normal_index != -1) {
+				if (idx.normal_index != -1 && !faceNormals) {
 					float nx = attrib.normals[3 * idx.normal_index + 0];
 					float ny = attrib.normals[3 * idx.normal_index + 1];
 					float nz = attrib.normals[3 * idx.normal_index + 2];

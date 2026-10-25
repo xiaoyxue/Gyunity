@@ -26,6 +26,19 @@ protected:
 
 };
 
+class BeckmannDistribution : public MicrofacetDistribution {
+public:
+	BeckmannDistribution(real alphaX, real alphaY)
+		: MicrofacetDistribution(false), mAlphaX(alphaX), mAlphaY(alphaY) {}
+	real D(const Vec3& normal) const override;
+	real Lambda(const Vec3& direction) const override;
+	real G1(const Vec3& direction, const Vec3& normal) const override;
+	real G(const Vec3& wo, const Vec3& wi, const Vec3& normal) const override;
+	Vec3 SampleWh(const Vec3& wo, const Vec2& sample) const override;
+private:
+	real mAlphaX, mAlphaY;
+};
+
 class GGXDistribution : public MicrofacetDistribution 
 {
 private:

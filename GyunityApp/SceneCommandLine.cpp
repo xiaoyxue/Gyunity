@@ -3,6 +3,7 @@
 #include "accelerator/KdTreeAccel.h"
 #include "integrator/PT.h"
 #include "integrator/VPT.h"
+#include "integrator/BDPT.h"
 #include "sampler/SamplerEnum.h"
 #include <limits>
 #include <set>
@@ -24,9 +25,13 @@ int ParseInteger(const std::string& option, const std::string& value, int minimu
 }
 
 bool RenderSceneCommand(const SceneRenderOptions& options) {
-	auto sampler = std::make_shared<RandomSampler>(123);
+	auto sampler = std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123);
 	auto samplerEnum = std::make_shared<SamplerEnum>();
-	if (options.scene->usesVolume) {
+	if (options.integrator == "bdpt") {
+		BidirectionalPathTracing integrator(sampler, options.maxDepth, options.spp);
+		return RenderScene(options, integrator);
+	}
+	if (options.scene && options.scene->usesVolume) {
 		VolPathTracing integrator(options.spp, options.maxDepth, sampler, samplerEnum, false);
 		return RenderScene(options, integrator);
 	}
@@ -39,25 +44,29 @@ bool RenderSceneCommand(const SceneRenderOptions& options) {
 }
 
 bool RenderScene(const SceneRenderOptions& options, Integrator& integrator) {
-	if (!options.scene) throw std::invalid_argument("A registered scene is required.");
+	if (!options.scene && !options.nativeScene) throw std::invalid_argument("A registered or native scene is required.");
 	if (options.width <= 0 || options.height <= 0 ||
 		static_cast<int64>(options.width) * options.height > std::numeric_limits<int>::max() / 3) {
 		throw std::invalid_argument("Image dimensions exceed the supported pixel count or are not positive.");
 	}
 	if (options.output.empty()) throw std::invalid_argument("An output filename is required.");
-	for (const auto* resource : options.scene->resources) {
+	for (const auto* resource : options.scene ? options.scene->resources : std::array<const char*, 3>{}) {
 		if (resource && !std::ifstream(SceneBuilder::Resource(resource), std::ios::binary).good()) {
 			throw std::runtime_error("Cannot read resource '" + SceneBuilder::Resource(resource) +
 				"'. Run from the GyunityApp directory.");
 		}
 	}
 
-	auto film = std::make_shared<Film>(options.width, options.height, new BoxFilter());
-	auto scene = std::make_shared<Scene>();
-	auto camera = options.scene->camera.Create(film);
-
-	SceneBuilder builder(scene);
-	options.scene->build(builder);
+	auto native = options.nativeScene;
+	if (!native && options.scene && options.scene->file) native = LoadNativeScene(SceneBuilder::Resource(options.scene->file));
+	Filter* filter = native && native->filter == "tent" ? static_cast<Filter*>(new TentFilter()) : new BoxFilter();
+	auto film = std::make_shared<Film>(options.width, options.height, filter);
+	auto scene = native ? native->scene : std::make_shared<Scene>();
+	auto camera = native ? native->CreateCamera(film) : options.scene->camera.Create(film);
+	if (!native) {
+		SceneBuilder builder(scene);
+		options.scene->build(builder);
+	}
 	if (options.accelerator == SceneAccelerator::Kd) {
 		scene->SetAccelerator(std::make_shared<KdTreeAccel>(scene->GetPrimitives()));
 	}
@@ -86,9 +95,11 @@ SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv) {
 	}
 	options.command = SceneCommand::Render;
 	std::set<std::string> seen;
+	std::string nativeFile;
 	for (int i = 1; i < argc; ++i) {
 		const std::string option = argv[i];
-		if (option != "--scene" && option != "--accel" && option != "--width" && option != "--height" &&
+		if (option != "--scene" && option != "--scene-file" && option != "--integrator" &&
+			option != "--accel" && option != "--width" && option != "--height" &&
 			option != "--spp" && option != "--max-depth" && option != "--out") {
 			throw std::invalid_argument("Unknown option '" + option + "'. Use --help.");
 		}
@@ -98,6 +109,11 @@ SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv) {
 		}
 		const std::string value = argv[i];
 		if (option == "--scene") options.scene = &FindScene(value);
+		else if (option == "--scene-file") nativeFile = value;
+		else if (option == "--integrator") {
+			if (value != "path" && value != "bdpt") throw std::invalid_argument("Use --integrator path|bdpt.");
+			options.integrator = value;
+		}
 		else if (option == "--out") options.output = value;
 		else if (option == "--accel") {
 			if (value == "bvh") options.accelerator = SceneAccelerator::Bvh;
@@ -109,7 +125,22 @@ SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv) {
 		else if (option == "--spp") options.spp = ParseInteger(option, value, 1);
 		else if (option == "--max-depth") options.maxDepth = ParseInteger(option, value, 1);
 	}
-	if (!options.scene) throw std::invalid_argument("--scene is required. Use --list-scenes.");
+	if (options.scene && !nativeFile.empty()) throw std::invalid_argument("--scene and --scene-file are mutually exclusive.");
+	if (options.scene && options.scene->file) nativeFile = SceneBuilder::Resource(options.scene->file);
+	if (!nativeFile.empty()) {
+		options.nativeScene = LoadNativeScene(nativeFile);
+		const auto& native = *options.nativeScene;
+		if (options.scene && native.name != options.scene->name) throw std::invalid_argument("Native scene name does not match its registry entry.");
+		if (!seen.count("--width")) options.width = native.width;
+		if (!seen.count("--height")) options.height = native.height;
+		if (!seen.count("--spp")) options.spp = native.spp;
+		if (!seen.count("--max-depth")) options.maxDepth = native.maxDepth;
+		if (!seen.count("--integrator")) options.integrator = native.integrator;
+		if (!seen.count("--accel")) options.accelerator = native.accelerator == "bvh" ? SceneAccelerator::Bvh : SceneAccelerator::Kd;
+	}
+	if (!options.scene && !options.nativeScene) throw std::invalid_argument("--scene or --scene-file is required. Use --list-scenes.");
+	if (options.scene && options.scene->usesVolume && !options.integrator.empty())
+		throw std::invalid_argument("Surface integrator overrides are not supported for volume scenes.");
 	if (options.output.empty()) throw std::invalid_argument("--out is required.");
 	if (options.output.size() < 4) throw std::invalid_argument("--out must end in .png, .bmp or .hdr.");
 	const std::string suffix = options.output.substr(options.output.size() - 4);
@@ -128,12 +159,15 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 		const auto options = ParseSceneCommandLine(argc, argv);
 		if (options.command == SceneCommand::Help) {
 			std::cout << "Usage: GyunityApp --scene NAME --out FILE [options]\n"
+				"  --scene-file PATH      Load a native Gyunity JSON file instead of a named scene\n"
+				"  --integrator path|bdpt Override the surface integrator\n"
 				"  --list-scenes          List registered scene names\n"
 				"  --width N --height N    Resolution (default 512 x 512)\n"
 				"  --spp N                Samples per pixel (default 64)\n"
 				"  --max-depth N          Path depth (default 8)\n"
 				"  --accel bvh|kd         Accelerator (default bvh)\n"
 				"  --out FILE             Required .png, .bmp or .hdr output\n"
+				"Native JSON scenes supply their own render defaults; explicit flags override them.\n"
 				"Fog uses volume path tracing; other scenes use path tracing.\n"
 				"Run from GyunityApp for resource paths. Output directories must exist.\n"
 				"With no arguments, the builder-based PathTracing example runs the env scene\n"

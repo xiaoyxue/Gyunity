@@ -1,6 +1,7 @@
 #pragma once
 #include "scenes/SceneRegistry.h"
 #include "integrator/Integrator.h"
+#include "NativeScene.h"
 
 enum class SceneCommand { Example, Help, List, Render };
 enum class SceneAccelerator { Bvh, Kd };
@@ -14,6 +15,8 @@ struct SceneRenderOptions {
 	int spp = 64;
 	int maxDepth = 8;
 	std::string output;
+	std::string integrator;
+	std::shared_ptr<NativeScene> nativeScene;
 };
 
 SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv);
