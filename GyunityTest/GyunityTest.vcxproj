@@ -57,6 +57,7 @@
     <ClCompile Include="tests\BDPTEnvironmentTest.cpp" />
     <ClCompile Include="tests\PixelDebugTest.cpp" />
     <ClCompile Include="tests\ProgressReporterTest.cpp" />
+    <ClCompile Include="tests\ThreadedTaskManagerTest.cpp" />
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup />
