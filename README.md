@@ -412,16 +412,16 @@ bounds without changing geometry, and checks latitude/longitude signs using a
 directional HDR marker map. Generated fixtures and images use
 `GYUNITY_TEST_OUTPUT_DIRECTORY` under the main checkout's `Test` directory.
 
-#### Preparatory VCM probability layer (feature branch, milestone 2)
+#### Preparatory VCM probability layer (feature branch, milestones 2-3)
 
 `integrator\VCMPath.h` adds `Vcm::PathContext`, `Strategy`, `ComputePathPdf`, and
 `ComputeMisWeight`. This is **not a VCM renderer** and changes no example, CLI,
 default integrator, BDPT MIS, RNG, or film behavior. The non-owning context keeps
 immutable selected light/eye prefixes; the paths and BSDF arenas must outlive it.
-Only finite area-light origins, the existing pinhole convention, and continuous
-surface scattering are currently accepted. Point/environment origins, specular
-chains (including terminal delta BSDFs), mixed delta lobes, and media fail
-explicitly. Milestone 3 must complete the singular/environment measures.
+Area/point origins, one zero-rotation environment, the existing pinhole
+convention, continuous surfaces, and pure mirror/glass chains are supported.
+Mixed delta/continuous lobes, media, new camera models, rotated/multiple
+environments, and malformed endpoint/event metadata fail explicitly.
 
 The evaluator independently enumerates VC at depth `s+t-2` and VM at depth
 `s+t-3`, excluding `t=0` and `(VC,1,1)`. Origin samples are reused, not resampled;
@@ -432,8 +432,10 @@ both remain inside the selected prefix. The builder's cached value preserves the
 original offset-ray directions; reconstructing those directions from hit positions
 can change even a continuous-path weight. The two join-adjacent reverse densities
 are still recomputed, never read from unused suffixes or stale terminal caches.
-No roulette is introduced. `ComputePathPdf` returns the raw effective path
-density in logarithmic form (including `A=pi*R^2` for VM, not its sample count).
+No roulette is introduced. `ComputePathPdf` returns the effective common
+reduced-measure path density in logarithmic form (including `A=pi*R^2` for VM,
+not its sample count). For continuous paths this is the ordinary density;
+absolute singular density scales are not an additional validation oracle.
 `ComputeMisWeight` uses double log-products and common-maximum subtraction to
 normalize the balance scores `pVC` and `N_L*pVM`. It does **not** hide `1/N_L` in
 the VM weight. `N_L` is attempted light paths, not stored photons or query hits.
@@ -457,13 +459,27 @@ polyline is introduced. This is the report's finite-radius approximation,
 not an assertion that all techniques sample one identical geometric path.
 
 Combined and connection-only modes use their respective strategy families.
-Merging-only retains VM plus depth-zero visible-emitter hits; the later
-singular-path stage must extend this to `LS*E`. No photon map, local merge
-estimator, progressive radius schedule, or render loop exists yet.
+Merging-only retains VM plus camera-visible `LS*E` emission/background at unit
+weight: **every** interior scattering event in the prefix must be pure delta.
+An emitter hit after any continuous event is not covered by that exemption.
+No local merge estimator, progressive radius schedule, or render loop is added
+by this probability layer.
+
+Point origins are discrete position masses; their light-selection probability
+is included exactly once, and camera-hit-emitter alternatives are impossible.
+An environment origin instead uses light selection times map directional PDF.
+Its first surface arrival uses the projected launch-disk density, without
+helper-distance falloff; reverse arrivals at infinity remain directional.
+The shared checked emission APIs validate initialized bounds, and emitted rays
+travel opposite the map direction. Origin `mPdfPos`, `mPdfDir`,
+`mLightSelectionPdf`, and `mPdfFwd` are checked against point/environment
+endpoint metadata. Camera escape records use `mDirection`, not `mIsect.mOutDir`.
+Changing the launch disk changes photon arrival frequency (and some weights),
+not the reciprocal emitted-throughput/arrival-density normalization.
 
 `VCMPathTest.cpp` compares every normalized strategy against **two test-only
 computations**: the report's `dVCM/dVC/dVM` initialization/update/final equations
-(31)-(47), and direct Eq. (10)-(12) products (binary-exponent products for long
+(31)-(55), and direct Eq. (10)-(12) products (binary-exponent products for long
 paths). The recurrence helper is linked only into `GyunityTest`; production
 never calls it or the old BDPT weight. Its geometry conversions are independent
 of the production helpers. Endpoint reuse sets `p_connect=p_trace`. To align
@@ -474,14 +490,15 @@ density, the reference supplies `q_pixel=P*q_film` and `n_light=P`, with
 independently in the VC/VM competition. This is a density-convention comparison,
 not an image comparison or a new arbitrary render-budget contract.
 
-Run `GyunityTest.exe --gtest_filter="VCMPath.*"` from the worktree's `GyunityApp`.
+Run `GyunityTest.exe --gtest_filter="VCM*"` from the worktree's `GyunityApp`.
 With `GYUNITY_TEST_OUTPUT_DIRECTORY` pointing to an existing directory under
 the main checkout's `Test`, tests also write per-strategy
 `vcm-weights-debug.csv` / `vcm-weights-release.csv`. The exact depth-one fixture,
 noncoincident directional merges, real glossy reflection/transmission, unequal
 light selection, all finite endpoint families, mode/count/radius invariants,
 immutability/errors, and underflowing long products are covered. The positive
-continuous recurrence oracle does not purport to validate singular paths.
+recurrence oracle also applies the report's point-light initialization,
+directional environment measures, pure-delta masks, and singular updates.
 The generated-path integration test additionally traces 16 deterministic light/
 camera pairs through an enclosed diffuse area-lit scene, checks every positive
 VC construction through depth five against BDPT and the independent oracles, and
@@ -490,12 +507,15 @@ record coverage and original-versus-reconstructed direction differences.
 Reporting is optional when the output variable is unset; when configured,
 failure to open or flush the requested CSV fails the test with a diagnostic.
 
-##### Milestone 3 research gate: singular measure conventions
+##### Approved singular convention: report weights, unchanged standalone BDPT
 
-**Milestone 3 is blocked, not implemented.** `VCMSingularGate.*` preserves a
-reproducible conflict between legacy BDPT's delta-marker remapping and the
-report's Section 5.4, Eqs. (51)-(55). Production APIs, builders, throughputs,
-sampling policy, and rejection of unsupported VCM paths are unchanged.
+The user selected **report-keep-bdpt**. `VCMSingularConvention.*` preserves the
+reproducible difference between legacy BDPT's delta-marker remapping and the
+report's Section 5.4, Eqs. (51)-(55), as a convention regression, not a blocker.
+Per-path old/new weight equality is required only for continuous paths.
+The singular VCM weights are independently checked against the report and
+direct/hand calculations; the legacy numbers are labelled diagnostics.
+Different normalized weights alone do not establish bias in either renderer.
 
 For an interior mirror at index `i`, the report sets the directional mass to
 one, **not the converted arrival factor**: the reduced factors are
@@ -521,14 +541,50 @@ not full singular VCM coverage. Separate BSDF probes cover oblique dielectric
 reflection/refraction, TIR, reversed sampling, radiance/importance transport,
 and one/two matching lobes without treating ordinary `Pdf()==0` as a mass.
 
-Run `GyunityTest.exe --gtest_filter="VCMSingularGate.*:VCMPath.*"` from
-`GyunityApp`. The configured output directory receives
+The compatibility CSV files retain their names
 `vcm-singular-gate-debug.csv` / `vcm-singular-gate-release.csv`; XML properties
-explicitly report **BLOCKED**. Passing these tests means the conflict was
-reproduced, not that milestone 3 passed. The parent implementation decision is
-whether VCM may follow the report while standalone BDPT retains different
-singular weights, or whether a separately reviewed BDPT convention change is
-required. No fallback, speculative BDPT repair, or renderer is introduced here.
+now identify the **resolved** report/legacy convention. No legacy-MIS fallback
+or renderer is introduced.
+
+`BSDF::Sample` has an optional reverse-delta-mass output. The selected BxDF
+provides that event's reverse component probability before its identity is
+lost; both masses include the uniform matching-lobe selection probability.
+Mirror returns mass one; glass uses the actual Fresnel reflection or
+transmission probability in each direction, including TIR. The previous
+`0.25+0.5*Re` line in glass sampling is still overridden by `P=Re`; the sampling
+policy has **not** changed. Eta-squared remains in radiance throughput only.
+`PathVertex::mDeltaPdf/mDeltaReversePdf` retain these successful sampled
+continuations. `mPdfFwd/mPdfPrev` still contain the original BDPT zero markers,
+and no origin-only probability or direction field is repurposed.
+
+For every supported internal delta event, all feasible techniques contain the
+same singular constraint exactly once. Explicit enumeration removes that
+common distribution but retains its orientation's sampled component mass and
+the report geometry. Equal forward/reverse component masses could cancel
+across all scores; production keeps them, so it never assumes such equality.
+VM support is masked independently: it is not an infeasible VC PDF multiplied
+by disk area. Point `L-S-D-S-E` caustics with one eligible merge have weight one.
+Camera, light, and environment records and pure-delta surfaces cannot merge.
+A continuous surface reached through specular transport can merge. The
+actual endpoint BSDF determines eligibility even if it has never sampled a
+continuation. Conversely, emission/camera roles and unused continuations do
+not invent internal scattering events.
+
+Only consumed metadata is required. A missing forward event, unavailable
+reverse mass (a custom delta BxDF without the optional event query), or invalid
+mass fails checked VCM evaluation; standalone BDPT still uses its original
+behavior. These fields are not a generic mixture/material framework.
+
+The extended matrix also traces 64 real mixed-origin pairs through
+diffuse/mirror/glass surfaces: 147 positive VC constructions (118 singular)
+over depths 0-6, five noncoincident same-surface VM constructions after
+specular transport, up to four delta events per subpath, and environment
+escapes using their actual ray directions. Independent reverse-event
+reconstruction does not consume the stored delta masses or reverse densities.
+Additional generated oblique glass reflection/refraction, TIR, and emissive
+mirror cases verify `LS*E` weights and sampling-compensated emission values.
+These are probability/primary-estimate tests, not a completed VCM render loop
+or a convergence/radiance acceptance claim for the future combined renderer.
 
 `TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
 width, height, spp, depth and accelerator. It covers all nine original surface

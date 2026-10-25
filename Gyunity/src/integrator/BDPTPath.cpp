@@ -80,9 +80,9 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 		PathVertex& previous = path[path.size() - 2];
 		const Vec3 wo = -ray.mDir;
 		Vec3 wi;
-		real pdf = 0;
+		real pdf = 0, reverseDeltaMass = -1;
 		const real u0 = rand(), u1 = rand(), u2 = rand();
-		const Vec3 f = isect.mBsdf->Sample(wo, &wi, &pdf, Vec3(u0, u1, u2));
+		const Vec3 f = isect.mBsdf->Sample(wo, &wi, &pdf, Vec3(u0, u1, u2), BSDF_ALL, &reverseDeltaMass);
 		if (!ValidPdf(pdf) || !Finite(f)) {
 			Fail("BDPT encountered a nonfinite or negative BSDF density/contribution.");
 			return -1;
@@ -98,6 +98,10 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 			return -1;
 		}
 		current.mIsDelta = isect.mBsdf->IsDelta();
+		if (current.mIsDelta) {
+			current.mDeltaPdf = pdf;
+			current.mDeltaReversePdf = reverseDeltaMass;
+		}
 		pdfFwd = current.mIsDelta ? 0 : pdf;
 		// Evaluate with the saved incoming direction, before replacing the ray.
 		const real pdfPrev = current.mIsDelta ? 0 : isect.mBsdf->Pdf(wi, wo);

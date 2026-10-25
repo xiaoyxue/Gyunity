@@ -6,11 +6,14 @@
 #include "camera/PinholeCamera.h"
 #include "light/AreaLight.h"
 #include "light/PointLight.h"
+#include "light/EnvLight.h"
+#include "image/ImageIO.h"
 #include "material/Diffuse.h"
 #include "material/Glass.h"
 #include "material/Mirror.h"
 #include "texture/ConstantTexture.h"
 #include "visual/Rng.h"
+#include "volume/Homogeneous.h"
 #include <array>
 #include <fstream>
 #include <iomanip>
@@ -74,29 +77,53 @@ public:
 
 // Independent oracle conversion: no Bidirectional helpers or ConvertDensity.
 double Jacobian(const PathVertex& source, const PathVertex& destination) {
+	if (destination.mType == PathVertexType::Environment) return 1;
+	if (source.mType == PathVertexType::Environment) {
+		return std::abs(Dot(destination.mIsect.mGeometryNormal, source.mDirection));
+	}
 	const double x = double(destination.mIsect.mPos.x) - source.mIsect.mPos.x;
 	const double y = double(destination.mIsect.mPos.y) - source.mIsect.mPos.y;
 	const double z = double(destination.mIsect.mPos.z) - source.mIsect.mPos.z;
 	const double distance2 = x * x + y * y + z * z;
-	if (destination.mType == PathVertexType::Camera) return 1 / distance2;
+	if (destination.mType == PathVertexType::Camera ||
+		(destination.mType == PathVertexType::Light && destination.mLight->IsDeltaLight())) return 1 / distance2;
 	const Vec3& normal = destination.mIsect.mGeometryNormal;
 	return std::abs(normal.x * x + normal.y * y + normal.z * z) / (distance2 * std::sqrt(distance2));
 }
 
+Vec3 OracleDirection(const PathVertex& from, const PathVertex& to) {
+	if (from.mType == PathVertexType::Environment) return -from.mDirection;
+	if (to.mType == PathVertexType::Environment) return to.mDirection;
+	return (to.mIsect.mPos - from.mIsect.mPos).Norm();
+}
+
+// Fixtures use single or identical delta lobes. Re-sample the known branch
+// independently of stored masses; never query a delta ordinary Pdf().
+double BranchMass(const PathVertex& source, const Vec3& wo, const Vec3& wi) {
+	const bool reflection = Dot(wo, source.mIsect.mNormal) * Dot(wi, source.mIsect.mNormal) > 0;
+	Vec3 sampled;
+	real mass;
+	EXPECT_NE(source.mIsect.mBsdf->Sample(wo, &sampled, &mass,
+		Vec3(0.5f, reflection ? 0.f : ONE_MINUS_EPSILON, 0.5f)), Vec3(0));
+	EXPECT_LT((sampled - wi).Length(), 1e-5);
+	return mass;
+}
+
 double DirectionPdf(const PathVertex& source, const PathVertex* previous, const PathVertex& destination) {
-	const Vec3 wi = (destination.mIsect.mPos - source.mIsect.mPos).Norm();
+	const Vec3 wi = OracleDirection(source, destination);
 	if (source.mType == PathVertexType::Camera) return source.mCamera->PdfDir(Ray(source.mIsect.mPos, wi));
 	if (!previous) {
 		real position, direction;
 		EXPECT_TRUE(source.mLight->PdfLight(source.mIsect, wi, &position, &direction));
-		return direction;
+		return source.mType == PathVertexType::Environment ? position : direction;
 	}
-	return source.mIsect.mBsdf->Pdf((previous->mIsect.mPos - source.mIsect.mPos).Norm(), wi);
+	const Vec3 wo = OracleDirection(source, *previous);
+	return source.mIsect.mBsdf->IsDelta() ? BranchMass(source, wo, wi) : source.mIsect.mBsdf->Pdf(wo, wi);
 }
 
 double OriginPdf(const Scene& scene, const PathVertex& origin, const PathVertex& next) {
 	real position, direction;
-	EXPECT_TRUE(origin.mLight->PdfLight(origin.mIsect, (next.mIsect.mPos - origin.mIsect.mPos).Norm(), &position, &direction));
+	EXPECT_TRUE(origin.mLight->PdfLight(origin.mIsect, OracleDirection(origin, next), &position, &direction));
 	double selection = 0;
 	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
 		if (scene.GetLights()[i].get() != origin.mLight) continue;
@@ -104,15 +131,27 @@ double OriginPdf(const Scene& scene, const PathVertex& origin, const PathVertex&
 		EXPECT_TRUE(scene.LightSelectionPdf(i, &pdf));
 		selection += pdf;
 	}
-	return position * selection;
+	return (origin.mType == PathVertexType::Environment ? direction : position) * selection;
 }
 
 // Independently re-evaluate an unchanged reverse event from its ORIGINAL
 // sampled directions, not the cached mPdfPrev or a reconstructed polyline.
 double ReverseEventPdf(const std::vector<PathVertex>& path, int i) {
 	const auto& source = path[i + 1];
-	return source.mIsect.mBsdf->Pdf(-path[i + 2].mIsect.mOutDir, source.mIsect.mOutDir) *
+	const Vec3 originalOutgoing = path[i + 2].mType == PathVertexType::Environment ?
+		path[i + 2].mDirection : -path[i + 2].mIsect.mOutDir;
+	const double pdf = source.mIsect.mBsdf->IsDelta() ?
+		BranchMass(source, originalOutgoing, source.mIsect.mOutDir) :
+		source.mIsect.mBsdf->Pdf(originalOutgoing, source.mIsect.mOutDir);
+	return pdf *
 		Jacobian(source, path[i]);
+}
+
+double ForwardEventPdf(const std::vector<PathVertex>& path, int i) {
+	if (i <= 1 || !path[i - 1].mIsect.mBsdf->IsDelta()) return path[i].mPdfFwd;
+	const auto& source = path[i - 1];
+	const Vec3 outgoing = path[i].mType == PathVertexType::Environment ? path[i].mDirection : -path[i].mIsect.mOutDir;
+	return BranchMass(source, source.mIsect.mOutDir, outgoing) * Jacobian(source, path[i]);
 }
 
 // Report input extraction is separate from the production evaluator. Two
@@ -127,6 +166,9 @@ Edges ReportEdges(const Scene& scene, const Vcm::PathContext& path) {
 	if (merge) right[path.selected.s - 1] = &path.camera[path.selected.t - 1];
 	Edges e;
 	e.f.resize(n); e.r.resize(n); e.gf.resize(n, 1); e.gr.resize(n, 1);
+	e.delta.resize(n, false);
+	e.pointOrigin = left[0]->mLight->IsDeltaLight();
+	for (int i = 1; i + 1 < n; ++i) e.delta[i] = left[i]->mIsect.mBsdf->IsDelta();
 	for (int i = 1; i < n; ++i) {
 		const auto& chain = merge && i >= path.selected.s ? right : left;
 		e.gf[i] = Jacobian(*chain[i - 1], *chain[i]);
@@ -138,7 +180,7 @@ Edges ReportEdges(const Scene& scene, const Vcm::PathContext& path) {
 	e.f[0] = path.selected.s ? path.light[0].mPdfFwd : OriginPdf(scene, *left[0], *left[1]);
 	e.r[n - 1] = path.camera[0].mPdfFwd;
 	for (int i = 1; i < n; ++i) {
-		if (i < path.selected.s) e.f[i] = path.light[i].mPdfFwd;
+		if (i < path.selected.s) e.f[i] = ForwardEventPdf(path.light, i);
 		else if (n - 1 - i + 2 < path.selected.t) e.f[i] = ReverseEventPdf(path.camera, n - 1 - i);
 		else if (merge && i == path.selected.s) {
 			const auto& x = path.camera[path.selected.t - 1];
@@ -148,7 +190,7 @@ Edges ReportEdges(const Scene& scene, const Vcm::PathContext& path) {
 	}
 	const int eyeStart = path.selected.s - (merge ? 1 : 0);
 	for (int i = 0; i + 1 < n; ++i) {
-		if (i >= eyeStart) e.r[i] = path.camera[n - 1 - i].mPdfFwd;
+		if (i >= eyeStart) e.r[i] = ForwardEventPdf(path.camera, n - 1 - i);
 		else if (i + 2 < path.selected.s) e.r[i] = ReverseEventPdf(path.light, i);
 		else if (merge && i == eyeStart - 1) {
 			const auto& x = path.camera[path.selected.t - 1];
@@ -156,6 +198,7 @@ Edges ReportEdges(const Scene& scene, const Vcm::PathContext& path) {
 		}
 		else e.r[i] = DirectionPdf(*left[i + 1], i + 2 < n ? left[i + 2] : nullptr, *left[i]) * e.gr[i];
 	}
+	if (e.pointOrigin) e.r[0] = 0;
 	return e;
 }
 
@@ -202,6 +245,9 @@ struct Fixture {
 	void Refresh() {
 		const int n = static_cast<int>(full.size());
 		direct.f.resize(n); direct.r.resize(n); direct.gf.resize(n, 1); direct.gr.resize(n, 1);
+		direct.delta.resize(n, false);
+		direct.pointOrigin = full[0].mLight->IsDeltaLight();
+		for (int i = 1; i + 1 < n; ++i) direct.delta[i] = full[i].mIsect.mBsdf->IsDelta();
 		direct.f[0] = OriginPdf(scene, full[0], full[1]);
 		direct.r[n - 1] = 1;
 		for (int i = 1; i < n; ++i) {
@@ -212,6 +258,7 @@ struct Fixture {
 			direct.gr[i] = Jacobian(full[i + 1], full[i]);
 			direct.r[i] = DirectionPdf(full[i + 1], i + 2 < n ? &full[i + 2] : nullptr, full[i]) * direct.gr[i];
 		}
+		if (direct.pointOrigin) direct.r[0] = 0;
 	}
 
 	void Split(int s, bool merge, std::vector<PathVertex>& lightPath, std::vector<PathVertex>& eyePath) const {
@@ -220,13 +267,27 @@ struct Fixture {
 		for (int i = 0; i < s; ++i) {
 			auto v = full[i];
 			v.mPdfFwd = real(direct.f[i]); v.mPdfPrev = real(direct.r[i]);
-			if (i > 0) v.mIsect.mOutDir = (full[i - 1].mIsect.mPos - v.mIsect.mPos).Norm();
+			if (i > 0) v.mIsect.mOutDir = OracleDirection(v, full[i - 1]);
+			if (i > 0 && i + 1 < n && direct.delta[i]) {
+				v.mIsDelta = true;
+				v.mDeltaPdf = real(BranchMass(v, OracleDirection(v, full[i - 1]), OracleDirection(v, full[i + 1])));
+				v.mDeltaReversePdf = real(BranchMass(v, OracleDirection(v, full[i + 1]), OracleDirection(v, full[i - 1])));
+			}
+			if (i > 1 && direct.delta[i - 1]) v.mPdfFwd = 0;
+			if (i + 2 < n && direct.delta[i + 1]) v.mPdfPrev = 0;
 			lightPath.push_back(v);
 		}
 		for (int i = n - 1; i >= s - (merge ? 1 : 0); --i) {
 			auto v = full[i];
 			v.mPdfFwd = real(direct.r[i]); v.mPdfPrev = real(direct.f[i]);
-			if (i < n - 1) v.mIsect.mOutDir = (full[i + 1].mIsect.mPos - v.mIsect.mPos).Norm();
+			if (i < n - 1) v.mIsect.mOutDir = OracleDirection(v, full[i + 1]);
+			if (i > 0 && i + 1 < n && direct.delta[i]) {
+				v.mIsDelta = true;
+				v.mDeltaPdf = real(BranchMass(v, OracleDirection(v, full[i + 1]), OracleDirection(v, full[i - 1])));
+				v.mDeltaReversePdf = real(BranchMass(v, OracleDirection(v, full[i - 1]), OracleDirection(v, full[i + 1])));
+			}
+			if (i + 2 < n && direct.delta[i + 1]) v.mPdfFwd = 0;
+			if (i > 1 && direct.delta[i - 1]) v.mPdfPrev = 0;
 			eyePath.push_back(v);
 		}
 	}
@@ -247,6 +308,10 @@ void SamePaths(const std::vector<PathVertex>& a, const std::vector<PathVertex>& 
 		EXPECT_EQ(a[i].mLight, b[i].mLight);
 		EXPECT_EQ(a[i].mCamera, b[i].mCamera);
 		EXPECT_EQ(a[i].mIsDelta, b[i].mIsDelta);
+		if (std::isnan(b[i].mDeltaPdf)) EXPECT_TRUE(std::isnan(a[i].mDeltaPdf));
+		else EXPECT_EQ(a[i].mDeltaPdf, b[i].mDeltaPdf);
+		if (std::isnan(b[i].mDeltaReversePdf)) EXPECT_TRUE(std::isnan(a[i].mDeltaReversePdf));
+		else EXPECT_EQ(a[i].mDeltaReversePdf, b[i].mDeltaReversePdf);
 		if (std::isnan(b[i].mPdfFwd)) EXPECT_TRUE(std::isnan(a[i].mPdfFwd));
 		else EXPECT_EQ(a[i].mPdfFwd, b[i].mPdfFwd);
 		if (std::isnan(b[i].mPdfPrev)) EXPECT_TRUE(std::isnan(a[i].mPdfPrev));
@@ -321,7 +386,9 @@ void Compare(const std::string& name, const Scene& scene, const Vcm::PathContext
 				for (int i = s - (kind == Technique::Merging ? 1 : 0); i < n; ++i) product.Multiply(direct.r[i]);
 				if (kind == Technique::Merging) product.Multiply(area);
 				expectedLog = std::log(product.mantissa) + product.exponent * std::log(2.0);
-				EXPECT_NEAR(pdf.logPdf, expectedLog, 1e-5);
+				if (std::none_of(direct.delta.begin(), direct.delta.end(), [](bool d) { return d; })) {
+					EXPECT_NEAR(pdf.logPdf, expectedLog, 1e-5);
+				}
 				ASSERT_TRUE(Vcm::ComputeMisWeight(scene, path, strategy, &weight));
 			}
 			const double oracle = VcmReference::Weight(report, kind == Technique::Merging, s, area,
@@ -814,7 +881,7 @@ TEST(VCMPath, ZeroScatteringPdfStaysZeroRatherThanBecomingADeltaMarker) {
 	Close(weight, direct[1]);
 }
 
-TEST(VCMPath, SingularSelectedPrefixesAreExplicitlyUnsupported) {
+TEST(VCMPath, TerminalDeltaEligibilityAndMalformedPrefixes) {
 	for (int variant = 0; variant < 5; ++variant) {
 			Fixture fixture(5);
 			std::vector<PathVertex> light, eye;
@@ -834,7 +901,7 @@ TEST(VCMPath, SingularSelectedPrefixesAreExplicitlyUnsupported) {
 			const Vcm::PathContext path(light, eye, { Technique::Merging, 3, 3 }, 0.2, 16);
 			Vcm::StrategyPdf pdf;
 			real weight = 7;
-			EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
+			EXPECT_EQ(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf), variant == 1 || variant == 2);
 			EXPECT_FALSE(pdf.feasible);
 			EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
 			EXPECT_EQ(weight, 0);
@@ -843,7 +910,7 @@ TEST(VCMPath, SingularSelectedPrefixesAreExplicitlyUnsupported) {
 	}
 }
 
-TEST(VCMPath, PointAndEnvironmentOriginsAreRejectedWithoutChangingBDPT) {
+TEST(VCMPath, UnregisteredPointAndFakeEnvironmentOriginsAreRejected) {
 	Fixture fixture;
 	std::vector<PathVertex> light, eye;
 	fixture.Split(1, false, light, eye);
@@ -1008,7 +1075,7 @@ void WriteSingularGateRow(const std::string& name, int s, double report, double 
 
 }
 
-TEST(VCMSingularGate, ExactMirrorExposesDifferentReducedMeasureConventions) {
+TEST(VCMSingularConvention, ExactMirrorPreservesTheApprovedReportConvention) {
 	Fixture fixture(5, true);
 	const Vec3 positions[] = { Vec3(-3, 0, 3), Vec3(-3, 0, 4), Vec3(0),
 		Vec3(6, 0, 8), Vec3(6, 0, 7) };
@@ -1046,6 +1113,8 @@ TEST(VCMSingularGate, ExactMirrorExposesDifferentReducedMeasureConventions) {
 			const bool vc = mode != Mode::MergingOnly, vm = mode != Mode::ConnectionOnly;
 			const double* expected = mode == Mode::Combined ? combined : vc ? connection : merging;
 			const auto direct = VcmReference::DirectWeights(manual, 0.25, 16, vc, vm);
+			Compare("approved-mirror-convention", fixture.scene,
+				Vcm::PathContext(light, eye, path.selected, path.radius, 16, mode), manual);
 			int index = 0;
 			for (bool merge : { false, true }) {
 				for (int s = merge ? 2 : 0; s < 5; ++s, ++index) {
@@ -1065,10 +1134,10 @@ TEST(VCMSingularGate, ExactMirrorExposesDifferentReducedMeasureConventions) {
 		SamePaths(light, beforeLight);
 		SamePaths(eye, beforeEye);
 	}
-	RecordProperty("gate", "BLOCKED: report geometry and legacy zero-remapping disagree; production remains unchanged");
+	RecordProperty("convention", "RESOLVED: VCM follows the report; legacy BDPT is a separately labelled diagnostic");
 }
 
-TEST(VCMSingularGate, ActualBuildersReproduceMirrorConventionConflict) {
+TEST(VCMSingularConvention, ActualBuildersPreserveDistinctApprovedConventions) {
 	class Samples : public StateSequence {
 	public:
 		explicit Samples(std::initializer_list<real> values) : values(values) {}
@@ -1143,6 +1212,10 @@ TEST(VCMSingularGate, ActualBuildersReproduceMirrorConventionConflict) {
 			ASSERT_GT(primary.x, 0);
 			++positive;
 			const Edges report = MirrorReportEdges(scene, path);
+			for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+				Compare("generated-mirror-convention", scene,
+					Vcm::PathContext(light, eye, path.selected, path.radius, 16, mode), report);
+			}
 			const auto direct = VcmReference::DirectWeights(report, Pi * 0.04, 16, true, false);
 			const double oracle = VcmReference::Weight(report, false, s, Pi * 0.04, 16, true, false);
 			Close(oracle, direct[s]);
@@ -1186,10 +1259,10 @@ TEST(VCMSingularGate, ActualBuildersReproduceMirrorConventionConflict) {
 		value << std::setprecision(17) << metric.second;
 		RecordProperty(metric.first, value.str());
 	}
-	RecordProperty("gate", "BLOCKED: both conventions normalize, but their strategy ratios differ");
+	RecordProperty("convention", "RESOLVED: report and legacy ratios intentionally differ on singular paths");
 }
 
-TEST(VCMSingularGate, ActualDeltaSamplingMassesAndReverseTransportAreNotOrdinaryPdfs) {
+TEST(VCMSingularConvention, ActualDeltaSamplingMassesAndReverseTransportAreNotOrdinaryPdfs) {
 	Intersection isect;
 	isect.mNormal = isect.mGeometryNormal = Vec3(0, 0, 1);
 	CoordinateSystem(isect.mNormal, &isect.mShadingDpDu, &isect.mShadingDpDv);
@@ -1207,9 +1280,14 @@ TEST(VCMSingularGate, ActualDeltaSamplingMassesAndReverseTransportAreNotOrdinary
 					bsdf.Add(&first);
 					if (lobes == 2) bsdf.Add(&second);
 					Vec3 wi, returned;
-					real mass, reverseMass;
+					real mass, reverseMass, capturedReverse;
 					const Vec3 random(0.75f, reflect ? 0.f : 0.99f, 0.5f);
-					const Vec3 value = bsdf.Sample(wo, &wi, &mass, random);
+					const Vec3 value = bsdf.Sample(wo, &wi, &mass, random, BSDF_ALL, &capturedReverse);
+					Vec3 unchangedDirection;
+					real unchangedMass;
+					EXPECT_EQ(value, bsdf.Sample(wo, &unchangedDirection, &unchangedMass, random));
+					EXPECT_EQ(wi, unchangedDirection);
+					EXPECT_EQ(mass, unchangedMass);
 					ASSERT_GT(mass, 0);
 					EXPECT_NEAR(mass, (reflect ? fresnel : 1 - fresnel) / lobes, 1e-7);
 					EXPECT_EQ(bsdf.Pdf(wo, wi), 0);
@@ -1217,6 +1295,7 @@ TEST(VCMSingularGate, ActualDeltaSamplingMassesAndReverseTransportAreNotOrdinary
 					EXPECT_NE(bsdf.Sample(wi, &returned, &reverseMass, random), Vec3(0));
 					EXPECT_LT((returned - wo).Length(), 1e-6);
 					EXPECT_NEAR(reverseMass, mass, 1e-7);
+					EXPECT_EQ(capturedReverse, reverseMass);
 					const real etaSquared = mode == TransportMode::Radiance && !reflect ? 4.f / 9 : 1;
 					EXPECT_NEAR(value.x * std::abs(wi.z) / mass, lobes * etaSquared, 1e-6);
 				}
@@ -1224,4 +1303,686 @@ TEST(VCMSingularGate, ActualDeltaSamplingMassesAndReverseTransportAreNotOrdinary
 		}
 	}
 	RecordProperty("scope", "oblique dielectric reflection/transmission, TIR, reciprocal events, both transport modes, one/two matching lobes");
+}
+
+namespace {
+
+void SetLobe(Fixture& fixture, int i, const Vec3& normal, int kind) {
+	auto& v = fixture.full[i];
+	v.mIsect.mNormal = v.mIsect.mGeometryNormal = normal;
+	CoordinateSystem(normal, &v.mIsect.mShadingDpDu, &v.mIsect.mShadingDpDv);
+	v.mIsect.mBsdf = GYT_MEMORY_POOL_ALLOC(fixture.arena, BSDF)(v.mIsect);
+	if (kind == 1) v.mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, SpecularBSDF)(Vec3(1)));
+	else if (kind == 2) v.mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, TransmissionBSDF)());
+	else v.mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, FixedLobe)(0.125f));
+}
+
+void EndpointMetadata(Fixture& fixture) {
+	auto& origin = fixture.full[0];
+	ASSERT_TRUE(origin.mLight->PdfLight(origin.mIsect, OracleDirection(origin, fixture.full[1]),
+		&origin.mPdfPos, &origin.mPdfDir));
+	origin.mLightSelectionPdf = 0;
+	for (size_t i = 0; i < fixture.scene.GetLights().size(); ++i) {
+		if (fixture.scene.GetLights()[i].get() != origin.mLight) continue;
+		real selection;
+		ASSERT_TRUE(fixture.scene.LightSelectionPdf(i, &selection));
+		origin.mLightSelectionPdf += selection;
+	}
+	fixture.Refresh();
+}
+
+void PointOrigin(Fixture& fixture, bool mixture) {
+	auto point = std::make_shared<PointLight>(fixture.full[0].mIsect.mPos, Vec3(3));
+	fixture.scene = Scene{};
+	fixture.scene.AddLight(point);
+	if (mixture) fixture.scene.AddLight(fixture.light);
+	fixture.scene.SetAccelerator(std::make_shared<BruteForce>());
+	fixture.scene.Initialize();
+	fixture.full[0].mType = PathVertexType::Light;
+	fixture.full[0].mLight = point.get();
+	EndpointMetadata(fixture);
+}
+
+class VCMEnvironment : public testing::Test {
+protected:
+	std::string filename;
+	void SetUp() override {
+		const char* output = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY");
+		if (!output) GTEST_SKIP() << "Set GYUNITY_TEST_OUTPUT_DIRECTORY under the main checkout Test directory.";
+		filename = std::string(output) + "\\vcm-constant-environment.hdr";
+		ASSERT_TRUE(ImageIO::WriteImage(filename, std::vector<Vec3>(16, Vec3(2)), 4, 4));
+	}
+
+	void EnvironmentOrigin(Fixture& fixture, real bound, bool mixture = false) {
+		fixture.scene = Scene{};
+		auto environment = std::make_shared<EnvironmentLight>(filename, 0);
+		fixture.scene.AddLight(environment);
+		if (mixture) {
+			fixture.scene.AddLight(fixture.light);
+			fixture.scene.AddLight(std::make_shared<PointLight>(Vec3(1, 2, 3), Vec3(7)));
+		}
+		auto shape = std::make_shared<Triangle>(Transform(), Transform(), Vec3(-bound, -bound, 0),
+			Vec3(bound, -bound, 0), Vec3(0, bound, 0), Vec3(0, 0, 1));
+		fixture.scene.AddPrimitive(std::make_shared<Primitive>(shape));
+		fixture.scene.SetAccelerator(std::make_shared<BruteForce>(fixture.scene.GetPrimitives()));
+		fixture.scene.Initialize();
+		auto& origin = fixture.full[0];
+		origin.mType = PathVertexType::Environment;
+		origin.mLight = environment.get();
+		origin.mDirection = Vec3(0, 0, 1);
+		EndpointMetadata(fixture);
+	}
+};
+
+}
+
+TEST(VCMPath, PointOriginUsesOneSelectionMassAndCannotBeHit) {
+	for (bool mixture : { false, true }) {
+		Fixture fixture(3, true);
+		PointOrigin(fixture, mixture);
+		const double selection = fixture.full[0].mLightSelectionPdf;
+		if (mixture) { EXPECT_GT(selection, 0); EXPECT_LT(selection, 1); }
+		Edges manual;
+		manual.f = { selection, INV_4PI, 0.125 };
+		manual.r = { 0, 0.5, 1 };
+		manual.pointOrigin = true;
+		for (bool merge : { false, true }) {
+			for (int s = merge ? 2 : 1; s < 3; ++s) {
+				std::vector<PathVertex> light, eye;
+				fixture.Split(s, merge, light, eye);
+				for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+					const Vcm::PathContext path(light, eye, { merge ? Technique::Merging : Technique::Connection, s, int(eye.size()) },
+						std::sqrt(0.25 / Pi), 16, mode);
+					Compare("point-origin", fixture.scene, path, manual);
+					Vcm::StrategyPdf hit;
+					ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, 0, 3 }, &hit));
+					EXPECT_FALSE(hit.feasible);
+				}
+			}
+		}
+	}
+}
+
+TEST_F(VCMEnvironment, OriginFirstArrivalEscapeAndLaunchScaleHaveIndependentMeasures) {
+	double originRatio = 0, mergeRatio = 0;
+	for (real bound : { 1.f, 4.f, 16.f }) {
+		for (bool mixture : { false, true }) {
+			Fixture fixture(3, true);
+			EnvironmentOrigin(fixture, bound, mixture);
+			const double average = (std::sin(double(PI) / 8) + std::sin(3 * double(PI) / 8)) / 2;
+			const double mapPdf = std::sin(5 * double(PI) / 8) / average / (2 * double(PI) * PI);
+			const double diskPdf = 1 / (2 * double(PI) * bound * bound);
+			const double selection = fixture.full[0].mLightSelectionPdf;
+			Edges manual;
+			manual.f = { selection * mapPdf, diskPdf, 0.125 };
+			manual.r = { 0.125, 0.5, 1 };
+			for (bool merge : { false, true }) {
+				for (int s = merge ? 2 : 0; s < 3; ++s) {
+					std::vector<PathVertex> light, eye;
+					fixture.Split(s, merge, light, eye);
+					if (s == 0) eye.back().mIsect.mOutDir = Vec3(0); // Real escapes store only mDirection.
+					for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+						Compare("environment-measures", fixture.scene,
+							Vcm::PathContext(light, eye, { merge ? Technique::Merging : Technique::Connection, s, int(eye.size()) },
+								std::sqrt(0.25 / Pi), 16, mode), manual);
+					}
+					auto& endpoint = s == 0 ? eye.back() : light.front();
+					endpoint.mIsect.mPos = Vec3(0, 0, 1e6f);
+					Compare("environment-helper-distance", fixture.scene,
+						Vcm::PathContext(light, eye, { merge ? Technique::Merging : Technique::Connection, s, int(eye.size()) },
+							std::sqrt(0.25 / Pi), 16), manual);
+				}
+			}
+			const auto weights = VcmReference::DirectWeights(manual, 0.25, 16, true, true);
+			EXPECT_NEAR(diskPdf * bound * bound, 1 / (2 * Pi), 1e-8);
+			// The disk-area compensation of emitted throughput is reciprocal to
+			// first-arrival density. Not ALL strategy weights are bound-invariant.
+			EXPECT_NEAR((1 / diskPdf) * diskPdf, 1, 1e-14);
+			if (!mixture) {
+				if (bound == 1) { originRatio = weights[1] / weights[0]; mergeRatio = weights[3] / weights[2]; }
+				EXPECT_NEAR(weights[1] / weights[0], originRatio, 1e-12);
+				EXPECT_NEAR(weights[3] / weights[2], mergeRatio, 1e-12);
+				EXPECT_NEAR(mergeRatio, 16 * 0.25 * 0.5, 1e-12);
+			}
+		}
+	}
+}
+
+TEST(VCMPath, TwoDeltaCausticHasSoleMergeSupportIncludingFirstSurfaceTransport) {
+	Fixture fixture(5, true);
+	const Vec3 positions[] = { Vec3(-2, 0, 2), Vec3(-1, 0, 0), Vec3(0, 0, 2),
+		Vec3(1, 0, 0), Vec3(2, 0, 2) };
+	for (int i = 0; i < 5; ++i) fixture.full[i].mIsect.mPos = positions[i];
+	SetLobe(fixture, 1, Vec3(0, 0, 1), 1);
+	SetLobe(fixture, 2, Vec3(0, 0, -1), 0);
+	SetLobe(fixture, 3, Vec3(0, 0, 1), 2);
+	PointOrigin(fixture, false);
+	std::vector<PathVertex> light, eye;
+	fixture.Split(3, true, light, eye);
+	EXPECT_GT(light[1].mDeltaReversePdf, 0);
+	EXPECT_GT(eye[1].mDeltaPdf, 0);
+	EXPECT_LT(eye[1].mDeltaPdf, 1);
+	for (Mode mode : { Mode::Combined, Mode::MergingOnly }) {
+		const Vcm::PathContext path(light, eye, { Technique::Merging, 3, 3 }, 0.2, 16, mode);
+		Compare("sole-caustic-merge", fixture.scene, path, fixture.direct);
+		real weight;
+		ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
+		EXPECT_EQ(weight, 1);
+	}
+	Vcm::StrategyPdf pdf;
+	for (int s = 0; s < 5; ++s) {
+		ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene,
+			Vcm::PathContext(light, eye, { Technique::Merging, 3, 3 }, 0.2, 16, Mode::ConnectionOnly),
+			{ Technique::Connection, s, 5 - s }, &pdf));
+		EXPECT_FALSE(pdf.feasible);
+	}
+}
+
+TEST(VCMPath, ConsecutiveMirrorGlassChainsAndSeparatedContinuousMerge) {
+	for (bool glass : { false, true }) {
+		Fixture fixture(6, true);
+		const Vec3 positions[] = { Vec3(-3, 0, 3), Vec3(-3, 0, 2), Vec3(-1, 0, 0),
+			Vec3(1, 0, 2), Vec3(3, 0, 0), Vec3(3, 0, 1) };
+		for (int i = 0; i < 6; ++i) fixture.full[i].mIsect.mPos = positions[i];
+		for (int i = 1; i < 5; ++i) {
+			const Vec3 normal = (OracleDirection(fixture.full[i], fixture.full[i - 1]) +
+				OracleDirection(fixture.full[i], fixture.full[i + 1])).Norm();
+			SetLobe(fixture, i, normal, i == 2 || i == 3 ? (glass ? 2 : 1) : 0);
+		}
+		fixture.Refresh();
+		for (bool merge : { false, true }) {
+			for (int s : merge ? std::vector<int>{ 2, 5 } : std::vector<int>{ 0, 1, 5 }) {
+				std::vector<PathVertex> light, eye;
+				fixture.Split(s, merge, light, eye);
+				for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+					Compare("consecutive-specular", fixture.scene,
+						Vcm::PathContext(light, eye, { merge ? Technique::Merging : Technique::Connection, s, int(eye.size()) },
+							0.2, 16, mode), fixture.direct);
+				}
+				if (merge && s == 5) {
+					light.back().mIsect.mPos -= 0.05f * light.back().mIsect.mOutDir;
+					const Vcm::PathContext path(light, eye, { Technique::Merging, s, int(eye.size()) }, 0.2, 16);
+					const Edges independent = ReportEdges(fixture.scene, path);
+					Compare("separated-after-two-deltas", fixture.scene, path, independent);
+				}
+			}
+		}
+	}
+}
+
+TEST(VCMPath, SpecularEmissionIgnoresEmitterAndUnusedContinuationFlags) {
+	Fixture fixture(4, true);
+	const Vec3 positions[] = { Vec3(-2, 0, 2), Vec3(-1, 0, 0), Vec3(1, 0, 2), Vec3(2, 0, 0) };
+	for (int i = 0; i < 4; ++i) fixture.full[i].mIsect.mPos = positions[i];
+	for (int i : { 1, 2 }) {
+		SetLobe(fixture, i, (OracleDirection(fixture.full[i], fixture.full[i - 1]) +
+			OracleDirection(fixture.full[i], fixture.full[i + 1])).Norm(), 1);
+	}
+	fixture.Refresh();
+	std::vector<PathVertex> light, eye;
+	fixture.Split(0, false, light, eye);
+	auto& emitter = eye.back();
+	emitter.mType = PathVertexType::Surface;
+	emitter.mIsect.mBsdf = GYT_MEMORY_POOL_ALLOC(fixture.arena, BSDF)(emitter.mIsect);
+	emitter.mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, SpecularBSDF)());
+	emitter.mIsDelta = true; // Emission does not consume this continuation.
+	emitter.mDeltaPdf = emitter.mDeltaReversePdf = -1;
+	for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+		const Vcm::PathContext path(light, eye, { Technique::Connection, 0, 4 }, 0.2, 16, mode);
+		Compare("LSSE-specular-emitter", fixture.scene, path, fixture.direct);
+		real weight;
+		ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
+		EXPECT_EQ(weight, 1);
+	}
+	// A continuous event earlier in the prefix invalidates the LS*E exemption,
+	// even when the final bounce before the emitter is specular.
+	SetLobe(fixture, 2, fixture.full[2].mIsect.mNormal, 0);
+	fixture.Refresh();
+	fixture.Split(0, false, light, eye);
+	Vcm::StrategyPdf pdf;
+	ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene,
+		Vcm::PathContext(light, eye, { Technique::Connection, 0, 4 }, 0.2, 16, Mode::MergingOnly),
+		{ Technique::Connection, 0, 4 }, &pdf));
+	EXPECT_FALSE(pdf.feasible);
+}
+
+TEST_F(VCMEnvironment, InvalidOriginsRotationBoundsAndMetadataFailExplicitly) {
+	for (int variant = 0; variant < 9; ++variant) {
+		SCOPED_TRACE(variant);
+		Fixture fixture(3, true);
+		EnvironmentOrigin(fixture, 2);
+		std::vector<PathVertex> light, eye;
+		fixture.Split(2, true, light, eye);
+		std::shared_ptr<EnvironmentLight> replacement;
+		if (variant == 0) light[0].mDirection = Vec3(0);
+		if (variant == 1) light[0].mType = PathVertexType::Light;
+		if (variant == 2) light[0].mPdfPos *= 2;
+		if (variant == 3) light[0].mPdfDir *= 2;
+		if (variant == 4) light[0].mLightSelectionPdf *= 2;
+		if (variant == 5) light[0].mPdfFwd *= 2;
+		if (variant == 6 || variant == 7) {
+			replacement = std::make_shared<EnvironmentLight>(filename, variant == 6 ? 0.1f : 0.f);
+			fixture.scene = Scene{};
+			fixture.scene.AddLight(replacement);
+			light[0].mLight = replacement.get(); // Deliberately no initialized bounds.
+		}
+		if (variant == 8) {
+			fixture.scene.AddLight(std::make_shared<EnvironmentLight>(filename, 0));
+			fixture.scene.Initialize();
+		}
+		const auto beforeLight = light, beforeEye = eye;
+		Vcm::StrategyPdf pdf;
+		real weight = 7;
+		const Vcm::PathContext path(light, eye, { Technique::Merging, 2, 2 }, 0.2, 16);
+		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
+		EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
+		EXPECT_EQ(weight, 0);
+		SamePaths(light, beforeLight);
+		SamePaths(eye, beforeEye);
+	}
+	for (int variant = 0; variant < 3; ++variant) {
+		Fixture fixture(3, true);
+		PointOrigin(fixture, false);
+		std::vector<PathVertex> light, eye;
+		fixture.Split(1, false, light, eye);
+		if (variant == 0) light[0].mIsect.mPos.x += 1;
+		if (variant == 1) light[0].mType = PathVertexType::Surface;
+		if (variant == 2) light[0].mPdfPos = 0.5f;
+		Vcm::StrategyPdf pdf;
+		const Vcm::PathContext path(light, eye, { Technique::Connection, 1, 2 }, 0.2, 16);
+		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
+	}
+}
+
+TEST(VCMPath, ConsumedDeltaMassesAreRequiredButUnusedContinuationMetadataIsIgnored) {
+	Fixture fixture(4, true);
+	fixture.full[0].mIsect.mPos = Vec3(-2, 0, 2);
+	fixture.full[1].mIsect.mPos = Vec3(-1, 0, 0);
+	fixture.full[2].mIsect.mPos = Vec3(0, 0, 2);
+	fixture.full[3].mIsect.mPos = Vec3(0, 0, 1);
+	SetLobe(fixture, 1, Vec3(0, 0, 1), 1);
+	fixture.Refresh();
+	std::vector<PathVertex> light, eye;
+	fixture.Split(3, false, light, eye);
+	for (int variant = 0; variant < 5; ++variant) {
+		auto malformed = light;
+		if (variant == 0) malformed[1].mDeltaPdf = 0;
+		if (variant == 1) malformed[1].mDeltaReversePdf = -1;
+		if (variant == 2) malformed[1].mDeltaPdf = std::numeric_limits<real>::quiet_NaN();
+		if (variant == 3) malformed[1].mDeltaReversePdf = 2;
+		if (variant == 4) malformed[1].mIsDelta = false;
+		Vcm::StrategyPdf pdf;
+		const Vcm::PathContext path(malformed, eye, { Technique::Connection, 3, 1 }, 0.2, 16);
+		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
+	}
+	light.back().mIsDelta = true;
+	light.back().mDeltaPdf = std::numeric_limits<real>::quiet_NaN();
+	light.back().mDeltaReversePdf = -1;
+	eye[0].mIsDelta = true;
+	eye[0].mDeltaPdf = -1; // Camera origin is not a scattering event either.
+	Compare("unused-continuation-masses", fixture.scene,
+		Vcm::PathContext(light, eye, { Technique::Connection, 3, 1 }, 0.2, 16), fixture.direct);
+}
+
+TEST(VCMPath, MediaAtAnySelectedRoleRemainUnsupported) {
+	Fixture fixture(3, true);
+	HomogeneousMedium fog(Vec3(0), Vec3(1), 0);
+	for (int role = 0; role < 3; ++role) {
+		std::vector<PathVertex> light, eye;
+		fixture.Split(2, true, light, eye);
+		PathVertex& vertex = role == 0 ? light[0] : role == 1 ? light[1] : eye[0];
+		vertex.mIsect.mMediumInterface = MediumInterface(&fog, nullptr);
+		Vcm::StrategyPdf pdf;
+		const Vcm::PathContext path(light, eye, { Technique::Merging, 2, 2 }, 0.2, 16);
+		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
+	}
+}
+
+TEST(VCMPath, ObliqueRefractionAndTirKeepTrueSampledBranchMasses) {
+	for (bool tir : { false, true }) {
+		Fixture fixture(5, true);
+		const Vec3 wo = tir ? Vec3(0.8f, 0, -0.6f) : Vec3(0.6f, 0, 0.8f);
+		TransmissionBSDF glass;
+		Vec3 wi;
+		real mass;
+		ASSERT_NE(glass.Sample(wo, &wi, &mass, Vec3(0.5f, tir ? 0.f : 0.99f, 0.5f)), Vec3(0));
+		fixture.full[2].mIsect.mPos = Vec3(0);
+		fixture.full[1].mIsect.mPos = 2 * wo;
+		fixture.full[3].mIsect.mPos = 3 * wi;
+		fixture.full[0].mIsect.mPos = fixture.full[1].mIsect.mPos + Vec3(0, 1, 1);
+		fixture.full[4].mIsect.mPos = fixture.full[3].mIsect.mPos + Vec3(0, 1, -1);
+		SetLobe(fixture, 2, Vec3(0, 0, 1), 2);
+		fixture.Refresh();
+		for (int s : { 0, 1, 4 }) {
+			std::vector<PathVertex> light, eye;
+			fixture.Split(s, false, light, eye);
+			const PathVertex& event = s > 2 ? light[2] : eye[2];
+			EXPECT_NEAR(event.mDeltaPdf, mass, 1e-7);
+			if (tir) EXPECT_EQ(event.mDeltaPdf, 1);
+			else { EXPECT_GT(event.mDeltaPdf, 0); EXPECT_LT(event.mDeltaPdf, 1); }
+			for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+				Compare(tir ? "tir-chain" : "refracted-chain", fixture.scene,
+					Vcm::PathContext(light, eye, { Technique::Connection, s, 5 - s }, 0.2, 16, mode), fixture.direct);
+			}
+		}
+	}
+}
+
+TEST_F(VCMEnvironment, GeneratedMixedOriginsAndSpecularChainsMatchBothIndependentOracles) {
+	class Samples : public StateSequence {
+	  public:
+		explicit Samples(uint64 seed) : rng(seed) {
+		}
+		real Sample() override {
+			++mCursor;
+			return rng.UniformFloat();
+		}
+
+	  private:
+		Pcg32 rng;
+	};
+	Scene scene{};
+	auto white = std::make_shared<ConstantTexture<Vec3>>(Vec3(0.8f));
+	auto diffuse = std::make_shared<DiffuseMaterial>(white);
+	auto mirror = std::make_shared<MirrorMaterial>(white);
+	auto glass = std::make_shared<GlassMaterial>(white, white);
+	for (int axis = 0; axis < 3; ++axis) {
+		for (int sign : {-1, 1}) {
+			Vec3 center(0), u(0), v(0), normal(0);
+			center[axis] = real(2 * sign);
+			normal[axis] = real(-sign);
+			u[(axis + 1) % 3] = 2;
+			v[(axis + 2) % 3] = 2;
+			for (int half = 0; half < 2; ++half) {
+				auto shape = std::make_shared<Triangle>(Transform(), Transform(), center - u - v,
+														half == 0 ? center + u - v : center + u + v,
+														half == 0 ? center + u + v : center - u + v, normal);
+				std::shared_ptr<AreaLight> emitter;
+				if (axis == 2 && sign == 1) {
+					emitter = std::make_shared<AreaLight>(shape, Vec3(2));
+					scene.AddLight(emitter);
+				}
+				const std::shared_ptr<Material> material = axis == 0 ? std::static_pointer_cast<Material>(mirror) : axis == 1 ? std::static_pointer_cast<Material>(glass)
+																															  : std::static_pointer_cast<Material>(diffuse);
+				scene.AddPrimitive(std::make_shared<Primitive>(shape, material, emitter));
+			}
+		}
+	}
+	scene.AddLight(std::make_shared<PointLight>(Vec3(0.3f, 0.4f, 0.5f), Vec3(3)));
+	scene.AddLight(std::make_shared<EnvironmentLight>(filename, 0));
+	scene.SetAccelerator(std::make_shared<BruteForce>(scene.GetPrimitives()));
+	scene.Initialize();
+	PinHoleCamera camera(std::make_shared<Film>(8, 8), Vec3(0), Vec3(0, 0, 1), Vec3(0, 1, 0), 120, 1);
+	constexpr int pairs = 64, maxDepth = 6;
+	std::array<int, 3> origins{};
+	std::array<int, 4> families{};
+	std::array<int, maxDepth + 1> depths{};
+	int positiveVC = 0, singularVC = 0, positiveVM = 0, singularVM = 0;
+	int maxDeltaEvents = 0, reflections = 0, transmissions = 0, escapedAfterDelta = 0, environmentPhotons = 0;
+	bool checkedSuffix = false;
+	for (int sample = 0; sample < pairs; ++sample) {
+		SCOPED_TRACE(sample);
+		MemoryPool lightArena, eyeArena;
+		Samples lightSamples(0x3920u + sample), eyeSamples(0x7392u + sample);
+		std::vector<PathVertex> light, eye;
+		const Ray ray = camera.GenerateRay(sample % 8, sample / 8, Vec2(0.37f, 0.61f), 0);
+		ASSERT_GE(GenerateLightPath(scene, lightSamples, lightArena, maxDepth + 1, light), 1);
+		ASSERT_GE(GenerateCameraPath(scene, camera, eyeSamples, eyeArena, ray, maxDepth + 2, eye), 2);
+		const auto beforeLight = light, beforeEye = eye;
+		++origins[light[0].mType == PathVertexType::Environment ? 2 : light[0].mLight->IsDeltaLight() ? 1
+																									  : 0];
+		if (light[0].mType == PathVertexType::Environment)
+			environmentPhotons += int(light.size()) - 1;
+		for (const auto *prefix : {&light, &eye}) {
+			int deltas = 0;
+			for (size_t i = 1; i + 1 < prefix->size(); ++i) {
+				const auto &source = (*prefix)[i];
+				if (!source.mIsDelta)
+					continue;
+				++deltas;
+				const auto &next = (*prefix)[i + 1];
+				const Vec3 outgoing = next.mType == PathVertexType::Environment ? next.mDirection : -next.mIsect.mOutDir;
+				EXPECT_EQ(next.mPdfFwd, 0);
+				EXPECT_EQ((*prefix)[i - 1].mPdfPrev, 0);
+				EXPECT_NEAR(source.mDeltaPdf, BranchMass(source, source.mIsect.mOutDir, outgoing), 1e-6);
+				EXPECT_NEAR(source.mDeltaReversePdf, BranchMass(source, outgoing, source.mIsect.mOutDir), 1e-6);
+				if (Dot(source.mIsect.mOutDir, source.mIsect.mNormal) * Dot(outgoing, source.mIsect.mNormal) > 0)
+					++reflections;
+				else
+					++transmissions;
+				if (next.mType == PathVertexType::Environment)
+					++escapedAfterDelta;
+			}
+			maxDeltaEvents = std::max(maxDeltaEvents, deltas);
+		}
+		for (int s = 0; s <= int(light.size()); ++s) {
+			for (int t = 1; t <= int(eye.size()); ++t) {
+				const int depth = s + t - 2;
+				if (depth < 0 || depth > maxDepth || (s == 1 && t == 1))
+					continue;
+				Vec3 primary;
+				Vec2 raster;
+				ASSERT_TRUE(EvaluateConnection(scene, camera, light, eye, s, t, &primary, &raster));
+				if (primary == Vec3(0))
+					continue;
+				SCOPED_TRACE(testing::Message() << "VC " << s << "," << t);
+				++positiveVC;
+				++families[s == 0 ? 0 : s == 1 ? 1
+									: t == 1   ? 2
+											   : 3];
+				++depths[depth];
+				const Vcm::PathContext path(light, eye, {Technique::Connection, s, t}, 0.5, pairs);
+				const Edges independent = ReportEdges(scene, path);
+				const bool singular = std::any_of(independent.delta.begin(), independent.delta.end(), [](bool d) { return d; });
+				if (singular)
+					++singularVC;
+				for (Mode mode : {Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly}) {
+					Compare("generated-mixed-" + std::to_string(sample), scene,
+							Vcm::PathContext(light, eye, path.selected, path.radius, pairs, mode), independent);
+				}
+				if (!singular) {
+					real legacy, weight;
+					ASSERT_TRUE(MisWeight(scene, light, eye, s, t, &legacy));
+					ASSERT_TRUE(Vcm::ComputeMisWeight(scene,
+													  Vcm::PathContext(light, eye, path.selected, path.radius, pairs, Mode::ConnectionOnly),
+													  path.selected, &weight));
+					Close(weight, legacy);
+				}
+				if (singular && !checkedSuffix && s < int(light.size()) && t < int(eye.size())) {
+					auto extendedLight = light, extendedEye = eye;
+					for (auto pair : {std::make_pair(&extendedLight, s), std::make_pair(&extendedEye, t)}) {
+						for (size_t i = pair.second; i < pair.first->size(); ++i) {
+							auto &unused = (*pair.first)[i];
+							unused.mType = PathVertexType::Environment;
+							unused.mPdfFwd = unused.mDeltaPdf = unused.mDeltaReversePdf = std::numeric_limits<real>::quiet_NaN();
+						}
+					}
+					Compare("generated-singular-unused-suffix", scene,
+							Vcm::PathContext(extendedLight, extendedEye, path.selected, path.radius, pairs), independent);
+					checkedSuffix = true;
+				}
+			}
+		}
+		for (int s = 2; s <= int(light.size()); ++s) {
+			for (int t = 2; t <= int(eye.size()); ++t) {
+				if (s + t - 3 > maxDepth)
+					continue;
+				const auto &y = light[s - 1];
+				const auto &x = eye[t - 1];
+				if (y.mType != PathVertexType::Surface || x.mType != PathVertexType::Surface ||
+					y.mIsect.mBsdf->IsDelta() || x.mIsect.mBsdf->IsDelta())
+					continue;
+				if ((x.mIsect.mPos - y.mIsect.mPos).Length2() > 1.5f * 1.5f ||
+					(x.mIsect.mGeometryNormal - y.mIsect.mGeometryNormal).Length2() > 1e-8f)
+					continue;
+				const Vcm::PathContext path(light, eye, {Technique::Merging, s, t}, 1.5, pairs);
+				Vcm::StrategyPdf pdf;
+				ASSERT_TRUE(Vcm::ComputePathPdf(scene, path, path.selected, &pdf));
+				if (!pdf.feasible)
+					continue;
+				++positiveVM;
+				const Edges independent = ReportEdges(scene, path);
+				if (std::any_of(independent.delta.begin(), independent.delta.end(), [](bool d) { return d; }))
+					++singularVM;
+				for (Mode mode : {Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly}) {
+					Compare("generated-surface-photon-" + std::to_string(sample), scene,
+							Vcm::PathContext(light, eye, path.selected, path.radius, pairs, mode), independent);
+				}
+			}
+		}
+		SamePaths(light, beforeLight);
+		SamePaths(eye, beforeEye);
+	}
+	EXPECT_GE(positiveVC, 100);
+	EXPECT_GE(singularVC, 20);
+	EXPECT_GE(positiveVM, 4);
+	EXPECT_GE(singularVM, 2);
+	EXPECT_GE(maxDeltaEvents, 2);
+	EXPECT_GE(reflections, 10);
+	EXPECT_GE(transmissions, 10);
+	EXPECT_GE(escapedAfterDelta, 10);
+	EXPECT_GE(environmentPhotons, 4);
+	EXPECT_TRUE(checkedSuffix);
+	for (size_t i = 0; i < origins.size(); ++i) {
+		EXPECT_GE(origins[i], 4) << "Missing emitted-origin family " << i;
+		RecordProperty("origin_family_" + std::to_string(i), origins[i]);
+	}
+	for (size_t i = 0; i < families.size(); ++i) {
+		EXPECT_GE(families[i], 4) << "Missing positive connection family " << i;
+		RecordProperty("positive_family_" + std::to_string(i), families[i]);
+	}
+	for (size_t i = 0; i < depths.size(); ++i) {
+		EXPECT_GE(depths[i], 2) << "Missing positive depth " << i;
+		RecordProperty("positive_depth_" + std::to_string(i), depths[i]);
+	}
+	RecordProperty("generated_pairs", pairs);
+	RecordProperty("positive_connections", positiveVC);
+	RecordProperty("singular_connections", singularVC);
+	RecordProperty("positive_merges", positiveVM);
+	RecordProperty("singular_merges", singularVM);
+	RecordProperty("max_delta_events_per_subpath", maxDeltaEvents);
+	RecordProperty("reflections", reflections);
+	RecordProperty("transmissions", transmissions);
+	RecordProperty("escapes_after_delta", escapedAfterDelta);
+	RecordProperty("environment_emitted_surface_vertices", environmentPhotons);
+}
+
+TEST_F(VCMEnvironment, ZeroLightSelectionIsOrdinaryZeroNotAnInvalidCameraHit) {
+	class ZeroPowerEnvironment : public EnvironmentLight {
+	public:
+		explicit ZeroPowerEnvironment(const std::string& file) : EnvironmentLight(file, 0) {}
+		Vec3 Power() const override { return Vec3(0); }
+	};
+	Fixture fixture(3, true);
+	EnvironmentOrigin(fixture, 2);
+	const auto primitives = fixture.scene.GetPrimitives();
+	auto environment = std::make_shared<ZeroPowerEnvironment>(filename);
+	fixture.scene = Scene{};
+	fixture.scene.AddLight(environment);
+	fixture.scene.AddLight(std::make_shared<PointLight>(Vec3(2, 2, 2), Vec3(1)));
+	for (const auto& primitive : primitives) fixture.scene.AddPrimitive(primitive);
+	fixture.scene.SetAccelerator(std::make_shared<BruteForce>(fixture.scene.GetPrimitives()));
+	fixture.scene.Initialize();
+	fixture.full[0].mLight = environment.get();
+	EndpointMetadata(fixture);
+	ASSERT_EQ(fixture.full[0].mLightSelectionPdf, 0);
+	std::vector<PathVertex> light, eye;
+	fixture.Split(0, false, light, eye);
+	for (Mode mode : { Mode::Combined, Mode::ConnectionOnly }) {
+		const Vcm::PathContext path(light, eye, { Technique::Connection, 0, 3 }, 0.2, 16, mode);
+		Compare("zero-emission-selection", fixture.scene, path, fixture.direct);
+		real weight;
+		ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
+		EXPECT_EQ(weight, 1);
+	}
+}
+
+TEST_F(VCMEnvironment, GeneratedDielectricBranchesIncludingTirRetainLsEmission) {
+	class Samples : public StateSequence {
+	public:
+		explicit Samples(real branch) : branch(branch) {}
+		real Sample() override { return mCursor++ % 3 == 1 ? branch : 0.5f; }
+	private:
+		real branch;
+	};
+	for (int variant = 0; variant < 3; ++variant) {
+		SCOPED_TRACE(variant);
+		Scene scene{};
+		auto white = std::make_shared<ConstantTexture<Vec3>>(Vec3(1));
+		auto shape = std::make_shared<Triangle>(Transform(), Transform(), Vec3(-10, -10, 0),
+			Vec3(10, -10, 0), Vec3(0, 10, 0), Vec3(0, 0, 1));
+		scene.AddPrimitive(std::make_shared<Primitive>(shape, std::make_shared<GlassMaterial>(white, white)));
+		scene.AddLight(std::make_shared<EnvironmentLight>(filename, 0));
+		scene.SetAccelerator(std::make_shared<BruteForce>(scene.GetPrimitives()));
+		scene.Initialize();
+		const Vec3 position(0, 0, variant == 2 ? -1.f : 1.f);
+		const Vec3 direction = variant == 2 ? Vec3(0.8f, 0, 0.6f) : Vec3(0.6f, 0, -0.8f);
+		PinHoleCamera camera(std::make_shared<Film>(4, 4), position, position + direction, Vec3(0, 1, 0), 70, 1);
+		Samples samples(variant == 1 ? 0.99f : 0.f);
+		MemoryPool arena;
+		std::vector<PathVertex> light, eye;
+		ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(position, direction), 3, eye), 3);
+		ASSERT_EQ(eye.back().mType, PathVertexType::Environment);
+		EXPECT_EQ(samples.GetCursor(), 3);
+		ASSERT_TRUE(eye[1].mIsDelta);
+		EXPECT_EQ(eye[2].mPdfFwd, 0);
+		EXPECT_EQ(eye[0].mPdfPrev, 0);
+		const real expectedMass = variant == 2 ? 1 : variant == 1 ?
+			1 - FrDielectric(0.8f, 1, 1.5f) : FrDielectric(0.8f, 1, 1.5f);
+		EXPECT_NEAR(eye[1].mDeltaPdf, expectedMass, 1e-7);
+		EXPECT_NEAR(eye[1].mDeltaReversePdf, expectedMass, 1e-7);
+		const Vcm::PathContext path(light, eye, { Technique::Connection, 0, 3 }, 0.2, 16);
+		const Edges independent = ReportEdges(scene, path);
+		for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+			const Vcm::PathContext modePath(light, eye, path.selected, path.radius, 16, mode);
+			Compare("generated-dielectric-LSE-" + std::to_string(variant), scene, modePath, independent);
+			Vec3 primary;
+			Vec2 raster;
+			ASSERT_TRUE(EvaluateConnection(scene, camera, light, eye, 0, 3, &primary, &raster));
+			real weight;
+			ASSERT_TRUE(Vcm::ComputeMisWeight(scene, modePath, modePath.selected, &weight));
+			EXPECT_EQ(weight, 1);
+			EXPECT_NEAR(primary.x * weight, variant == 1 ? 2 * (4.f / 9) : 2, 1e-6);
+		}
+	}
+}
+
+TEST_F(VCMEnvironment, GeneratedEmissiveMirrorHasDistinctEmissionAndScatteringRoles) {
+	class Samples : public StateSequence {
+	public:
+		real Sample() override { ++mCursor; return 0.5f; }
+	} samples;
+	Scene scene{};
+	auto shape = std::make_shared<Triangle>(Transform(), Transform(), Vec3(-10, -10, 0),
+		Vec3(10, -10, 0), Vec3(0, 10, 0), Vec3(0, 0, 1));
+	auto material = std::make_shared<MirrorMaterial>(std::make_shared<ConstantTexture<Vec3>>(Vec3(1)));
+	auto emitter = std::make_shared<AreaLight>(shape, Vec3(3));
+	scene.AddPrimitive(std::make_shared<Primitive>(shape, material, emitter));
+	scene.AddLight(emitter);
+	scene.AddLight(std::make_shared<EnvironmentLight>(filename, 0));
+	scene.SetAccelerator(std::make_shared<BruteForce>(scene.GetPrimitives()));
+	scene.Initialize();
+	PinHoleCamera camera(std::make_shared<Film>(4, 4), Vec3(0, 0, 1), Vec3(0), Vec3(0, 1, 0), 70, 1);
+	MemoryPool arena;
+	std::vector<PathVertex> light, eye;
+	ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(Vec3(0, 0, 1), Vec3(0, 0, -1)), 3, eye), 3);
+	ASSERT_EQ(eye[1].mLight, emitter.get());
+	ASSERT_TRUE(eye[1].mIsect.mBsdf->IsDelta());
+	ASSERT_TRUE(eye[1].mIsDelta);
+	EXPECT_EQ(eye[1].mDeltaPdf, 1);
+	for (int t : { 2, 3 }) {
+		const Vcm::PathContext path(light, eye, { Technique::Connection, 0, t }, 0.2, 16);
+		const Edges independent = ReportEdges(scene, path);
+		for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+			const Vcm::PathContext modePath(light, eye, path.selected, path.radius, 16, mode);
+			Compare("generated-emissive-mirror-role-" + std::to_string(t), scene, modePath, independent);
+			Vec3 primary;
+			Vec2 raster;
+			ASSERT_TRUE(EvaluateConnection(scene, camera, light, eye, 0, t, &primary, &raster));
+			real weight;
+			ASSERT_TRUE(Vcm::ComputeMisWeight(scene, modePath, modePath.selected, &weight));
+			EXPECT_EQ(weight, 1);
+			EXPECT_NEAR(primary.x * weight, t == 2 ? 3 : 2, 1e-6);
+		}
+	}
 }

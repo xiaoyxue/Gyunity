@@ -72,8 +72,10 @@ real BSDF::Pdf(const Vec3& wo, const Vec3& wi, ScatterEventType flag) const {
 	return matchingComps > 0 ? pdf / matchingComps : 0.f;
 }
 
-Vec3 BSDF::Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand, ScatterEventType flags) const {
+Vec3 BSDF::Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand,
+	ScatterEventType flags, real* reverseDeltaMass) const {
 	*pdf = 0;
+	if (reverseDeltaMass) *reverseDeltaMass = -1;
 	int matchingComps = 0;
 	for (int i = 0; i < mBsdfCnt; ++i)
 		if (mBxdfs[i]->MatchesTypes(flags)) ++matchingComps;
@@ -103,6 +105,10 @@ Vec3 BSDF::Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand, Scatter
 				*pdf += mBxdfs[i]->Pdf(woLocal, wiLocal);
 	}
 	if (matchingComps > 1) *pdf /= matchingComps;
+	if (reverseDeltaMass && bxdf->IsDelta() && *pdf > 0) {
+		const real mass = bxdf->ReverseDeltaMass(woLocal, wiLocal);
+		if (mass >= 0) *reverseDeltaMass = mass / matchingComps;
+	}
 
 	if (!bxdf->IsDelta() && matchingComps > 1) {
 		bool reflect = Dot(*wi, mGeometryNormal) * Dot(wo, mGeometryNormal) > 0;

@@ -32,10 +32,12 @@ struct PathContext {
 
 struct StrategyPdf {
 	bool feasible = false;
-	double logPdf = 0; // Read only when feasible; excludes the strategy sample count.
+	double logPdf = 0; // Common reduced-measure density; excludes the strategy sample count.
 };
 
-// Preparatory finite-area / pinhole / continuous-surface API, NOT a VCM renderer.
+// Surface area/point/one zero-rotation environment, pinhole and pure mirror/glass
+// chains. NOT a VCM renderer. Singular factors follow report (51)-(55), not the
+// legacy BDPT zero-marker convention; sampled masses and geometry are retained.
 // false means invalid/unsupported input; true + !feasible means ordinary zero
 // support or a disabled strategy. Only selected prefixes are inspected.
 bool ComputePathPdf(const Scene& scene, const PathContext& path,
