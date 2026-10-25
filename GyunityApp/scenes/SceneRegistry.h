@@ -1,6 +1,7 @@
 #pragma once
 #include "CornellBoxScenes.h"
 #include "camera/PinholeCamera.h"
+#include "BdptRoomScenes.h"
 #include <array>
 #include <stdexcept>
 
@@ -24,13 +25,16 @@ struct SceneDescription {
 	std::array<const char*, 3> resources;
 };
 
-inline const std::array<SceneDescription, 11>& GetSceneRegistry() {
+inline const std::array<SceneDescription, 13>& GetSceneRegistry() {
 	static const SceneCamera standardCamera;
 	static const SceneCamera sphereCamera = {
 		Vec3(50, 52, 295.6f), Vec3(50, 52, 295.6f) + Vec3(0, -0.042612f, -1),
 		Vec3(0, 1, 0), 28.7993f, 1
 	};
-	static const std::array<SceneDescription, 11> scenes = {{
+	static const SceneCamera roomCamera = { Vec3(0, 1.6f, 5.5f), Vec3(-0.2f, 1.15f, -0.6f), Vec3(0, 1, 0), 53.13010235415597f, 1 };
+	static const std::array<SceneDescription, 13> scenes = {{
+		{ "bdpt-room", BdptRoomScenes::Diffuse, roomCamera, false, {} },
+		{ "bdpt-room-glossy", BdptRoomScenes::Glossy, roomCamera, false, {} },
 		{ "mesh", CornellBoxScenes::GlassBunny, standardCamera, false, { "meshs\\bunny3.obj" } },
 		{ "slope", CornellBoxScenes::Slope, standardCamera, false, {} },
 		{ "sphere", CornellBoxScenes::SphereBox, sphereCamera, false, {} },

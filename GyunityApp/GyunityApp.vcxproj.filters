@@ -29,5 +29,8 @@
     <ClInclude Include="legacy\CornellBox.h">
       <Filter>legacy</Filter>
     </ClInclude>
+    <ClInclude Include="scenes\BdptRoomScenes.h">
+      <Filter>scenes</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
