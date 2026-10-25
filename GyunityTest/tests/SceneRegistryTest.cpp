@@ -24,7 +24,8 @@ TEST(SceneRegistry, NamesMapToAllBuilders) {
 		{ "triangle", CornellBoxScenes::TriangleBox }, { "textured", CornellBoxScenes::TexturedSpheres },
 		{ "empty", CornellBoxScenes::Empty }, { "diffuse", CornellBoxScenes::DiffuseBunny },
 		{ "water", CornellBoxScenes::Water }, { "fog", CornellBoxScenes::FogBunny },
-		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny }
+		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny },
+		{ "mis-glossy", MisScenes::Glossy }
 	};
 	ASSERT_EQ(GetSceneRegistry().size(), sizeof(expected) / sizeof(expected[0]));
 	std::set<std::string> names;
