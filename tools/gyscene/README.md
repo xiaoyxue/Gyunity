@@ -21,9 +21,9 @@ retains the original CC0 license, XML and all referenced OBJ files unchanged.
 Supplied reference images are not copied into production assets and must not
 be presented as renderer output.
 
-## Three Python entry points
+## Python entry points
 
-All three paths construct the same `gyscene.Scene` and serialize our native
+All entry points construct the same `gyscene.Scene` and serialize our native
 JSON. Python code is in the repository, not hidden in a renderer executable:
 
 | Purpose | Runnable example | Reusable module |
