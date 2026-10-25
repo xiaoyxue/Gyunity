@@ -28,6 +28,13 @@ void ProgressReporter::Advance() {
 	}
 }
 
+void ProgressReporter::SetPhase(const std::string& label) {
+	std::lock_guard<std::mutex> lock(mMutex);
+	if (mFinished) return;
+	std::fprintf(stderr, "\n%s\n", label.c_str());
+	PrintPercentage(mReportedTenths);
+}
+
 bool ProgressReporter::Finish(bool success) {
 	std::lock_guard<std::mutex> lock(mMutex);
 	if (mFinished) return mSucceeded;

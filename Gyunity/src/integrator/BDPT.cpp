@@ -1,8 +1,6 @@
 #include "BDPT.h"
 #include "TiledIntegrator.h"
 #include "system/ProgressReporter.h"
-#include "light/PointLight.h"
-#include "light/EnvLight.h"
 #include <atomic>
 #include <cmath>
 #include <limits>
@@ -244,37 +242,7 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 	if (!mSampler || mSpp <= 0 || mMaxDepth < 0 || mMaxDepth > std::numeric_limits<int>::max() - 2) {
 		return Fail("BDPT requires a sampler, positive sample count and valid maximum depth.");
 	}
-	int environments = 0;
-	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
-		const auto& light = scene.GetLights()[i];
-		if (!light->IsAreaLight() && !light->IsEnvironmentLight() && !dynamic_cast<const PointLight*>(light.get())) {
-			return Fail("BDPT supports area lights, point lights and an environment light.");
-		}
-		if (light->IsEnvironmentLight()) {
-			++environments;
-			const auto* environment = dynamic_cast<const EnvironmentLight*>(light.get());
-			if (environment && environment->GetRotation() != 0) {
-				return Fail("BDPT currently supports environment maps with zero rotation only.");
-			}
-		}
-		for (size_t j = 0; j < i; ++j) {
-			if (scene.GetLights()[j] == light) return Fail("BDPT requires each light to be registered once.");
-		}
-	}
-	if (environments > 1) return Fail("BDPT currently supports one environment light per scene.");
-	if (environments == 1) {
-		Vec3 center;
-		real radius;
-		scene.GetBoundingSphere(&center, &radius);
-		if (!Finite(center) || !std::isfinite(radius) || radius <= 0) {
-			return Fail("Environment BDPT requires finite nonempty scene bounds.");
-		}
-	}
-	for (const auto& primitive : scene.GetPrimitives()) {
-		if (!primitive->GetMaterial() || primitive->mMediumInterface.inside || primitive->mMediumInterface.outside) {
-			return Fail("Surface BDPT requires materials without participating media.");
-		}
-	}
+	if (!Bidirectional::ValidateScene(scene)) return false;
 	const int width = camera.GetFilm()->mResX, height = camera.GetFilm()->mResY;
 	if (width <= 0 || height <= 0) return Fail("BDPT requires positive image dimensions.");
 	const int tileSize = 32;

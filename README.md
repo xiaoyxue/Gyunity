@@ -139,6 +139,115 @@ controller must stop dependent phases on non-success and call `Finish(false)`,
 or `Finish(true)` only after the entire render succeeds. No per-vertex telemetry
 or extra success logging is added.
 
+## Progressive surface VCM (feature branch, milestone 5)
+
+`integrator\VCM.h` adds the opt-in checked renderer:
+
+```cpp
+VertexConnectionMerging vcm(sampler, maxDepth, iterations, initialRadius,
+    real(2.0 / 3.0), Vcm::Mode::Combined,
+    ThreadedTaskManager::DefaultConcurrency());
+bool success = vcm.RenderChecked(scene, camera);
+```
+
+`RenderChecked` never saves files; `RenderScene` saves only after success.
+No default example, `main()` selection, or CLI behavior changes. Broader scene
+evaluation and callable examples remain milestone 6 / issue #128 acceptance.
+
+Each iteration attempts exactly `P = width * height` light paths, then traces one
+camera path per pixel, pairing pixel `k` with complete light path `k` for VC.
+VM gathers from all **attempts**, including empty ones. The physical radius is
+`R0 * pow(i + 1, -(1-alpha)/2)`, rounded once to `real`; that same radius and
+`pi*R*R` are used throughout the iteration's map, MIS and normalization.
+Camera contributions go through `Film::AddSample` once, including black samples,
+without division by iterations. Each paired `t=1` contribution is splatted once,
+scaled only by `1/iterations`. `GatherMerging` is already weighted and normalized;
+the renderer adds it directly without a second MIS/kernel/photon divisor.
+
+Stable 32x32 tiles include partial edges. Separate light/eye sampler clones per
+tile persist across iterations, with seeds `2*tile + phase` and sample indices
+`2*(iteration*P + pixel) + phase` (light=0, eye=1), never worker indices.
+The synchronous named light phase joins before a named map-build task runs in
+the same scoped concurrency model, including its nested hash-grid parallel work.
+The camera phase joins before clearing references and resetting light arenas.
+Separately aligned, tile-owned light arenas retain all path BSDFs until then;
+eye scratch resets after each sample's consumers. Storage is `O(P*depth)`, not
+proportional to iterations. Explicit enumeration remains intentionally expensive.
+
+Modes reuse `Vcm::Mode`: Combined uses joint VC/VM MIS; ConnectionOnly skips map
+construction; MergingOnly retains VM and camera-visible `LS*E` emission/background
+(zero or only pure-delta interior scatters), not continuous emitter-hit overlap.
+VC depth is `s+t-2`; VM depth is `s+t-3`. No `t=0` or `(1,1)` strategy is included.
+
+Requirements: initialized surface scene, valid pinhole camera/film storage, finite
+positive radius, positive iterations, `0<alpha<1`, a sampler-supported depth,
+concurrency `-1` or positive, and distinct non-null sampler clones returning
+finite `[0,1)` values (with the bundled rounded-one conventions below). Derived radii, areas,
+budgets, seeds and sample indices are checked. Scene-level checks reject unsupported
+lights, media, null boundaries, duplicate emitters and rotated/multiple
+environments before path storage. Every generated subpath is validated even if
+no contribution consumes it, including encountered mixed lobes, endpoint PDFs,
+and sampled terminal delta-event masses. No fallback or contribution clamping.
+The supported surface/finite-radius limitations of the probability/map layers
+below still apply, including geometric-normal shading and the map's checked
+relative extent and oriented-normal filter.
+
+Sampling-domain checks apply to the parent sampler **and each phase clone**.
+The worst light budget is `max(5,3*depth+2)` draws; the eye budget is
+`3*depth+2`, including jitter. Checks occur before path storage, and the
+renderer-local sequence also checks every dimension/index before calling `Sample`.
+
+| Sampler | Dimensions | Maximum renderer depth | Phase sample indices |
+|---|---:|---:|---|
+| `HaltonSampler` (`Halton.h`) | 256 | 84 | below `INT64_MAX` |
+| `SobolSampler` | 1024 | 340 | below `2^52` (52 direction columns) |
+| `RegularHaltonSampler` | 1229 | 409 | below `INT64_MAX`, so `index+1` remains signed-representable |
+| Random/custom samplers | renderer cap 1229 | 409 | below `INT64_MAX` |
+
+Opaque custom samplers must support the declared budget; no sampler framework
+or legacy generator is changed. Sobol's uint32-to-float conversion and
+RegularHalton's float accumulation can round to exactly one. Only these known
+families retain `RandomStateSequence`'s exact-one-to-zero convention. Halton and
+custom adapters returning one fail; all negative/nonfinite/greater-than-one
+values fail. Other generated values are unchanged.
+
+Valid near-one jitter is checked in double against its intended half-open pixel.
+The unchanged jitter then goes to the pinhole camera, and the same rounded
+`real(pixel)+jitter` goes to the film. This preserves their existing closed-edge
+filter behavior when float addition rounds to `pixel+1`, including the outer film
+edge; it neither clamps nor wraps the valid jitter. Finite raster/storage and
+accumulated-film checks remain active.
+
+`RequestCancellation()` cooperatively cancels an active render; all tasks drain
+before failure returns. A failed film may contain partial work and must not be
+saved as a successful image. `GetStatistics()` is a bounded post-render summary:
+completed iterations/attempts/samples, last physical radius/area, phase counts
+and times, last task-group results, and peak light-arena/path bytes and photons.
+It is not process RSS and excludes map buckets, eye scratch, film and allocator
+overhead. One renderer instance must not render concurrently.
+Each VM-enabled iteration declares `2*tileCount+1` progress units (light tiles,
+one map task, camera tiles); ConnectionOnly declares `2*tileCount`.
+`mLastMapPhase` records the map task's scoped concurrency/status/timing.
+Cancellation or failure in that phase joins and cleans up without starting eye
+work or reporting overall 100%.
+`mMapPhases` counts invoked groups; `mMapBuilds` counts successful constructions,
+including a finished map discarded when cancellation is observed after building.
+
+`VCMRenderer.*` exercises actual emission/black/environment/specular renders,
+camera/splat normalization, radius-dependent gather arithmetic, persistent RNG
+streams, partial tiles, barriers, arena reuse and single-worker determinism.
+`VCMRendererNegative.*` records expected checked failures separately. Tiny HDR
+checks allow RGBE quantization; the diffuse-environment check uses a separately
+declared Monte Carlo/finite-radius tolerance, not a relaxed MIS tolerance.
+Run from `GyunityApp` with `GYUNITY_TEST_OUTPUT_DIRECTORY` pointing to an existing
+main-checkout `Test` directory. No image-hash comparison to PT is an oracle.
+
+The renderer exposed an environment PDF round-trip failure near the poles:
+`acos(y)` lost latitude after float rounding. Inverse mapping now uses
+`atan2(sqrt(x*x+z*z),y)` and the transverse length for the PDF Jacobian.
+Emission sampling and its returned density are unchanged; the existing VCM
+endpoint-consistency threshold is not relaxed.
+
 ## VCM photon map and local estimator
 `integrator\VCMPhotonMap.h` provides `Vcm::PhotonMap` for issue #128.
 It is **not a VCM renderer or merge-radiance estimator** and has no dependency

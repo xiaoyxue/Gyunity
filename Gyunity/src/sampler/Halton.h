@@ -624,7 +624,7 @@ inline void HaltonSampler::init_faure()
 	init_tables(perms);
 }
 
-void HaltonSampler::init_random(Rng &rand)
+inline void HaltonSampler::init_random(Rng &rand)
 {
 	const uint32 max_base = 1619u;
 	std::vector<std::vector<uint16> > perms(max_base + 1);

@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 #include <cmath>
 #include <cstdlib>
+#include "integrator/VCM.h"
 
 // Exercise the real example functions without replacing the test runner's entry point.
 #define main GyunityAppMain
@@ -169,6 +170,29 @@ TEST_F(MainExampleRenders, BidirectionalAllSurfaceScenes) {
 		++count;
 	}
 	EXPECT_EQ(count, 10);
+}
+
+TEST_F(MainExampleRenders, VcmRenderSceneSavesOnlyAfterCheckedSuccess) {
+	SceneRenderOptions options;
+	options.scene = &FindScene("empty");
+	options.width = options.height = 4;
+	options.output = Output("vcm-render-scene.hdr");
+	VertexConnectionMerging render(std::make_shared<RandomSampler>(17), 2, 2, 0.1f,
+		real(2.0 / 3), Vcm::Mode::Combined, 1);
+	ASSERT_TRUE(RenderScene(options, render));
+	EXPECT_TRUE(std::ifstream(options.output).good());
+	options.output = Output("vcm-map-must-not-save.hdr");
+	std::remove(options.output.c_str());
+	VertexConnectionMerging invalidMap(std::make_shared<RandomSampler>(17), 1, 1, 1e-12f,
+		real(2.0 / 3), Vcm::Mode::Combined, 1);
+	EXPECT_FALSE(RenderScene(options, invalidMap));
+	EXPECT_EQ(invalidMap.GetStatistics().mLastMapPhase.mStatus, ThreadedTaskManager::Status::Failed);
+	EXPECT_FALSE(std::ifstream(options.output).good());
+	options.output = Output("vcm-must-not-save.hdr");
+	std::remove(options.output.c_str());
+	VertexConnectionMerging invalid(std::make_shared<RandomSampler>(17), 2, 0, 0.1f);
+	EXPECT_FALSE(RenderScene(options, invalid));
+	EXPECT_FALSE(std::ifstream(options.output).good());
 }
 
 TEST_F(MainExampleRenders, FailedCheckedIntegratorDoesNotWriteImage) {

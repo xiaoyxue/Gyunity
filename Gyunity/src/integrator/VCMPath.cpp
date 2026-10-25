@@ -368,14 +368,15 @@ bool ValidLocalScene(const Scene& scene) {
 	return true;
 }
 
-bool ValidLocalPrefix(const std::vector<PathVertex>& vertices, int count, bool camera) {
+bool ValidLocalPrefix(const std::vector<PathVertex>& vertices, int count, bool camera, bool complete = false) {
 	if (count < 1 || size_t(count) > vertices.size())
 		return Fail("VCM merging received an invalid prefix count.");
 	for (int i = 0; i < count; ++i) {
 		const auto& vertex = vertices[i];
 		const bool endpoint = i == 0 || (camera && i + 1 == count &&
 			(vertex.mType == PathVertexType::Environment || vertex.mType == PathVertexType::Light));
-		if (!ValidateVertex(vertex, endpoint && !(camera && i == 0), camera && i == 0, i + 1 < count))
+		if (!ValidateVertex(vertex, endpoint && !(camera && i == 0), camera && i == 0,
+			i + 1 < count || (complete && vertex.mIsDelta)))
 			return false;
 		if (!Finite(vertex.mThroughput))
 			return Fail("VCM merging requires finite selected throughputs.");
@@ -444,6 +445,41 @@ bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
 	return true;
 }
 
+}
+
+bool ValidateSubpath(const Scene& scene, const std::vector<PathVertex>& path, bool camera) {
+	if (path.empty()) return !camera || Fail("VCM camera subpath must contain its origin.");
+	if (path.size() > size_t((std::numeric_limits<int>::max)()) ||
+		!ValidLocalPrefix(path, static_cast<int>(path.size()), camera, true)) return false;
+	for (size_t i = 0; i < path.size(); ++i) {
+		const auto& vertex = path[i];
+		if (vertex.mPdfFwd == 0 && !(i > 0 && path[i - 1].mIsDelta))
+			return Fail("VCM generated subpath has zero sampled probability without a delta marker.");
+		if (!vertex.mLight) continue;
+		bool registered = false;
+		for (const auto& light : scene.GetLights()) registered |= light.get() == vertex.mLight;
+		if (!registered || (vertex.mType == PathVertexType::Environment &&
+			scene.GetEnvironmentLight() != vertex.mLight))
+			return Fail("VCM generated subpath contains an unregistered emitter.");
+	}
+	if (!camera) {
+		const auto& origin = path.front();
+		if (!Unit(origin.mDirection)) return Fail("VCM emitted subpath must retain its original unit direction.");
+		real position, direction;
+		if (!origin.mLight->PdfLight(origin.mIsect, -origin.mDirection, &position, &direction)) return false;
+		real pmf = 0;
+		for (size_t i = 0; i < scene.GetLights().size(); ++i)
+			if (scene.GetLights()[i].get() == origin.mLight && !scene.LightSelectionPdf(i, &pmf)) return false;
+		auto same = [](real a, real b) {
+			return ValidPdf(a) && a > 0 && ValidPdf(b) && b > 0 &&
+				std::abs(double(a) - b) <= 1e-4 * std::abs(double(b));
+		};
+		if (!same(origin.mPdfPos, position) || !same(origin.mPdfDir, direction) ||
+			!same(origin.mLightSelectionPdf, pmf) ||
+			!same(origin.mPdfFwd, pmf * (origin.mType == PathVertexType::Environment ? direction : position)))
+			return Fail("VCM generated light endpoint probabilities do not match their sampling metadata.");
+	}
+	return true;
 }
 
 bool EvaluateMerging(const Scene& scene, const PathContext& path, Vec3* contribution) {
