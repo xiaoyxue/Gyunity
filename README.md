@@ -181,9 +181,9 @@ medium and preserves the original material-free front boundary; use
 ## Named scenes and rendering
 `GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
-`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, and `CornellBoxStandard`.
+`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, `CornellBoxStandard`, and `veach-mis`.
 The sphere and triangle scenes use their large-room camera; the imported
-Cornell scene uses its source camera, and other builders use the standard Cornell camera. Fog automatically
+Cornell and Veach scenes use their source cameras, and other builders use the standard Cornell camera. Fog automatically
 uses volume path tracing; the other scenes use surface path tracing.
 
 ```powershell
@@ -201,6 +201,24 @@ lowercase `.png`, `.bmp`, or `.hdr`; output directories must already exist.
 Paths with spaces must be quoted. `--help` and `--list-scenes` are standalone
 commands. Invalid options, missing assets and failed image writes report an
 error and return a nonzero exit code; no image is silently substituted.
+
+### Original Veach MIS
+`veach-mis` loads the actual CC0 gallery data, not a procedural recreation.
+The four solid bars retain their source transforms and Beckmann alpha values
+0.01, 0.05, 0.1 and 0.25. The **three** sphere emitters retain their source
+positions, radii (1, 0.5 and 0.05), radiances, and approximately equal power.
+Original complex IORs, reflectance, camera and 1280x720 aspect ratio are
+preserved by the Python importer and native JSON loader.
+
+```powershell
+# From GyunityApp; use the same arguments with --integrator path for PT.
+..\x64\Release\GyunityApp.exe --scene veach-mis --integrator bdpt --width 512 --height 288 --spp 128 --max-depth 3 --out "D:\Code\Graphics\Gyunity\Test\veach-mis-bdpt.png"
+```
+
+The importer and source license are under `resources\scenes\mitsuba\veach-mis`.
+`VeachMisScene.*` checks the real geometry/light counts, radiance/power,
+camera orientation and raw-alpha conductor response; it does not compare
+against a fabricated scene.
 
 ## C++ integrator examples
 `GyunityApp\main.cpp` keeps five runnable mock examples. With no arguments,
