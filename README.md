@@ -75,12 +75,36 @@ compilation and legacy exclusion remain controlled by the `.vcxproj` files.
 generated JSON Schema. Python-authored scenes and the original Mitsuba gallery
 importer use the same model and serializer; the format is not XML-shaped JSON.
 See [the tool documentation](tools/gyscene/README.md) for authoring, import and
-validation commands. Runtime JSON loading is being integrated separately.
+validation commands. The app loads the native JSON directly, with no Python
+dependency at render time.
 
 The importer accepts the original `cornell-box.zip`, `veach-mis.zip` and
 `veach-bidir.zip`, verifies source hashes, and preserves XML, CC0 licenses and
 OBJ data. The imported Cornell scene is named `CornellBoxStandard`.
 No gallery geometry, camera or material values are manually transcribed.
+
+From `GyunityApp`, render either a file or the imported Cornell registry entry:
+
+```powershell
+..\x64\Release\GyunityApp.exe --scene-file ..\resources\scenes\native-demo\scene.json --out "D:\Code\Graphics\Gyunity\Test\native-demo.png"
+..\x64\Release\GyunityApp.exe --scene CornellBoxStandard --integrator bdpt --width 512 --height 512 --spp 128 --max-depth 8 --out "D:\Code\Graphics\Gyunity\Test\CornellBoxStandard-bdpt.png"
+```
+
+Explicit flags override JSON render defaults; legacy named scenes keep their
+existing defaults. `--scene` and `--scene-file` are mutually exclusive.
+The native loader preserves the original area-light BSDF as well as emission,
+supports box/tent filtering and raw-alpha GGX/Beckmann conductors, and rejects
+unsupported or malformed input. Geometry and camera conventions are defined
+in the tool documentation. Native mesh paths resolve relative to the JSON.
+The JSON parser is the pinned `external\json` submodule; update submodules
+before building. Application/test projects use C++17 for filesystem support.
+
+The imported `CornellBoxStandard` is additional to the unchanged legacy Cornell
+demos. Its source camera, red/green walls, two transformed boxes, tent filter
+and colored emitter are taken from the CC0 gallery XML. PNG/HDR files generated
+by Gyunity are distinct from the archive's supplied Tungsten reference images.
+BDPT currently uses geometric-normal shading and unfiltered camera splats;
+those existing limitations are not claims of exact cross-renderer equivalence.
 
 ## Scene builder
 `GyunityApp\scenes\SceneBuilder.h` provides material factories and ordered helpers for
@@ -157,8 +181,9 @@ medium and preserves the original material-free front boundary; use
 ## Named scenes and rendering
 `GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
-`empty`, `diffuse`, `water`, and `fog`. The sphere and triangle scenes use their
-large-room camera; all others use the standard Cornell camera. Fog automatically
+`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, and `CornellBoxStandard`.
+The sphere and triangle scenes use their large-room camera; the imported
+Cornell scene uses its source camera, and other builders use the standard Cornell camera. Fog automatically
 uses volume path tracing; the other scenes use surface path tracing.
 
 ```powershell
@@ -202,9 +227,8 @@ All examples use BVH, a box filter and the registered scene camera. PathTracing,
 LightTracing and VolPathTracing retain `RandomSampler(123)`; SPPM retains
 Halton sampling, per-hit-point radius shrinking and glossy-ray tracing.
 VolPathTracing retains its volume-specific settings and the fog builder's
-long-lived medium. PT/VPT intentionally use the registry's look-at camera
-constructor, not the legacy basis constructor that rebuilds its basis from
-unset look-at/up vectors.
+long-lived medium. Existing builders use the registry's look-at camera;
+native JSON scenes preserve their camera-to-world basis and vertical FOV.
 
 Scene construction, asset checks and checked image saving are shared with the
 CLI through `RenderScene`. Run from `GyunityApp` for asset paths. Example functions

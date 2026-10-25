@@ -11,12 +11,14 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="SceneCommandLine.cpp" />
+    <ClCompile Include="NativeScene.cpp" />
     <ClCompile Include="legacy\main_lagcy.cpp">
       <Filter>legacy</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="SceneCommandLine.h" />
+    <ClInclude Include="NativeScene.h" />
     <ClInclude Include="scenes\CornellBoxScenes.h">
       <Filter>scenes</Filter>
     </ClInclude>

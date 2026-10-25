@@ -22,15 +22,16 @@ struct SceneDescription {
 	SceneCamera camera;
 	bool usesVolume;
 	std::array<const char*, 3> resources;
+	const char* file = nullptr;
 };
 
-inline const std::array<SceneDescription, 11>& GetSceneRegistry() {
+inline const std::array<SceneDescription, 12>& GetSceneRegistry() {
 	static const SceneCamera standardCamera;
 	static const SceneCamera sphereCamera = {
 		Vec3(50, 52, 295.6f), Vec3(50, 52, 295.6f) + Vec3(0, -0.042612f, -1),
 		Vec3(0, 1, 0), 28.7993f, 1
 	};
-	static const std::array<SceneDescription, 11> scenes = {{
+	static const std::array<SceneDescription, 12> scenes = {{
 		{ "mesh", CornellBoxScenes::GlassBunny, standardCamera, false, { "meshs\\bunny3.obj" } },
 		{ "slope", CornellBoxScenes::Slope, standardCamera, false, {} },
 		{ "sphere", CornellBoxScenes::SphereBox, sphereCamera, false, {} },
@@ -44,7 +45,8 @@ inline const std::array<SceneDescription, 11>& GetSceneRegistry() {
 		{ "water", CornellBoxScenes::Water, standardCamera, false, { "meshs\\water.obj", "meshs\\Alucy.obj" } },
 		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny, standardCamera, false,
 			{ "meshs\\Alucy.obj", "meshs\\bunny3.obj" } },
-		{ "fog", CornellBoxScenes::FogBunny, standardCamera, true, { "meshs\\bunny3.obj" } }
+		{ "fog", CornellBoxScenes::FogBunny, standardCamera, true, { "meshs\\bunny3.obj" } },
+		{ "CornellBoxStandard", nullptr, {}, false, {}, "scenes\\mitsuba\\cornell-box\\scene.json" }
 	}};
 	return scenes;
 }
