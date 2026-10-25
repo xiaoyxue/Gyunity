@@ -7,7 +7,8 @@ from zipfile import BadZipFile
 from xml.etree.ElementTree import ParseError
 
 from .model import Scene
-from .mitsuba import ARCHIVES, import_archive
+from .mitsuba import ARCHIVES, import_archive, import_xml
+from .pbrt import import_file as import_pbrt
 
 
 def main() -> int:
@@ -24,6 +25,17 @@ def main() -> int:
     importer.add_argument("--archive-dir", type=Path, required=True)
     importer.add_argument("--scene", choices=list(ARCHIVES), required=True)
     importer.add_argument("--output-root", type=Path, required=True)
+    xml = commands.add_parser("import-mitsuba-file", help="Import the supported standalone Mitsuba XML subset")
+    xml.add_argument("scene", type=Path)
+    xml.add_argument("--output-root", type=Path, required=True)
+    xml.add_argument("--name")
+    xml.add_argument("--max-depth", type=int)
+    pbrt = commands.add_parser("import-pbrt", help="Import the documented static RGB PBRT v4 subset")
+    pbrt.add_argument("scene", type=Path)
+    pbrt.add_argument("--output-root", type=Path, required=True)
+    pbrt.add_argument("--name")
+    pbrt.add_argument("--rgb-radiance-scale", type=float, required=True,
+                      help="Explicit native RGB unit scale after photometric normalization (not PBRT spectral calibration)")
     args = parser.parse_args()
     try:
         if args.command == "build":
@@ -39,8 +51,12 @@ def main() -> int:
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(json.dumps(Scene.model_json_schema(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
             print(args.out)
-        else:
+        elif args.command == "import-mitsuba":
             print(import_archive(args.archive_dir / (args.scene + ".zip"), args.output_root))
+        elif args.command == "import-mitsuba-file":
+            print(import_xml(args.scene, args.output_root, args.name, max_depth=args.max_depth))
+        else:
+            print(import_pbrt(args.scene, args.output_root, args.name, rgb_radiance_scale=args.rgb_radiance_scale))
     except (OSError, ValueError, KeyError, BadZipFile, ParseError) as error:
         print(f"gyscene: {error}", file=sys.stderr)
         return 1
