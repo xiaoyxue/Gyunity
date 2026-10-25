@@ -16,33 +16,33 @@ public:
 		mDistribution.reset(ConvertImageToPdf(mImage.get()));
 	}
 
-	Vec3 Sample(Vec3* dir, real* pdfW, const Vec2& u) const {
+	Vec3 Sample(Vec3* dir, real* pdfDir, const Vec2& u) const {
 		real uv[2];
 		real pdf;
 		mDistribution->SampleContinuous(u[0], u[1], uv, &pdf);
 		real sinTheta = SinTheta(uv[1]);
 		if (sinTheta == 0)
-			*pdfW = 0;
+			*pdfDir = 0;
 		else
-			*pdfW = pdf / (2 * PI * PI * sinTheta);
+			*pdfDir = pdf / (2 * PI * PI * sinTheta);
 		*dir = LatLongToDir(uv[0], uv[1]);
 
 		return LookupRadiance(uv[0], uv[1]);
 	}
 
-	Vec3 Lookup(const Vec3& dir, real* pdfW = nullptr) const {
+	Vec3 Lookup(const Vec3& dir, real* pdfDir = nullptr) const {
 		Vec3 normDir = dir.Norm();
 		Vec2 uv = DirToLatLong(normDir);
 		Vec3 radiance = LookupRadiance(uv[0], uv[1]);
 
-		if (pdfW) {
+		if (pdfDir) {
 			Vec2 uv = DirToLatLong(normDir);
 			real sinTheta = SinTheta(uv[1]);
 
 			if (sinTheta == 0) 
-				*pdfW = 0;
+				*pdfDir = 0;
 			else
-				*pdfW = mDistribution->Pdf(uv[0], uv[1]) / (2 * PI * PI * sinTheta);
+				*pdfDir = mDistribution->Pdf(uv[0], uv[1]) / (2 * PI * PI * sinTheta);
 
 		}
 		if (IsPixelDebugEnabled()) {

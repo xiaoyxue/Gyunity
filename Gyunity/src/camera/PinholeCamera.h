@@ -38,13 +38,13 @@ public:
 		return Vec3(value, value, value);
 	}
 
-	Vec3 SampleWi(const Intersection &isect, real *pdfW, Vec3 *wi, Vec3 u) const override 
+	Vec3 SampleWi(const Intersection &isect, real *pdfDir, Vec3 *wi, Vec3 u) const override 
 	{
 		*wi = (mPos - isect.mPos);
 		real distance = wi->Length();
 		*wi = wi->Norm();
 		real cosTheta = mCz.Dot(-1 * (*wi));
-		*pdfW = 1.f * (distance * distance) / cosTheta;
+		*pdfDir = 1.f * (distance * distance) / cosTheta;
 		return We(Ray(mPos, -1 * (*wi)));
 	}
 

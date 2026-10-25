@@ -208,11 +208,11 @@ public:
 			return vertex.mThroughput;
 		}
 
-		real pdfW;
+		real pdfDir;
 		Vec3 wi;
-		Vec3 We = camera.SampleWi(vertex.mIsect, &pdfW, &wi, Vec3(rand(), rand(), rand()));
+		Vec3 We = camera.SampleWi(vertex.mIsect, &pdfDir, &wi, Vec3(rand(), rand(), rand()));
 		Vec3 f = vertex.mIsect.mBsdf->Evaluate(vertex.mIsect.mOutDir, wi);
-		Vec3 L = We * f * vertex.mThroughput * std::abs(Dot(wi, vertex.mIsect.mNormal)) / pdfW;
+		Vec3 L = We * f * vertex.mThroughput * std::abs(Dot(wi, vertex.mIsect.mNormal)) / pdfDir;
 
 		//{
 		//	std::lock_guard<std::mutex> lock(mMutex);
@@ -221,8 +221,8 @@ public:
 		//		GYT_PRINT("--------------------------------------------------Raster: {}----------------------------------------------------\n", *pRaster);
 		//		const PathVertex& v = vertex;
 		//		real cos = std::abs(Dot(wi, vertex.mIsect.mNormal));
-		//		GYT_PRINT("Throughput: {}, pdfFwd: {}, pos: {}, normal: {}, f: {}, We: {}, pdfW: {}, cos: {}, mOutDir: {}\n",
-		//			v.mThroughput, v.mPdfFwd, v.mIsect.mPos, v.mIsect.mNormal, f, We, pdfW, cos, v.mIsect.mOutDir);
+		//		GYT_PRINT("Throughput: {}, pdfFwd: {}, pos: {}, normal: {}, f: {}, We: {}, pdfDir: {}, cos: {}, mOutDir: {}\n",
+		//			v.mThroughput, v.mPdfFwd, v.mIsect.mPos, v.mIsect.mNormal, f, We, pdfDir, cos, v.mIsect.mOutDir);
 		//		GYT_PRINT("L: {}\n", L);
 		//	}
 		//}

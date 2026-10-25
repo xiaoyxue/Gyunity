@@ -41,7 +41,7 @@ public:
 	}
 	virtual Ray GenerateRay(int pixelX, int pixelY, const Vec2 &u, real offset = 0.0) const = 0;
 	virtual Vec3 We(const Ray &ray) const = 0;
-	virtual Vec3 SampleWi(const Intersection &isect, real *pdfW, Vec3 *wi, Vec3 u) const = 0;
+	virtual Vec3 SampleWi(const Intersection &isect, real *pdfDir, Vec3 *wi, Vec3 u) const = 0;
 	virtual real PdfPos() const = 0;
 	virtual real PdfDir(const Ray &cameraRay) const = 0;
 	virtual std::shared_ptr<Film> GetFilm() const { return mFilm; }
