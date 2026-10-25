@@ -108,7 +108,7 @@ public:
 		std::vector<PathVertex>& lightPath) const {
 		
 		real pdfLight;
-		real pdfA;
+		real pdfPos;
 		real pdfDir;
 		Vec3 Le;
 		Vec3 dir;
@@ -116,17 +116,17 @@ public:
 		Light* light = scene.SampleOneLight(&pdfLight, rand());
 		if (light->IsAreaLight()) {
 			Le = light->Emission();
-			light->SampleOnLight(&isect, &dir, &pdfA, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
+			light->SampleOnLight(&isect, &dir, &pdfPos, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
 		}
 		else {
-			Le = light->SampleLight(&isect, &dir, &pdfA, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
+			Le = light->SampleLight(&isect, &dir, &pdfPos, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
 		}
 		lightPath[0].mIsect = isect;
-		lightPath[0].mPdfFwd = pdfA;
+		lightPath[0].mPdfFwd = pdfPos;
 		lightPath[0].mThroughput = Le;
 		lightPath[0].mIsDelta = light->IsDeltaLight();
 		real cosTheta = std::abs(Dot(isect.mNormal, dir));
-		Vec3 throughput = Le * cosTheta / pdfLight / pdfA / pdfDir;
+		Vec3 throughput = Le * cosTheta / pdfLight / pdfPos / pdfDir;
 		Ray ray = isect.SpawnRay(dir);
 
 		int nVertices = Trace(scene, camera, ray, arena, rand, 1, throughput, pdfDir, lightPath);
