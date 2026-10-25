@@ -15,6 +15,8 @@ uv run --project tools\gyscene --locked gyscene import-mitsuba --archive-dir D:\
 
 Use `veach-mis` or `veach-bidir` for the other reviewed source ZIPs.
 Archive hashes are pinned by the importer and stored in generated metadata.
+Git attributes preserve original XML, OBJ and license bytes without line-ending
+normalization; generated JSON uses LF line endings.
 The Cornell scene's native name is `CornellBoxStandard`. Paths to OBJ assets
 are relative to each JSON file.
 
