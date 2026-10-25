@@ -28,6 +28,9 @@ class PhotonMap {
 public:
 	// Every rebuild first clears the old generation. Failure leaves IsBuilt false,
 	// Radius/RecordCount zero and queries failing; a valid empty build is distinct.
+	// Radius must be finite/positive with a normal finite double square. Indexed
+	// positions must be within 2^20 radii per axis of the first eligible photon.
+	// These are checked backend limits, never a clamp of the physical radius.
 	bool Build(const std::vector<std::vector<PathVertex>>& lightPaths, real radius);
 	void Clear();
 
