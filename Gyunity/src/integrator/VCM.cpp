@@ -4,6 +4,8 @@
 #include "camera/PinholeCamera.h"
 #include "light/EnvLight.h"
 #include "system/ProgressReporter.h"
+#include "sampler/Halton.h"
+#include "sampler/Sobol.h"
 #include <cmath>
 #include <limits>
 #include <unordered_set>
@@ -32,27 +34,77 @@ bool Radius(real initial, real alpha, int iteration, int64 count, real* radius, 
 		Fail("VCM iteration radius, disk area and attempted-count normalization must be representable.");
 }
 
-// Unlike RandomStateSequence's legacy wrapping, invalid samples fail this render.
-// Return a safe indexing value only to let the current builder unwind normally;
-// no result from a failed sequence is ever used by an estimator or film.
-class CheckedSequence : public StateSequence {
-public:
-	CheckedSequence(Sampler& sampler, int64 instance) : mSampler(sampler), mInstance(instance) {}
-	real Sample() override {
-		if (!mValid) return 0;
-		const real value = mSampler.Sample(mCursor++, mInstance);
-		if (!std::isfinite(value) || value < 0 || value >= 1) {
-			mValid = Fail("VCM sampler values must be finite and in [0,1).");
-			return 0;
-		}
-		return value;
-	}
-	bool Valid() const { return mValid; }
-private:
-	Sampler& mSampler;
-	int64 mInstance;
-	bool mValid = true;
+struct SamplerDomain {
+	unsigned dimensions = 1229;
+	uint64 maximumIndex = uint64((std::numeric_limits<int64>::max)()) - 1;
+	bool roundedUnitEndpoint = false;
 };
+
+SamplerDomain Domain(const Sampler& sampler) {
+	SamplerDomain domain;
+	if (dynamic_cast<const HaltonSampler*>(&sampler)) domain.dimensions = HaltonSampler::get_num_dimensions();
+	else if (dynamic_cast<const SobolSampler*>(&sampler)) {
+		domain.dimensions = sobol::Matrices::num_dimensions;
+		domain.maximumIndex = (uint64(1) << sobol::Matrices::size) - 1;
+		domain.roundedUnitEndpoint = true;
+	}
+	else if (dynamic_cast<const RegularHaltonSampler*>(&sampler)) domain.roundedUnitEndpoint = true;
+	return domain;
+}
+
+}
+
+namespace Vcm {
+namespace Detail {
+
+bool ValidateSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int iterations) {
+	if (maxDepth < 0 || maxDepth > 409 || pixels <= 0 || iterations <= 0)
+		return Fail("VCM requires valid depth, pixel and iteration sampling budgets.");
+	const auto domain = Domain(sampler);
+	// Light: 5 emission draws + 3 per nonterminal surface (maxDepth-1).
+	// Eye: 2 jitter draws + 3 per nonterminal surface (maxDepth).
+	const uint64 dimensions = std::max(uint64(5), uint64(3) * maxDepth + 2);
+	if (dimensions > domain.dimensions)
+		return Fail("VCM path dimension budget exceeds the sampler's supported dimensions.");
+	// The largest phase index is 2*(iterations*pixels)-1. Sobol has 52
+	// direction columns, and RegularHalton must also represent index+1.
+	if (uint64(pixels) > ((domain.maximumIndex + 1) / 2) / uint64(iterations))
+		return Fail("VCM phase sample indices exceed the sampler's supported index range.");
+	return true;
+}
+
+CheckedSequence::CheckedSequence(Sampler& sampler, int64 instance) : mSampler(sampler), mInstance(instance) {
+	const auto domain = Domain(sampler);
+	mDimensions = domain.dimensions;
+	mMaximumIndex = domain.maximumIndex;
+	mRoundedUnitEndpoint = domain.roundedUnitEndpoint;
+}
+
+real CheckedSequence::Sample() {
+	if (!mValid) return 0;
+	if (mCursor < 0 || unsigned(mCursor) >= mDimensions || mInstance < 0 || uint64(mInstance) > mMaximumIndex) {
+		mValid = Fail("VCM sample dimension or index lies outside the sampler's supported domain.");
+		return 0;
+	}
+	const real value = mSampler.Sample(mCursor++, mInstance);
+	if (!std::isfinite(value) || value < 0 || value > 1 || (value == 1 && !mRoundedUnitEndpoint)) {
+		// Safe indexing value while the current builder unwinds. A failed
+		// sequence's path is never consumed by an estimator or the film.
+		mValid = Fail("VCM sampler returned an invalid value outside its endpoint convention.");
+		return 0;
+	}
+	// Sobol's uint32->float and RegularHalton's float sum can round to one.
+	// Match RandomStateSequence's existing exact-one wrap for these samplers;
+	// Halton's scaled [0,1) outputs and unknown adapters remain strictly checked.
+	return value == 1 ? 0 : value;
+}
+
+}
+}
+
+namespace {
+
+using Vcm::Detail::CheckedSequence;
 
 // The project also builds in C++14: ordinary new need not honor alignas(64).
 struct ArenaDeleter {
@@ -92,13 +144,12 @@ void VertexConnectionMerging::Render(const Scene& scene, const Camera& camera) {
 bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& camera) {
 	mStatistics = {};
 	mCancelled.store(false);
-	// 3*depth+5 dimensions fit the bundled 1229-dimensional Halton sampler.
-	if (!mSampler || mMaxDepth < 0 || mMaxDepth > 408 || mIterations <= 0 ||
+	if (!mSampler || mMaxDepth < 0 || mMaxDepth > 409 || mIterations <= 0 ||
 		!std::isfinite(mInitialRadius) || mInitialRadius <= 0 ||
 		!std::isfinite(mAlpha) || mAlpha <= 0 || mAlpha >= 1 ||
 		(mMode != Vcm::Mode::Combined && mMode != Vcm::Mode::ConnectionOnly && mMode != Vcm::Mode::MergingOnly) ||
 		(mConcurrency != -1 && mConcurrency <= 0))
-		return Fail("VCM requires a sampler, depth in [0,408], positive iterations/radius, alpha in (0,1), valid mode/concurrency.");
+		return Fail("VCM requires a sampler, supported depth in [0,409], positive iterations/radius, alpha in (0,1), valid mode/concurrency.");
 	const auto film = camera.GetFilm();
 	if (!dynamic_cast<const PinHoleCamera*>(&camera) || !film || !film->HasValidStorage() ||
 		!std::isfinite(film->Area()) || film->Area() <= 0 ||
@@ -126,9 +177,10 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 	const int64 count = int64(width) * height;
 	const size_t columns = (size_t(width) + 31) / 32, rows = (size_t(height) + 31) / 32;
 	const size_t tileCount = columns * rows;
-	if (count > ((std::numeric_limits<int64>::max)() - 1) / 2 / mIterations ||
-		tileCount > size_t((std::numeric_limits<uint32>::max)()) / 2 ||
-		tileCount > (std::numeric_limits<size_t>::max)() / 2 / mIterations ||
+	const size_t workPerIteration = 2 * tileCount + (mMode != Vcm::Mode::ConnectionOnly ? 1 : 0);
+	if (!Vcm::Detail::ValidateSamplingBudget(*mSampler, mMaxDepth, count, mIterations)) return false;
+	if (tileCount > size_t((std::numeric_limits<uint32>::max)()) / 2 ||
+		workPerIteration > (std::numeric_limits<size_t>::max)() / mIterations ||
 		size_t(count) > (std::numeric_limits<size_t>::max)() / sizeof(PathVertex) / (mMaxDepth + 1))
 		return Fail("VCM sample indices, tile seeds or path storage budget overflow.");
 	real radius;
@@ -157,6 +209,8 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 		if (!tile.lightSampler || !tile.cameraSampler ||
 			!streams.insert(tile.lightSampler.get()).second || !streams.insert(tile.cameraSampler.get()).second)
 			return Fail("VCM requires distinct non-null tile/phase sampler clones.");
+		if (!Vcm::Detail::ValidateSamplingBudget(*tile.lightSampler, mMaxDepth, count, mIterations) ||
+			!Vcm::Detail::ValidateSamplingBudget(*tile.cameraSampler, mMaxDepth, count, mIterations)) return false;
 		tile.lightArena = CreateArena();
 		tile.cameraArena = CreateArena();
 		if (!tile.lightArena || !tile.cameraArena) return Fail("VCM could not allocate its aligned tile arenas.");
@@ -167,7 +221,7 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 	for (auto& path : lightPaths) path.reserve(mMaxDepth + 1);
 	Vcm::PhotonMap map;
 	ProgressReporter progress(fmt::format("Rendering VCM ({} x {}, {} iterations, depth {}, concurrency {})",
-		width, height, mIterations, mMaxDepth, mConcurrency), 2 * tileCount * size_t(mIterations));
+		width, height, mIterations, mMaxDepth, mConcurrency), workPerIteration * size_t(mIterations));
 
 	const auto cleanup = [&]() {
 		// Both Run calls are synchronous: no borrower can outlive these references.
@@ -217,11 +271,22 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 		storage();
 		if (mStatistics.mLastLightPhase.mStatus != Tasks::Status::Success || mCancelled.load()) { success = false; break; }
 		if (mMode != Vcm::Mode::ConnectionOnly) {
-			const auto start = std::chrono::steady_clock::now();
-			if (!map.Build(lightPaths, radius)) { success = false; break; }
-			mStatistics.mMapSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-			++mStatistics.mMapBuilds;
+			const std::string mapName = fmt::format("VCM map phase {}/{}", iteration + 1, mIterations);
+			progress.SetPhase(mapName);
+			bool built = false;
+			mStatistics.mLastMapPhase = Tasks::Run(mapName, 0, 1,
+				[&](size_t, const Tasks::Context& context) {
+					if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
+					if (!map.Build(lightPaths, radius)) return Tasks::Status::Failed;
+					built = true;
+					return mCancelled.load() || context.IsCancellationRequested() ?
+						Tasks::Status::Cancelled : Tasks::Status::Success;
+				}, mConcurrency, &progress);
+			++mStatistics.mMapPhases;
+			if (built) ++mStatistics.mMapBuilds;
+			mStatistics.mMapSeconds += mStatistics.mLastMapPhase.mElapsed.count();
 			mStatistics.mPeakPhotons = std::max(mStatistics.mPeakPhotons, map.RecordCount());
+			if (mStatistics.mLastMapPhase.mStatus != Tasks::Status::Success || mCancelled.load()) { success = false; break; }
 		}
 		const std::string cameraName = fmt::format("VCM camera phase {}/{}", iteration + 1, mIterations);
 		progress.SetPhase(cameraName);
@@ -234,12 +299,17 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 					CheckedSequence random(*tile.cameraSampler, 2 * (int64(iteration) * count + pixel) + 1);
 					const real u = random(), v = random();
 					if (!random.Valid()) return Tasks::Status::Failed;
+					const double exactX = double(x) + u, exactY = double(y) + v;
 					const real sampleX = x + u, sampleY = y + v;
-					if (double(sampleX) < x || double(sampleX) >= double(x) + 1 ||
-						double(sampleY) < y || double(sampleY) >= double(y) + 1) {
-						Fail("VCM jittered film coordinates cannot be represented inside their pixel.");
+					if (exactX < x || exactX >= double(x) + 1 || exactY < y || exactY >= double(y) + 1 ||
+						!std::isfinite(sampleX) || !std::isfinite(sampleY) ||
+						double(sampleX) < 0 || double(sampleX) > width || double(sampleY) < 0 || double(sampleY) > height) {
+						Fail("VCM jittered film coordinates lie outside the supported raster.");
 						return Tasks::Status::Failed;
 					}
+					// The pinhole camera also adds integer pixel + real jitter.
+					// Preserve that same rounding and Film's existing closed-edge
+					// filter behavior; a valid near-one jitter is not clamped/wrapped.
 					const Ray ray = camera.GenerateRay(x, y, Vec2(u, v), 0);
 					auto& eye = tile.cameraPath;
 					const auto& light = lightPaths[size_t(pixel)];

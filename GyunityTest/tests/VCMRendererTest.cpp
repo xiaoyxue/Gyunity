@@ -12,6 +12,9 @@
 #include "texture/ConstantTexture.h"
 #include "volume/Homogeneous.h"
 #include "image/ImageIO.h"
+#include "sampler/Halton.h"
+#include "sampler/Sobol.h"
+#include "tbb/task_arena.h"
 #include <array>
 #include <fstream>
 #include <iomanip>
@@ -533,6 +536,324 @@ TEST_F(VCMRenderer, SingleWorkerFreshRendersAreDeterministicInEveryMode) {
 
 class VCMRendererNegative : public VCMRenderer {};
 
+TEST_F(VCMRenderer, ValidNearOneJitterSurvivesOrdinaryPixelBoundaryRounding) {
+	class NearOneSampler : public FixedSampler {
+	public:
+		real Sample(unsigned int, unsigned long long) override { return ONE_MINUS_EPSILON; }
+		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<NearOneSampler>(); }
+	};
+	class JitterCamera : public PinHoleCamera {
+	public:
+		JitterCamera(int width) : PinHoleCamera(std::make_shared<Film>(width, 2),
+			Vec3(0, 0, 3), Vec3(0), Vec3(0, 1, 0), 0.01f, 1) {}
+		Ray GenerateRay(int x, int y, const Vec2& u, real offset) const override {
+			if (u.x != 0.5f || u.y != 0.5f) {
+				EXPECT_EQ(u.x, ONE_MINUS_EPSILON);
+				EXPECT_EQ(u.y, ONE_MINUS_EPSILON);
+				++samples;
+			}
+			return PinHoleCamera::GenerateRay(x, y, u, offset);
+		}
+		mutable int samples = 0;
+	};
+	for (int width : { 2, 1600 }) {
+		Scene scene{};
+		auto shape = Plane(0, 100);
+		auto emitter = std::make_shared<AreaLight>(shape, Vec3(3));
+		scene.AddLight(emitter);
+		scene.AddPrimitive(std::make_shared<Primitive>(shape, Diffuse(0), emitter));
+		Initialize(scene);
+		JitterCamera camera(width);
+		Renderer render(std::make_shared<NearOneSampler>(), 0, 1, 1, 0.5f, Mode::Combined, 1);
+		EXPECT_EQ(real(1) + ONE_MINUS_EPSILON, 2);
+		ASSERT_TRUE(render.RenderChecked(scene, camera));
+		EXPECT_EQ(camera.samples, width * 2);
+		EXPECT_EQ(render.GetStatistics().mCameraSamples, width * 2);
+		for (const auto& value : Image(camera, "near-one-" + std::to_string(width))) EXPECT_EQ(value.x, 3);
+	}
+}
+
+TEST_F(VCMRendererNegative, HaltonCapacityIsRejectedBeforeAnySampleCall) {
+	class CountedHalton : public HaltonSampler {
+	public:
+		explicit CountedHalton(std::shared_ptr<int> calls) : calls(calls) {}
+		real Sample(uint32 d, uint64 i) override { ++*calls; return HaltonSampler::Sample(d, i); }
+		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<CountedHalton>(calls); }
+		std::shared_ptr<int> calls;
+	};
+	Scene scene{};
+	Initialize(scene);
+	auto calls = std::make_shared<int>(0);
+	Renderer render(std::make_shared<CountedHalton>(calls), 85, 1, 1, 0.5f, Mode::ConnectionOnly, 1);
+	EXPECT_FALSE(render.RenderChecked(scene, *CameraFor(1, 1)));
+	EXPECT_EQ(*calls, 0);
+	EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
+}
+
+TEST_F(VCMRenderer, BundledRoundedUnitEndpointsUseTheirLegacySequenceConvention) {
+	class RoundedSobol : public SobolSampler {
+	public:
+		real Sample(uint32, uint64) override { return SobolSampler::Sample(0, (uint64(1) << 32) - 1); }
+		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<RoundedSobol>(); }
+	};
+	class RoundedRegularHalton : public RegularHaltonSampler {
+	public:
+		real Sample(uint32, uint64) override { return RegularHaltonSampler::Sample(0, (uint64(1) << 25) - 2); }
+		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<RoundedRegularHalton>(); }
+	};
+	Scene scene{};
+	Initialize(scene);
+	for (const auto& sampler : { std::static_pointer_cast<Sampler>(std::make_shared<RoundedSobol>()),
+		std::static_pointer_cast<Sampler>(std::make_shared<RoundedRegularHalton>()) }) {
+		ASSERT_EQ(sampler->Sample(0, 0), 1);
+		RandomStateSequence legacy(sampler, 0);
+		EXPECT_EQ(legacy(), 0);
+		Renderer render(sampler, 0, 1, 1, 0.5f, Mode::Combined, 1);
+		EXPECT_TRUE(render.RenderChecked(scene, *CameraFor(2, 2)));
+	}
+}
+
+struct MapScope {
+	std::mutex mutex;
+	std::multiset<int> observed;
+	Renderer* cancel = nullptr;
+};
+class MapScopeLobe : public DiffuseBSDF {
+public:
+	explicit MapScopeLobe(MapScope& state) : DiffuseBSDF(Vec3(0.5f)), state(state) {}
+	bool IsDelta() const override {
+		// Depth-one light paths: builder's mixed-lobe check, complete-prefix
+		// check, then PhotonMap::Build's ValidSurface check. Later MIS reads
+		// may be concurrent, so even the test-only call counter is atomic.
+		if (calls.fetch_add(1) == 2) {
+			std::lock_guard<std::mutex> lock(state.mutex);
+			state.observed.insert(tbb::this_task_arena::max_concurrency());
+			if (state.cancel) state.cancel->RequestCancellation();
+		}
+		return false;
+	}
+private:
+	MapScope& state;
+	mutable std::atomic<int> calls{ 0 };
+};
+class MapScopeMaterial : public Material {
+public:
+	explicit MapScopeMaterial(MapScope& state) : state(state) {}
+	void ComputeScatteringFunction(Intersection* hit, MemoryPool& arena, TransportMode mode) const override {
+		hit->mBsdf = GYT_MEMORY_POOL_ALLOC(arena, BSDF)(*hit);
+		if (mode == TransportMode::Importance)
+			hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, MapScopeLobe)(state));
+		else hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Vec3(0.5f)));
+	}
+private:
+	MapScope& state;
+};
+
+TEST_F(VCMRenderer, PhotonMapBuildUsesTheExplicitRendererArena) {
+	for (int concurrency : { 1, 3 }) {
+		MapScope scope;
+		Scene scene{};
+		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), std::make_shared<MapScopeMaterial>(scope)));
+		scene.AddLight(std::make_shared<FixedLight>());
+		Initialize(scene);
+		auto camera = CameraFor(33, 1, 0.01f);
+		Renderer render(std::make_shared<FixedSampler>(), 1, 2, 1, 0.5f, Mode::Combined, concurrency);
+		ASSERT_TRUE(render.RenderChecked(scene, *camera));
+		EXPECT_EQ(scope.observed.size(), 66);
+		EXPECT_EQ(scope.observed.count(concurrency), 66);
+		const auto& stats = render.GetStatistics();
+		EXPECT_EQ(stats.mMapPhases, 2);
+		EXPECT_EQ(stats.mMapBuilds, 2);
+		EXPECT_EQ(stats.mLastMapPhase.mConcurrencyLimit, concurrency);
+		EXPECT_EQ(stats.mLastMapPhase.mPlanned, 1);
+		EXPECT_EQ(stats.mLastMapPhase.mCompleted, 1);
+		EXPECT_EQ(stats.mLastMapPhase.mActive, 0);
+		EXPECT_EQ(stats.mLastMapPhase.mName, "VCM map phase 2/2");
+		EXPECT_EQ(stats.mLastMapPhase.mStatus, ThreadedTaskManager::Status::Success);
+		RecordProperty("observed_map_arena_" + std::to_string(concurrency), *scope.observed.begin());
+		RecordProperty("observed_map_vertices_" + std::to_string(concurrency), int(scope.observed.size()));
+	}
+}
+
+struct SamplerCalls {
+	uint32 dimensions;
+	uint64 maximumIndex;
+	int calls = 0, outside = 0;
+	uint32 lastDimension = 0;
+	int phaseCalls[2] = {};
+};
+template<class Base>
+class DomainSampler : public Base {
+public:
+	explicit DomainSampler(std::shared_ptr<SamplerCalls> calls) : calls(calls) {}
+	real Sample(uint32 d, uint64 i) override {
+		++calls->calls;
+		++calls->phaseCalls[i % 2];
+		calls->lastDimension = d;
+		if (d >= calls->dimensions || i > calls->maximumIndex) {
+			++calls->outside;
+			return 0; // The test double never performs an unsafe underlying access.
+		}
+		return Base::Sample(d, i);
+	}
+	std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<DomainSampler<Base>>(calls); }
+	std::shared_ptr<SamplerCalls> calls;
+};
+
+TEST_F(VCMRenderer, BundledDimensionLimitsCoverActualMaximumLightAndEyeWalks) {
+	using Vcm::Detail::ValidateSamplingBudget;
+	const uint64 signedIndex = uint64((std::numeric_limits<int64>::max)()) - 1;
+	for (int kind : { 0, 1, 2 }) {
+		const unsigned dimensions = kind == 0 ? 256 : kind == 1 ? 1024 : 1229;
+		const int depth = kind == 0 ? 84 : kind == 1 ? 340 : 409;
+		auto calls = std::make_shared<SamplerCalls>();
+		calls->dimensions = dimensions;
+		calls->maximumIndex = kind == 1 ? (uint64(1) << 52) - 1 : signedIndex;
+		std::shared_ptr<Sampler> sampler;
+		std::shared_ptr<Sampler> original;
+		if (kind == 0) sampler = std::make_shared<DomainSampler<HaltonSampler>>(calls);
+		else if (kind == 1) sampler = std::make_shared<DomainSampler<SobolSampler>>(calls);
+		else sampler = std::make_shared<DomainSampler<RegularHaltonSampler>>(calls);
+		if (kind == 0) original = std::make_shared<HaltonSampler>();
+		else if (kind == 1) original = std::make_shared<SobolSampler>();
+		else original = std::make_shared<RegularHaltonSampler>();
+		EXPECT_TRUE(ValidateSamplingBudget(*sampler, depth, 1, 1));
+		EXPECT_FALSE(ValidateSamplingBudget(*sampler, depth + 1, 1, 1));
+		EXPECT_EQ(calls->calls, 0);
+
+		Scene scene{};
+		auto mirror = std::make_shared<MirrorMaterial>(Constant(1));
+		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0, 10000), mirror));
+		scene.AddPrimitive(std::make_shared<Primitive>(Plane(1, 10000, 0, -1), mirror));
+		scene.AddLight(std::make_shared<PointLight>(Vec3(0, 0, 0.5f), Vec3(1)));
+		Initialize(scene);
+		PinHoleCamera camera(std::make_shared<Film>(1, 1), Vec3(0, 0, 0.5f), Vec3(0),
+			Vec3(0, 1, 0), 0.01f, 1);
+		Renderer render(sampler, depth, 1, 1, 0.5f, Mode::ConnectionOnly, 1);
+		ASSERT_TRUE(render.RenderChecked(scene, camera));
+		EXPECT_EQ(calls->calls, 2 * (2 + 3 * depth));
+		EXPECT_EQ(calls->phaseCalls[0], 5 + 3 * (depth - 1));
+		EXPECT_EQ(calls->phaseCalls[1], 2 + 3 * depth);
+		EXPECT_EQ(calls->lastDimension, 1 + 3 * depth);
+		EXPECT_EQ(calls->outside, 0);
+		EXPECT_EQ(render.GetStatistics().mCameraSamples, 1);
+
+		calls->calls = 0;
+		Vcm::Detail::CheckedSequence sequence(*sampler, 37);
+		for (unsigned d = 0; d < dimensions; ++d) {
+			const real value = sequence();
+			const real raw = original->Sample(d, 37);
+			ASSERT_TRUE(sequence.Valid());
+			EXPECT_EQ(value, raw == 1 ? 0 : raw);
+			EXPECT_GE(value, 0);
+			EXPECT_LT(value, 1);
+		}
+		EXPECT_EQ(calls->calls, dimensions);
+		EXPECT_EQ(calls->lastDimension, dimensions - 1);
+		sequence();
+		EXPECT_FALSE(sequence.Valid());
+		EXPECT_EQ(calls->calls, dimensions);
+		EXPECT_EQ(calls->outside, 0);
+	}
+}
+
+TEST_F(VCMRendererNegative, SobolIndexColumnsAndCloneCapabilitiesAreCheckedBeforeSampling) {
+	using Vcm::Detail::ValidateSamplingBudget;
+	auto calls = std::make_shared<SamplerCalls>();
+	calls->dimensions = 1024;
+	calls->maximumIndex = (uint64(1) << 52) - 1;
+	DomainSampler<SobolSampler> sobol(calls);
+	EXPECT_TRUE(ValidateSamplingBudget(sobol, 0, int64(1) << 51, 1));
+	EXPECT_FALSE(ValidateSamplingBudget(sobol, 0, (int64(1) << 51) + 1, 1));
+	const int64 pixels = (int64(1) << 51) / INT_MAX;
+	EXPECT_TRUE(ValidateSamplingBudget(sobol, 0, pixels, INT_MAX));
+	EXPECT_FALSE(ValidateSamplingBudget(sobol, 0, pixels + 1, INT_MAX));
+	EXPECT_EQ(calls->calls, 0);
+
+	Vcm::Detail::CheckedSequence last(sobol, (int64(1) << 52) - 1);
+	for (unsigned d = 0; d < 1024; ++d) {
+		const real value = last();
+		ASSERT_TRUE(last.Valid());
+		EXPECT_GE(value, 0);
+		EXPECT_LT(value, 1);
+	}
+	EXPECT_EQ(calls->calls, 1024);
+	EXPECT_EQ(calls->lastDimension, 1023);
+	for (int64 index : { int64(-1), int64(1) << 52, (std::numeric_limits<int64>::max)() }) {
+		Vcm::Detail::CheckedSequence invalid(sobol, index);
+		invalid();
+		EXPECT_FALSE(invalid.Valid());
+		EXPECT_EQ(calls->calls, 1024);
+	}
+	EXPECT_EQ(calls->outside, 0);
+
+	class HaltonClone : public FixedSampler {
+	public:
+		explicit HaltonClone(std::shared_ptr<SamplerCalls> calls) : calls(calls) {}
+		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<DomainSampler<HaltonSampler>>(calls); }
+		std::shared_ptr<SamplerCalls> calls;
+	};
+	auto cloneCalls = std::make_shared<SamplerCalls>();
+	cloneCalls->dimensions = 256;
+	cloneCalls->maximumIndex = (std::numeric_limits<uint64>::max)();
+	Scene empty{};
+	Initialize(empty);
+	Renderer render(std::make_shared<HaltonClone>(cloneCalls), 85, 1, 1, 0.5f, Mode::ConnectionOnly, 1);
+	EXPECT_FALSE(render.RenderChecked(empty, *CameraFor(1, 1)));
+	EXPECT_EQ(cloneCalls->calls, 0);
+	EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
+}
+
+TEST_F(VCMRendererNegative, MalformedUnitEndpointAndNonfiniteJitterAreNotWrapped) {
+	class InvalidSampler : public FixedSampler {
+	public:
+		explicit InvalidSampler(real value) : value(value) {}
+		real Sample(uint32, uint64) override { return value; }
+		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<InvalidSampler>(value); }
+		real value;
+	};
+	Scene empty{};
+	Initialize(empty);
+	for (real value : { 1.f, 1.000001f, -0.000001f, INFINITY, NAN }) {
+		Renderer render(std::make_shared<InvalidSampler>(value), 0, 1, 1, 0.5f, Mode::Combined, 1);
+		EXPECT_FALSE(render.RenderChecked(empty, *CameraFor(2, 1)));
+		EXPECT_EQ(render.GetStatistics().mCameraSamples, 0);
+		EXPECT_FALSE(render.GetStatistics().mSucceeded);
+	}
+}
+
+TEST_F(VCMRendererNegative, MapFailureAndCancellationJoinWithoutStartingCameraWork) {
+	for (bool cancellation : { false, true }) {
+		MapScope scope;
+		Scene scene{};
+		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0, 100), std::make_shared<MapScopeMaterial>(scope)));
+		if (cancellation) scene.AddLight(std::make_shared<FixedLight>());
+		else scene.AddLight(std::make_shared<AreaLight>(Plane(2, 1, 0, -1), Vec3(1)));
+		Initialize(scene);
+		auto camera = CameraFor(33, 1, 0.01f);
+		Renderer render(std::make_shared<RandomSampler>(0), 1, 2, cancellation ? 1.f : 1e-12f,
+			0.5f, Mode::Combined, 1);
+		if (cancellation) scope.cancel = &render;
+		testing::internal::CaptureStderr();
+		const bool success = render.RenderChecked(scene, *camera);
+		const auto output = testing::internal::GetCapturedStderr();
+		EXPECT_FALSE(success);
+		EXPECT_EQ(output.find("100.0%"), std::string::npos);
+		EXPECT_NE(output.find("failed after 2 of 10 work units"), std::string::npos);
+		const auto& stats = render.GetStatistics();
+		EXPECT_EQ(stats.mMapPhases, 1);
+		EXPECT_EQ(stats.mMapBuilds, cancellation ? 1 : 0);
+		EXPECT_EQ(stats.mCameraPhases, 0);
+		EXPECT_EQ(stats.mLastMapPhase.mActive, 0);
+		EXPECT_EQ(stats.mLastMapPhase.mStatus, cancellation ? ThreadedTaskManager::Status::Cancelled :
+			ThreadedTaskManager::Status::Failed);
+		scope.cancel = nullptr;
+		Scene empty{};
+		Initialize(empty);
+		EXPECT_TRUE(render.RenderChecked(empty, *CameraFor(2, 1)));
+	}
+}
+
 TEST_F(VCMRendererNegative, ParametersFilmCameraAndCloneFailuresDoNotStartWork) {
 	Scene scene{};
 	Initialize(scene);
@@ -545,7 +866,7 @@ TEST_F(VCMRendererNegative, ParametersFilmCameraAndCloneFailuresDoNotStartWork) 
 		EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
 	};
 	reject(nullptr, 1, 1, 1, 0.5f, Mode::Combined, 1);
-	for (int depth : { -1, 409, INT_MAX }) reject(sampler, depth, 1, 1, 0.5f, Mode::Combined, 1);
+	for (int depth : { -1, 410, INT_MAX }) reject(sampler, depth, 1, 1, 0.5f, Mode::Combined, 1);
 	for (int n : { 0, -1 }) reject(sampler, 1, n, 1, 0.5f, Mode::Combined, 1);
 	for (real radius : { 0.f, -1.f, INFINITY, NAN }) reject(sampler, 1, 1, radius, 0.5f, Mode::Combined, 1);
 	for (real alpha : { 0.f, 1.f, -1.f, INFINITY, NAN }) reject(sampler, 1, 1, 1, alpha, Mode::Combined, 1);

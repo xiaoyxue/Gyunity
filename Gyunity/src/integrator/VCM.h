@@ -7,16 +7,38 @@
 
 GYT_NAMESPACE_BEGIN
 
+namespace Vcm {
+namespace Detail {
+
+// Renderer-local checks; legacy sampler implementations and outputs are unchanged.
+bool ValidateSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int iterations);
+
+class CheckedSequence : public StateSequence {
+public:
+	CheckedSequence(Sampler& sampler, int64 instance);
+	real Sample() override;
+	bool Valid() const { return mValid; }
+private:
+	Sampler& mSampler;
+	int64 mInstance;
+	unsigned mDimensions;
+	uint64 mMaximumIndex;
+	bool mRoundedUnitEndpoint, mValid = true;
+};
+
+}
+}
+
 class VertexConnectionMerging : public Integrator {
 public:
 	struct Statistics {
 		int mIterations = 0;
 		int64 mLightAttempts = 0, mCameraSamples = 0;
-		size_t mLightPhases = 0, mCameraPhases = 0, mMapBuilds = 0;
+		size_t mLightPhases = 0, mCameraPhases = 0, mMapPhases = 0, mMapBuilds = 0;
 		size_t mPeakLightArenaBytes = 0, mPeakLightPathBytes = 0, mPeakPhotons = 0;
 		real mLastRadius = 0;
 		double mLastArea = 0, mLightSeconds = 0, mCameraSeconds = 0, mMapSeconds = 0;
-		ThreadedTaskManager::Result mLastLightPhase, mLastCameraPhase;
+		ThreadedTaskManager::Result mLastLightPhase, mLastCameraPhase, mLastMapPhase;
 		bool mSucceeded = false;
 	};
 
