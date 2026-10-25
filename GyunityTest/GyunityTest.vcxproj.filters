@@ -31,6 +31,9 @@
     <ClCompile Include="tests\ProgressReporterTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\ThreadedTaskManagerTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
