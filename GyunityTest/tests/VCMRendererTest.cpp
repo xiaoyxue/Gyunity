@@ -235,6 +235,46 @@ TEST_F(VCMRenderer, FrozenRadiusAndAttemptNormalizationAreUsedByActualGather) {
 	}
 }
 
+TEST_F(VCMRenderer, ContributionSumsUseActualModeWeightsAndResetBetweenRenders) {
+	Scene scene{};
+	scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), Diffuse(0.5f)));
+	scene.AddLight(std::make_shared<FixedLight>());
+	Initialize(scene);
+	for (Mode mode : Modes) for (int concurrency : { 1, 3 }) {
+		Renderer render(std::make_shared<FixedSampler>(), 1, 3, 1, real(2.0 / 3), mode, concurrency);
+		std::array<double, 3> previous{};
+		for (int run = 0; run < 2; ++run) {
+			auto camera = CameraFor(33, 2, 0.1f);
+			ASSERT_TRUE(render.RenderChecked(scene, *camera));
+			const auto image = Image(*camera, "contributions-" + std::to_string(int(mode)) + "-" +
+				std::to_string(concurrency) + "-" + std::to_string(run));
+			ASSERT_EQ(image.size(), 66);
+			const auto& stats = render.GetStatistics();
+			EXPECT_EQ(stats.mCameraSamples, 66 * 3);
+			for (int c = 0; c < 3; ++c) {
+				const double expected = (stats.mCameraConnectionSum[c] + stats.mCameraMergingSum[c]) / (66 * 3) +
+					stats.mSplatConnectionSum[c] / 66;
+				double mean = 0;
+				for (const auto& pixel : image) mean += pixel[c] / 66.0;
+				EXPECT_NEAR(mean, expected, expected * 0.008);
+				EXPECT_GE(stats.mSplatConnectionSum[c], 0);
+				if (mode == Mode::ConnectionOnly) EXPECT_EQ(stats.mCameraMergingSum[c], 0);
+				else EXPECT_GT(stats.mCameraMergingSum[c], 0);
+				if (mode == Mode::MergingOnly) {
+					EXPECT_EQ(stats.mCameraConnectionSum[c], 0);
+					EXPECT_EQ(stats.mSplatConnectionSum[c], 0);
+				}
+				else {
+					EXPECT_GT(stats.mCameraConnectionSum[c], 0);
+					EXPECT_GT(stats.mSplatConnectionSum[c], 0);
+				}
+				if (run) EXPECT_DOUBLE_EQ(expected, previous[c]);
+				previous[c] = expected;
+			}
+		}
+	}
+}
+
 TEST_F(VCMRenderer, TilePhaseClonesPersistAndIndicesAndStatefulStreamsDoNotReplay) {
 	for (int concurrency : { 1, 4 }) {
 		Scene scene{};
@@ -342,6 +382,104 @@ TEST_F(VCMRenderer, ConstantEnvironmentDiffuseRadianceHasBoundedFiniteRadiusBias
 		const double mean = Mean(Image(*camera, name));
 		EXPECT_NEAR(mean, 1, 0.18); // Finite disk boundary bias + bounded Monte Carlo variance, not PDF tolerance.
 		Summary(render, name, mean);
+	}
+}
+
+class ExpandedLaunchBounds : public BruteForce {
+public:
+	ExpandedLaunchBounds(const std::vector<std::shared_ptr<Primitive>>& primitives, real scale)
+		: BruteForce(primitives), mScale(scale) {}
+	AABB WorldBound() const override {
+		const auto bounds = BruteForce::WorldBound();
+		const Vec3 center = (bounds.minPoint + bounds.maxPoint) * 0.5f;
+		const Vec3 extent = (bounds.maxPoint - bounds.minPoint) * (0.5f * mScale);
+		return AABB(center - extent, center + extent);
+	}
+private:
+	real mScale;
+};
+
+// RandomSampler::Clone replaces its seed. Preserve the independent replicate
+// identity as well as the renderer's stable tile/phase ID in this test adapter.
+class IndependentSeedSampler : public Sampler {
+public:
+	explicit IndependentSeedSampler(uint32 seed) : mSeed(seed), mRandom(seed) {}
+	real Sample(unsigned d, unsigned long long i) override { return mRandom.Sample(d, i); }
+	std::shared_ptr<Sampler> Clone(uint32 stream) override {
+		return std::make_shared<IndependentSeedSampler>(mSeed + 1664525u * (stream + 1));
+	}
+private:
+	uint32 mSeed;
+	RandomSampler mRandom;
+};
+
+TEST_F(VCMRenderer, ExpandedEnvironmentBoundsDoNotDimDiffuseIndependentSeeds) {
+	// Declared before acceptance: 48 independent seed-pairs, 16x16, 256
+	// iterations, depth 1, R0=.4, alpha=2/3, launch-radius scales 1 and 2.
+	// All camera points and their disks are inside this triangle:
+	// camera footprint radius < .038; .4+.038 < 1/sqrt(5).
+	// Hence constant Le=2 and rho=.5 imply Lo=1 without a kernel-edge bias.
+	// Accept |error| <= 4 standard errors + .008 RGBE quantization, and
+	// require the 4-SE half-width <= .12 (also for the paired difference).
+	// Pixels sharing photons are correlated; they are NOT independent trials.
+	// A separate 12-pair pilot failed precision, not energy. Use fresh seeds
+	// and four times as many independent pairs; do not widen the tolerances.
+	constexpr size_t replicates = 48;
+	std::ofstream csv(output + "\\vcm-environment-independent-seeds.csv");
+	ASSERT_TRUE(csv.good());
+	csv << "mode,scale,replicate,seed,mean,lightAttempts,peakPhotons\n" << std::setprecision(17);
+	const auto moments = [=](const std::array<double, replicates>& samples) {
+		double mean = 0, variance = 0;
+		for (double value : samples) mean += value / replicates;
+		for (double value : samples) variance += (value - mean) * (value - mean) / (replicates - 1);
+		return std::make_pair(mean, std::sqrt(variance / replicates));
+	};
+	for (Mode mode : Modes) {
+		std::array<std::array<double, replicates>, 2> means{};
+		for (int scaleIndex = 0; scaleIndex < 2; ++scaleIndex) {
+			const real scale = real(scaleIndex + 1);
+			Scene scene{};
+			scene.AddPrimitive(std::make_shared<Primitive>(Plane(0, 1), Diffuse(0.5f)));
+			auto environment = Environment();
+			scene.AddLight(environment);
+			scene.SetAccelerator(std::make_shared<ExpandedLaunchBounds>(scene.GetPrimitives(), scale));
+			scene.Initialize();
+			real positionPdf, directionPdf;
+			ASSERT_TRUE(environment->PdfLight(Intersection(), Vec3(0, 0, -1), &positionPdf, &directionPdf));
+			EXPECT_NEAR(positionPdf, 1 / (2 * Pi * scale * scale), 1e-7);
+			for (size_t replicate = 0; replicate < replicates; ++replicate) {
+				const uint32 seed = 104729u * uint32(replicate + 101);
+				auto camera = CameraFor(16, 16, 1);
+				Renderer render(std::make_shared<IndependentSeedSampler>(seed), 1, 256, 0.4f,
+					real(2.0 / 3), mode, 1);
+				ASSERT_TRUE(render.RenderChecked(scene, *camera));
+				const auto name = "expanded-env-" + std::to_string(int(mode)) + "-" +
+					std::to_string(scaleIndex + 1) + "-" + std::to_string(replicate);
+				const auto image = Image(*camera, name);
+				ASSERT_EQ(image.size(), 256);
+				means[scaleIndex][replicate] = Mean(image);
+				const auto& stats = render.GetStatistics();
+				EXPECT_EQ(stats.mLightAttempts, 256 * 256);
+				if (mode != Mode::ConnectionOnly) EXPECT_LT(stats.mPeakPhotons, 256);
+				csv << int(mode) << ',' << scale << ',' << replicate << ',' << seed << ','
+					<< means[scaleIndex][replicate] << ',' << stats.mLightAttempts << ',' << stats.mPeakPhotons << '\n';
+			}
+			const auto result = moments(means[scaleIndex]);
+			SCOPED_TRACE("mode=" + std::to_string(int(mode)) + " scale=" + std::to_string(scale));
+			RecordProperty("mode_" + std::to_string(int(mode)) + "_scale_" + std::to_string(scaleIndex + 1) +
+				"_mean", std::to_string(result.first));
+			RecordProperty("mode_" + std::to_string(int(mode)) + "_scale_" + std::to_string(scaleIndex + 1) +
+				"_standard_error", std::to_string(result.second));
+			EXPECT_LE(4 * result.second, 0.12);
+			EXPECT_NEAR(result.first, 1, 4 * result.second + 0.008);
+		}
+		std::array<double, replicates> differences{};
+		for (size_t i = 0; i < replicates; ++i) differences[i] = means[1][i] - means[0][i];
+		const auto difference = moments(differences);
+		RecordProperty("mode_" + std::to_string(int(mode)) + "_paired_difference", std::to_string(difference.first));
+		RecordProperty("mode_" + std::to_string(int(mode)) + "_paired_standard_error", std::to_string(difference.second));
+		EXPECT_LE(4 * difference.second, 0.12);
+		EXPECT_NEAR(difference.first, 0, 4 * difference.second + 0.008);
 	}
 }
 

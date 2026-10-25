@@ -3,6 +3,7 @@
 #include "Integrator.h"
 #include "VCMPath.h"
 #include "system/ThreadedTaskManager.h"
+#include <array>
 #include <atomic>
 
 GYT_NAMESPACE_BEGIN
@@ -38,6 +39,9 @@ public:
 		size_t mPeakLightArenaBytes = 0, mPeakLightPathBytes = 0, mPeakPhotons = 0;
 		real mLastRadius = 0;
 		double mLastArea = 0, mLightSeconds = 0, mCameraSeconds = 0, mMapSeconds = 0;
+		// Actual mode-weighted RGB sums before film filtering. Camera sums are
+		// unaveraged; splat sums already include 1/iterations. Not separate-mode images.
+		std::array<double, 3> mCameraConnectionSum{}, mCameraMergingSum{}, mSplatConnectionSum{};
 		ThreadedTaskManager::Result mLastLightPhase, mLastCameraPhase, mLastMapPhase;
 		bool mSucceeded = false;
 	};
