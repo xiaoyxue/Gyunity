@@ -18,6 +18,7 @@ void ExpectVector(const Vec3& actual, const Vec3& expected) {
 
 TEST(SceneRegistry, NamesMapToAllBuilders) {
 	const std::pair<const char*, void (*)(SceneBuilder&)> expected[] = {
+		{ "bdpt-room", BdptRoomScenes::Diffuse }, { "bdpt-room-glossy", BdptRoomScenes::Glossy },
 		{ "mesh", CornellBoxScenes::GlassBunny }, { "slope", CornellBoxScenes::Slope },
 		{ "sphere", CornellBoxScenes::SphereBox }, { "env", CornellBoxScenes::Environment },
 		{ "triangle", CornellBoxScenes::TriangleBox }, { "textured", CornellBoxScenes::TexturedSpheres },

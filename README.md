@@ -145,9 +145,10 @@ medium and preserves the original material-free front boundary; use
 ## Named scenes and rendering
 `GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
-`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, and `mis-glossy`. The sphere and
-triangle scenes use their large-room camera, and `mis-glossy` uses its own
-elevated overview camera; the others use the standard Cornell camera. Fog automatically
+`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, `mis-glossy`, `bdpt-room`,
+and `bdpt-room-glossy`. The sphere and triangle scenes use their large-room
+camera, `mis-glossy` uses an elevated overview camera, and both `bdpt-room`
+variants use a room camera. The others use the standard Cornell camera. Fog automatically
 uses volume path tracing; the other scenes use surface path tracing.
 
 ```powershell
@@ -247,6 +248,48 @@ $env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\scene_builde
 ..\x64\Debug\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
 ..\x64\Release\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
 ```
+
+## Procedural indirect-lighting room
+`bdpt-room` and `bdpt-room-glossy` are asset-free, original two-zone interiors
+inspired by the [Veach bidirectional diagnostics](https://mitsuba.readthedocs.io/en/stable/src/gallery.html#simple-scenes).
+They are not imports or exact reproductions of those scenes.
+Both contain a table with four legs, a three-level shelf, a pedestal, two
+spheres and an angled display panel. A thick partition separates the room from
+a bright side chamber. Its finite doorway spans `y = [0.1, 2.15]`,
+`z = [-0.8, 0.6]`, through `x = [-2.08, -1.92]`.
+
+A ceiling area light in the chamber emits radiance 45. A second, hanging baffle
+blocks direct illumination of the main room: light can bounce off the chamber
+floor and pass below the baffle and through the doorway. The elevated front
+camera sees the furnished room, not the emitter. The room is open only at the
+viewing side, with a black exterior and no environment map.
+
+The baseline is entirely diffuse. The glossy variant changes only the angled
+panel and tabletop sphere to GGX conductors (roughness 0.18 and 0.08);
+geometry, lights and camera are identical. It does not add participating media
+or mixed delta/continuous BSDFs, and is compatible with current surface BDPT.
+Both names use their own room camera rather than the Cornell camera.
+
+```powershell
+# From the worktree root; the output directory must already exist.
+.\x64\Release\GyunityApp.exe --scene bdpt-room --width 512 --height 384 --spp 256 --max-depth 8 --out "D:\Code\Graphics\Gyunity\Test\bdpt-room.png"
+.\x64\Release\GyunityApp.exe --scene bdpt-room-glossy --accel kd --width 512 --height 384 --spp 256 --max-depth 8 --out "D:\Code\Graphics\Gyunity\Test\bdpt-room-glossy.png"
+```
+
+These CLI commands use PT, not BDPT. For bidirectional rendering, use the
+existing `TestBidirectionalPathTracing("bdpt-room", output, 512, 384, 256, 8)`
+C++ example, or pass a `BidirectionalPathTracing` to `RenderScene`. The scene
+name describes the transport diagnostic, not an automatic integrator override.
+Start at depth 8 and 256 spp, then use 2048 spp or more for indirect-light
+comparisons. Report equal-time as well as sample budgets; no universal BDPT
+speedup or convergence threshold is asserted.
+
+`BdptRoomScene.*` checks both variants, material assignments, light orientation,
+camera visibility and a concrete nonzero diffuse transport path through the
+doorway. It also checks blocked paths through the frame and hanging baffle
+with BVH and kd-tree. Set `GYUNITY_TEST_OUTPUT_DIRECTORY` to an existing
+directory under the main checkout's `Test` to run `BdptRoomSceneRenders.*`:
+32x24, 32 spp, depth 6, both variants with PT/BDPT and both accelerators.
 
 ## Bidirectional probability interfaces
 BDPT uses deterministic probability queries without changing the existing PT/LT

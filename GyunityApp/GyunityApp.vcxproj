@@ -164,6 +164,7 @@
     <ClInclude Include="scenes\MisScenes.h" />
     <ClInclude Include="scenes\SceneBuilder.h" />
     <ClInclude Include="scenes\SceneRegistry.h" />
+    <ClInclude Include="scenes\BdptRoomScenes.h" />
     <ClInclude Include="SceneCommandLine.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
