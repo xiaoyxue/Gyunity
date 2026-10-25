@@ -20,3 +20,10 @@ git submodule update --init --recursive
 ## Test output
 
 Write all test output (renders, logs, scratch scripts) to `Test/` at the main repository root, not inside a worktree. Everything in it except `Test/.gitignore` is ignored by git.
+
+## Error handling
+
+- Do not use C++ exceptions for control flow or error handling in repository-owned code. Do not introduce `throw` or `try`/`catch` error paths.
+- Return explicit success/error status values and propagate failures to the caller. Use non-throwing logging, such as `GetDefaultLogger()->Error(message, false)`.
+- Prefer checked, non-throwing interfaces when integrating dependencies. Do not hide failures behind empty successful results or silently ignore errors.
+- Python may use normal validation exceptions.
