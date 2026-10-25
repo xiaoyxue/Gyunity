@@ -289,6 +289,21 @@ The renderer generates both subpaths, evaluates supported connections at
 once by samples per pixel. It does not call the PT direct-light estimator.
 Only geometric-normal shading is used by its path builders.
 
+`EvaluateConnection` in `integrator\BDPT.h` returns the primary connection estimate:
+**without MIS**, but still including the original sampling compensation, endpoint
+density and visibility checks. It supports camera hits/escapes, reused light
+origins, camera splats and surface connections without reading cached full-path
+MIS densities. `ConnectPaths` remains the BDPT wrapper: skip MIS for a zero
+primary, otherwise multiply by the existing `MisWeight`. Both functions keep
+input paths unchanged and leave the contribution zero on failure. Raster output
+retains the original camera-projection behavior, including blocked splats.
+
+The internal `Bidirectional` namespace in `integrator\BDPTPath.h` shares direction,
+light-origin density, toward-vertex density and VC-feasibility queries without
+duplicating their implementations. Geometry and density conversion retain their
+distinct surface predicates. This is preparation for VCM, not a VCM integrator or
+a new MIS evaluator; scene validation and rendering/scheduling are unchanged.
+
 `MisWeight` follows the original PBRT-v3 balance heuristic: walk neighboring
 strategies in both directions using forward/reverse density ratios, then evaluate
 `1 / (1 + sumRatios)`. Scalar accumulation uses double precision. Only temporary
@@ -314,6 +329,12 @@ zero rotation rather than treating PT agreement as a rotation reference.
 BDPT checks the requested environment rotation and reports a nonzero value as
 unsupported before rendering; the existing PT/environment implementation is
 unchanged.
+
+Connection contract tests independently check primary values and the unchanged
+primary-times-BDPT-MIS result, including a nonzero primary with corrupted MIS
+density: primary evaluation succeeds, while the wrapper fails with zero output.
+They also cover immutable inputs, invalid counts, zero/blocked/off-film results,
+delta endpoints and environment direction/launch measures.
 
 `BDPTAcceptanceTest.cpp` directly exercises all four supported strategy families,
 isolates camera splats with primary rays that miss all geometry, checks splat

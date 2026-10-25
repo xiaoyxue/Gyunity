@@ -20,94 +20,14 @@ bool Finite(const Vec3& value) {
 	return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
-bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
-	if (from.mType == PathVertexType::Environment || to.mType == PathVertexType::Environment) {
-		if (from.mType == PathVertexType::Environment && to.mType == PathVertexType::Environment) {
-			return Fail("BDPT cannot connect two environment endpoints.");
-		}
-		*dir = from.mType == PathVertexType::Environment ? -from.mDirection : to.mDirection;
-		if (!Finite(*dir) || std::abs(dir->Length2() - 1) > 1e-4f) {
-			return Fail("BDPT environment endpoint requires a unit map direction.");
-		}
-		return true;
-	}
-	const Vec3 offset = to.mIsect.mPos - from.mIsect.mPos;
-	const real length2 = offset.Length2();
-	if (!std::isfinite(length2) || length2 <= 0) return Fail("BDPT connection endpoints must be distinct and finite.");
-	*dir = offset / std::sqrt(length2);
-	return true;
-}
-
 bool Surface(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Surface ||
 		(vertex.mLight && vertex.mLight->IsAreaLight());
 }
 
-bool Connectible(const PathVertex& vertex) {
-	return vertex.mType == PathVertexType::Camera ||
-		(vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf &&
-			!vertex.mIsect.mBsdf->IsDelta());
-}
-
 bool Counts(const std::vector<PathVertex>& light, const std::vector<PathVertex>& camera, int s, int t) {
 	return s >= 0 && t >= 1 && static_cast<size_t>(s) <= light.size() &&
 		static_cast<size_t>(t) <= camera.size();
-}
-
-bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVertex& next, real* pdf) {
-	*pdf = 0;
-	if (!light.mLight) return Fail("BDPT emitter has no light reference.");
-	Vec3 dir;
-	if (!Direction(light, next, &dir)) return false;
-	real positionPdf, directionPdf;
-	if (!light.mLight->PdfLight(light.mIsect, dir, &positionPdf, &directionPdf)) return false;
-	real selectionPdf = 0;
-	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
-		if (scene.GetLights()[i].get() == light.mLight) {
-			real slotPdf;
-			if (!scene.LightSelectionPdf(i, &slotPdf)) return false;
-			selectionPdf += slotPdf;
-		}
-	}
-	*pdf = selectionPdf * (light.mType == PathVertexType::Environment ? directionPdf : positionPdf);
-	return true;
-}
-
-bool PdfToward(const PathVertex& vertex, const PathVertex* previous, const PathVertex& next, real* pdf) {
-	Vec3 wi;
-	if (!Direction(vertex, next, &wi)) return false;
-	real directionalPdf = 0;
-	if (vertex.mType == PathVertexType::Environment) {
-		if (!vertex.mLight) return Fail("BDPT environment endpoint has no light reference.");
-		real positionPdf, emissionPdf;
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &emissionPdf)) return false;
-		return ConvertDensity(positionPdf, vertex, next, pdf);
-	}
-	if (vertex.mType == PathVertexType::Light || (!previous && vertex.mLight)) {
-		real positionPdf;
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &directionalPdf)) return false;
-	}
-	else if (vertex.mType == PathVertexType::Camera) {
-		if (!vertex.mCamera) return Fail("BDPT camera endpoint has no camera reference.");
-		directionalPdf = vertex.mCamera->PdfDir(Ray(vertex.mIsect.mPos, wi));
-	}
-	else {
-		if (!previous || !vertex.mIsect.mBsdf) return Fail("BDPT surface PDF requires a predecessor and BSDF.");
-		Vec3 wo;
-		if (!Direction(vertex, *previous, &wo)) return false;
-		directionalPdf = vertex.mIsect.mBsdf->IsDelta() ? 0 : vertex.mIsect.mBsdf->Pdf(wo, wi);
-	}
-	return ConvertDensity(directionalPdf, vertex, next, pdf);
-}
-
-bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, size_t s, size_t t) {
-	if (t == 0 || s + t < 2) return false;
-	if (s == 0) return cameraEnd.mLight &&
-		(cameraEnd.mLight->IsAreaLight() || cameraEnd.mType == PathVertexType::Environment);
-	if (cameraEnd.mType == PathVertexType::Environment) return false;
-	if (s == 1 && t == 1) return false;
-	if (s == 1) return lightEnd && lightEnd->mLight && Connectible(cameraEnd);
-	return lightEnd && Connectible(*lightEnd) && Connectible(cameraEnd);
 }
 
 struct MisVertex {
@@ -165,7 +85,7 @@ bool WorldToScreen(const Camera& camera, const Vec3& point, Vec2* raster) {
 bool GeometryTerm(const PathVertex& first, const PathVertex& second, real* value) {
 	*value = 0;
 	Vec3 dir;
-	if (!Direction(first, second, &dir)) return false;
+	if (!Bidirectional::Direction(first, second, &dir)) return false;
 	*value = first.mType == PathVertexType::Environment || second.mType == PathVertexType::Environment
 		? 1 : 1 / (second.mIsect.mPos - first.mIsect.mPos).Length2();
 	if (Surface(first)) *value *= std::abs(Dot(first.mIsect.mGeometryNormal, dir));
@@ -193,7 +113,7 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	const PathVertex* lightPrevious = s > 1 ? &lightPath[s - 2] : nullptr;
 	const PathVertex& cameraEnd = cameraPath[t - 1];
 	const PathVertex* cameraPrevious = t > 1 ? &cameraPath[t - 2] : nullptr;
-	if (!ValidConnection(lightEnd, cameraEnd, s, t)) return true;
+	if (!Bidirectional::ValidConnection(lightEnd, cameraEnd, s, t)) return true;
 	if (count == 2) { *weight = 1; return true; }
 
 	// Local snapshots replace PBRT's ScopedAssignment: generated paths never need restoration.
@@ -202,18 +122,18 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 
 	// Recompute the camera-side connection densities.
 	if (s == 0) {
-		if (!LightOriginPdf(scene, cameraEnd, *cameraPrevious, &cameraMis[t - 1].pdfPrev) ||
-			!PdfToward(cameraEnd, nullptr, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
+		if (!Bidirectional::LightOriginPdf(scene, cameraEnd, *cameraPrevious, &cameraMis[t - 1].pdfPrev) ||
+			!Bidirectional::PdfToward(cameraEnd, nullptr, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
 	}
 	else {
-		if (!PdfToward(*lightEnd, lightPrevious, cameraEnd, &cameraMis[t - 1].pdfPrev)) return false;
+		if (!Bidirectional::PdfToward(*lightEnd, lightPrevious, cameraEnd, &cameraMis[t - 1].pdfPrev)) return false;
 		if (cameraPrevious &&
-			!PdfToward(cameraEnd, lightEnd, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
+			!Bidirectional::PdfToward(cameraEnd, lightEnd, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
 
 		// Recompute the light-side connection densities.
-		if (!PdfToward(cameraEnd, cameraPrevious, *lightEnd, &lightMis[s - 1].pdfPrev)) return false;
+		if (!Bidirectional::PdfToward(cameraEnd, cameraPrevious, *lightEnd, &lightMis[s - 1].pdfPrev)) return false;
 		if (lightPrevious &&
-			!PdfToward(*lightEnd, &cameraEnd, *lightPrevious, &lightMis[s - 2].pdfPrev)) return false;
+			!Bidirectional::PdfToward(*lightEnd, &cameraEnd, *lightPrevious, &lightMis[s - 2].pdfPrev)) return false;
 	}
 	if (!ValidateMisState(lightMis) || !ValidateMisState(cameraMis)) return false;
 
@@ -221,19 +141,19 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	double sumRatios = 0, ratio = 1;
 	for (int i = t - 1; i > 0; --i) {
 		if (!AdvanceMisRatio(cameraMis, i, &ratio)) return false;
-		if (ValidConnection(&cameraPath[i], cameraPath[i - 1], count - i, i)) sumRatios += ratio;
+		if (Bidirectional::ValidConnection(&cameraPath[i], cameraPath[i - 1], count - i, i)) sumRatios += ratio;
 	}
 	ratio = 1;
 	for (int i = s - 1; i >= 0; --i) {
 		if (!AdvanceMisRatio(lightMis, i, &ratio)) return false;
-		if (ValidConnection(i > 0 ? &lightPath[i - 1] : nullptr, lightPath[i], i, count - i)) sumRatios += ratio;
+		if (Bidirectional::ValidConnection(i > 0 ? &lightPath[i - 1] : nullptr, lightPath[i], i, count - i)) sumRatios += ratio;
 	}
 	if (!std::isfinite(sumRatios)) return Fail("BDPT MIS ratio sum overflowed.");
 	*weight = static_cast<real>(1 / (1 + sumRatios));
 	return true;
 }
 
-bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+bool EvaluateConnection(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
 	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
 	*contribution = Vec3(0);
 	*raster = Vec2(0, 0);
@@ -250,14 +170,14 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 		else {
 			if (!pt.mLight->IsAreaLight()) return true;
 			Vec3 dir;
-			if (!Direction(pt, cameraPath[t - 2], &dir)) return false;
+			if (!Bidirectional::Direction(pt, cameraPath[t - 2], &dir)) return false;
 			unweightedContribution = pt.mThroughput * pt.mLight->Emission(pt.mIsect, dir);
 		}
 	}
 	else {
 		const PathVertex& qs = lightPath[s - 1];
 		if (t == 1) {
-			if (s < 2 || !Connectible(qs) || !WorldToScreen(camera, qs.mIsect.mPos, raster)) return true;
+			if (s < 2 || !Bidirectional::Connectible(qs) || !WorldToScreen(camera, qs.mIsect.mPos, raster)) return true;
 			Vec3 wi;
 			real pdf;
 			const Vec3 importance = camera.SampleWi(qs.mIsect, &pdf, &wi, Vec3(0.5f));
@@ -267,11 +187,11 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 				importance * std::abs(Dot(qs.mIsect.mNormal, wi)) / pdf;
 		}
 		else if (s == 1) {
-			if (!Connectible(pt) || !qs.mLight) return true;
+			if (!Bidirectional::Connectible(pt) || !qs.mLight) return true;
 			Vec3 toCamera;
-			if (!Direction(qs, pt, &toCamera)) return false;
+			if (!Bidirectional::Direction(qs, pt, &toCamera)) return false;
 			real originPdf;
-			if (!LightOriginPdf(scene, qs, pt, &originPdf)) return false;
+			if (!Bidirectional::LightOriginPdf(scene, qs, pt, &originPdf)) return false;
 			if (originPdf <= 0) return true;
 			const Vec3 emission = qs.mType == PathVertexType::Environment ?
 				qs.mLight->Emission(qs.mDirection) : qs.mLight->IsAreaLight() ?
@@ -282,9 +202,9 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 				pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -toCamera) * geometry;
 		}
 		else {
-			if (!Connectible(qs) || !Connectible(pt)) return true;
+			if (!Bidirectional::Connectible(qs) || !Bidirectional::Connectible(pt)) return true;
 			Vec3 wi;
-			if (!Direction(qs, pt, &wi)) return false;
+			if (!Bidirectional::Direction(qs, pt, &wi)) return false;
 			real geometry;
 			if (!GeometryTerm(qs, pt, &geometry)) return false;
 			unweightedContribution = qs.mThroughput * pt.mThroughput * geometry *
@@ -299,6 +219,16 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 		}
 	}
 	if (!Finite(unweightedContribution)) return Fail("BDPT connection contribution is not finite.");
+	if (unweightedContribution == Vec3(0)) return true;
+	*contribution = unweightedContribution;
+	return true;
+}
+
+bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	*contribution = Vec3(0);
+	Vec3 unweightedContribution(0);
+	if (!EvaluateConnection(scene, camera, lightPath, cameraPath, s, t, &unweightedContribution, raster)) return false;
 	if (unweightedContribution == Vec3(0)) return true;
 	real weight;
 	if (!MisWeight(scene, lightPath, cameraPath, s, t, &weight)) return false;
