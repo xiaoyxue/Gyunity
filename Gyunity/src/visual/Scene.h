@@ -96,16 +96,34 @@ public:
 
 	Light* SampleOneLight(real *lightPdf, real u) const {
 		int nLights = (int)(mLights.size());
+		if (nLights == 0) {
+			*lightPdf = 0;
+			return nullptr;
+		}
 		int lightNum;
 		if (mLightPowerDistribution != nullptr) {
 			lightNum = mLightPowerDistribution->SampleDiscrete(u, lightPdf);
-			if (*lightPdf == 0) return nullptr;
+			if (lightNum < 0 || *lightPdf == 0) return nullptr;
 		}
 		else {
 			lightNum = std::min((int)(u * nLights), nLights - 1);
 			*lightPdf = 1.f / nLights;
 		}
 		return mLights[lightNum].get();
+	}
+
+	// A PMF for a registered light slot, not a solid-angle or area density.
+	bool LightSelectionPdf(size_t lightIndex, real* pdf) const {
+		if (lightIndex >= mLights.size()) {
+			*pdf = 0;
+			GetDefaultLogger()->Error("Light index is outside the scene.", false);
+			return false;
+		}
+		if (mLightPowerDistribution) {
+			return mLightPowerDistribution->DiscretePdf(static_cast<int>(lightIndex), pdf);
+		}
+		*pdf = 1.f / static_cast<real>(mLights.size());
+		return true;
 	}
 
 	const std::vector<std::shared_ptr<Primitive>>& GetPrimitives() const {

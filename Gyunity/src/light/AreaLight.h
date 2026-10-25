@@ -30,6 +30,18 @@ public:
 		return mShape->Pdf(isect, wi);
 	}
 
+	bool PdfLight(const Intersection& point, const Vec3& dir, real* pdfPos, real* pdfDir) const override {
+		const real area = mShape->Area();
+		if (!std::isfinite(area) || area <= 0) {
+			*pdfPos = *pdfDir = 0;
+			GetDefaultLogger()->Error("Area-light emission PDF requires a positive finite area.", false);
+			return false;
+		}
+		*pdfPos = 1 / area;
+		*pdfDir = std::max(real(0), Dot(point.mNormal, dir)) * INV_PI;
+		return true;
+	}
+
 	Vec3 Emission() const override 
 	{
 		return mLemit;

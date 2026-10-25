@@ -23,22 +23,22 @@ int ParseInteger(const std::string& option, const std::string& value, int minimu
 	return result;
 }
 
-void RenderSceneCommand(const SceneRenderOptions& options) {
+bool RenderSceneCommand(const SceneRenderOptions& options) {
 	auto sampler = std::make_shared<RandomSampler>(123);
 	auto samplerEnum = std::make_shared<SamplerEnum>();
 	if (options.scene->usesVolume) {
 		VolPathTracing integrator(options.spp, options.maxDepth, sampler, samplerEnum, false);
-		RenderScene(options, integrator);
+		return RenderScene(options, integrator);
 	}
 	else {
 		PathTracing integrator(options.spp, options.maxDepth, sampler, samplerEnum);
-		RenderScene(options, integrator);
+		return RenderScene(options, integrator);
 	}
 }
 
 }
 
-void RenderScene(const SceneRenderOptions& options, Integrator& integrator) {
+bool RenderScene(const SceneRenderOptions& options, Integrator& integrator) {
 	if (!options.scene) throw std::invalid_argument("A registered scene is required.");
 	if (options.width <= 0 || options.height <= 0 ||
 		static_cast<int64>(options.width) * options.height > std::numeric_limits<int>::max() / 3) {
@@ -66,10 +66,11 @@ void RenderScene(const SceneRenderOptions& options, Integrator& integrator) {
 	}
 	scene->Initialize();
 	film->SetFileName(options.output);
-	integrator.Render(*scene, *camera);
+	if (!integrator.RenderChecked(*scene, *camera)) return false;
 	if (!film->SaveImage()) {
 		throw std::runtime_error("Cannot write image '" + options.output + "'. Check its directory and permissions.");
 	}
+	return true;
 }
 
 SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv) {
@@ -144,7 +145,7 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 			for (const auto& scene : GetSceneRegistry()) std::cout << scene.name << '\n';
 		}
 		else if (options.command == SceneCommand::Render) {
-			RenderSceneCommand(options);
+			return RenderSceneCommand(options) ? 0 : 1;
 		}
 		else {
 			throw std::invalid_argument("No scene command supplied.");

@@ -166,7 +166,7 @@ commands. Invalid options, missing assets and failed image writes report an
 error and return a nonzero exit code; no image is silently substituted.
 
 ## C++ integrator examples
-`GyunityApp\main.cpp` keeps four runnable mock examples. With no arguments,
+`GyunityApp\main.cpp` keeps five runnable mock examples. With no arguments,
 `main()` calls `TestPathTracing()` instead of the previous LightTracing demo.
 To select another C++ example, replace that call with `TestSPPM()`,
 `TestLightTracing()`, or `TestVolPathTracing()` and rebuild. Explicit CLI
@@ -178,6 +178,7 @@ arguments still use `RunSceneCommandLine`; they do not select these examples.
 | `TestSPPM` | `mesh` | 1024x1024, 256 iterations, 300000 photons/stage, depth 20, radius 0.05, alpha 0.66666667 | `Test\CornellBoxSppmTest.bmp` |
 | `TestLightTracing` | `mesh` | 1024x1024, 512 spp, depth 15 | `Test\CornellBoxLT.bmp` |
 | `TestVolPathTracing` | `fog` | 1024x1024, 2000 spp, depth 8 | `Test\MediaTestFogEquiAngular.bmp` |
+| `TestBidirectionalPathTracing` | Any non-volume scene; default `mesh` | 1024x1024, 256 spp, depth 8 | `Test\CornellBoxBdpt.bmp` |
 
 Default outputs always go to `Test` at the **main repository root**, not the
 working directory or a worktree's root. The examples locate the main checkout
@@ -218,6 +219,156 @@ $env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\scene_builde
 ..\x64\Release\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
 ```
 
+## Bidirectional probability interfaces
+BDPT uses deterministic probability queries without changing the existing PT/LT
+sampling conventions.
+
+- `Scene::LightSelectionPdf(lightIndex, &pdf)` evaluates the PMF of a registered
+  light slot from the same distribution as `SampleOneLight`; before initialization
+  both use uniform selection.
+- `Light::PdfLight(point, dir, &pdfPos, &pdfDir)` evaluates conditional emitted-ray
+  densities, without sampling or including the light-selection PMF. `dir` is a
+  unit direction emitted by the light, matching `SampleLight`.
+- Area-light position density is per unit area; point-light position is a
+  **discrete mass** (one at the emitter), distinguished by `IsDeltaLight()`.
+  Do not combine that mass with continuous area densities.
+- Environment position density is for the auxiliary launch disk; the direction
+  query evaluates the map at `-dir`. It does not depend on a finite helper
+  endpoint's distance and is not a physical area-emitter density.
+
+New queries return `bool`; unsupported or invalid queries return `false`, set
+their output densities to zero and log with exceptions disabled. A successful
+query may legitimately produce a zero density. Discrete sampling now handles
+an exact-one input and the constructor's existing all-zero uniform-CDF case.
+This does not change continuous environment-map sampling or introduce a new
+exception-handling framework. `LightProbabilityTest.cpp` covers analytical PMFs,
+sample/PDF agreement, hemisphere normalization, endpoint measures and failures.
+
+## Bidirectional subpath generation
+`integrator\BDPTPath.h` provides the next preparation step: `GenerateCameraPath`
+and `GenerateLightPath`, using LT's path vocabulary without a second rendering
+framework. These helpers back `BidirectionalPathTracing`.
+
+Each function fills a `std::vector<PathVertex>` and returns its vertex count,
+including its endpoint. `maxVertices` is a storage/extension budget, not the
+eventual renderer's scattering depth. Zero produces an empty path; `-1` reports
+an invalid or unsupported configuration with non-throwing logging. Discard partial
+output on `-1`. Keep the supplied `MemoryPool` alive until connections are finished.
+
+Camera paths use radiance transport and light paths use importance transport.
+For BDPT generation only, shading frames are explicitly built from geometric
+normals; interpolated shading-normal transport is not advertised as supported.
+Media, null-material boundaries and mixed delta/continuous BSDFs are rejected.
+Pure mirror/glass events remain supported. A zero-contribution sample stops
+extension without losing the surface vertex already reached.
+
+`mPdfFwd` stores the incoming density at a vertex and `mPdfPrev` stores the reverse
+density at that vertex from its successor. Finite destinations use geometric-normal
+area conversion. An environment endpoint stores its direction toward the map;
+its origin density is light-selection PMF times directional PDF, while the first
+surface density is launch-disk PDF times the projected normal, without inverse-square
+falloff. Delta-event densities are zero markers, separate from a point light's
+delta position. `mIsDelta` is set only when a specular scattering event was sampled.
+The existing LT implementation and its use of the original fields remain unchanged.
+
+`BDPTPathTest.cpp` checks forward/reverse densities, preservation of incoming
+directions, geometric conversion, budgets, endpoint metadata, explicit failures,
+glass transport modes, and environment launch/escape conventions.
+
+## Bidirectional path tracing
+`BidirectionalPathTracing(sampler, maxDepth, spp)` supports finite area/point
+lights and one environment light, alone or mixed with finite lights.
+`RenderChecked(scene, camera)` returns success/failure explicitly; the shared
+`RenderScene` checks this result before saving the film. Other integrators retain
+their existing behavior through the default checked-render adapter.
+Media, mixed delta/continuous BSDFs and multiple environment maps are explicitly
+unsupported. Environment emission requires finite nonempty scene bounds.
+
+The renderer generates both subpaths, evaluates supported connections at
+`depth = s + t - 2`, adds each camera-sample sum once and normalizes camera splats
+once by samples per pixel. It does not call the PT direct-light estimator.
+Only geometric-normal shading is used by its path builders.
+
+`MisWeight` follows the original PBRT-v3 balance heuristic: walk neighboring
+strategies in both directions using forward/reverse density ratios, then evaluate
+`1 / (1 + sumRatios)`. Scalar accumulation uses double precision. Only temporary
+connection-adjacent densities are changed in separate light/camera MIS snapshots.
+These snapshots replace PBRT's `ScopedAssignment` restoration mechanism: the
+input paths are const and never modified, including on early returns. Endpoint
+and predecessor references and the two ratio walks follow PBRT's ordering. Ordinary
+zero-density events are distinct from delta-event markers. Point-light camera-hit
+strategies, specular connections, `(1,1)` and `t=0` are excluded.
+
+The implementation reuses generated endpoints, so its conditional endpoint PDFs
+are not copied from PBRT's endpoint-resampling branch. Environment connections use
+the stored map direction and its selection-weighted directional PDF, not the
+position of a finite helper point. Emitted environment paths use projected
+launch-disk density at the first surface. Camera misses retain accumulated
+throughput and evaluate the environment in the recorded direction.
+
+Independent product tests cover diffuse paths, unequal emitter PMFs, point
+sources, mirror chains and environment strategies. Analytical constant-environment
+diffuse, mirror, glass and mixed point-light checks supplement the 16x16 smoke
+renders. Environment rotation remains an existing unsupported map feature; use
+zero rotation rather than treating PT agreement as a rotation reference.
+BDPT checks the requested environment rotation and reports a nonzero value as
+unsupported before rendering; the existing PT/environment implementation is
+unchanged.
+
+`BDPTAcceptanceTest.cpp` directly exercises all four supported strategy families,
+isolates camera splats with primary rays that miss all geometry, checks splat
+normalization at multiple sample counts, expands auxiliary environment launch
+bounds without changing geometry, and checks latitude/longitude signs using a
+directional HDR marker map. Generated fixtures and images use
+`GYUNITY_TEST_OUTPUT_DIRECTORY` under the main checkout's `Test` directory.
+
+`TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
+width, height, spp, depth and accelerator. It covers all nine original surface
+scenes plus `lucy-bunny`, rejects `fog`, and does not change the default no-argument
+PT example or the CLI's existing integrator selection. To select the new example
+in `main`, replace the default render call with:
+
+```cpp
+if (!TestBidirectionalPathTracing("lucy-bunny",
+    ExampleOutputPath("CornellBoxBdptLucyBunny.png"))) return 1;
+```
+
+The example defaults to **1024x1024 and 256 spp**. Tests pass explicit smaller
+settings. `lucy-bunny` contains rough-glass Lucy and a purple-glass bunny inside
+the Cornell box, illuminated only by its ceiling area light, with no added HDR.
+
+BDPT reports progress to stderr using the same `Percentage:` label as PT.
+It starts at 0%, advances monotonically as tiles finish all their samples, and
+prints 100% only after every worker succeeds. Output is throttled to 0.1 percentage
+point steps instead of printing for every sample. This measures completed tiles,
+not estimated time remaining; different paths can take different amounts of time.
+Scene loading precedes this render progress, and image saving follows it.
+Each 32x32 tile owns a sampler clone and memory pool, matching PT's scheduling
+granularity. Progress is completed tiles divided by total tiles; partial edge
+tiles count as one tile each. Camera splats
+can land outside the tile and still use the film's synchronization.
+Tile-based seeds change the random sequence from the older row-based version;
+the estimator and normalization are unchanged, but image hashes need not match.
+`ProgressReporter` owns counting, synchronization, throttled output and completion
+state; the renderer only calls `Advance()` for each finished tile and
+`Finish(success)` after joining workers. Failed renders report the completed
+work-unit count without a 100% message. If stderr
+is redirected to a log, monitor that log (for example with `Get-Content -Wait`)
+or use `Tee-Object` to retain both console output and a log.
+
+## Pixel debug selection
+Pixel diagnostics are local to the calling thread, including calls outside TBB.
+Use `SelectDebugPixel(x, y, targetX, targetY)` or
+`SelectDebugRegion(x, y, minX, minY, maxX, maxY)` (inclusive bounds), then inspect
+`IsPixelDebugEnabled()` at the diagnostic site. `SetPixelDebugEnabled(bool)`
+enables or clears the current thread explicitly. There is no fixed worker-count
+limit and callers do not need a TBB thread index.
+
+Legacy `GYT_DEBUG_PIXEL*` macros forward to these functions for existing snippets;
+their thread-index argument is evaluated but no longer indexes shared storage.
+Selection remains active on that thread until another selection or explicit reset.
+The utility does not change SPPM accumulation or introduce exceptions.
+
 ## Scene regression
 Run the registered-scene regression without patching or recompiling `main.cpp`:
 
@@ -227,6 +378,25 @@ Run the registered-scene regression without patching or recompiling `main.cpp`:
   -OutputDirectory "D:\Code\Graphics\Gyunity\Test\scene_registry_step4\renders" `
   -ReferenceDirectory "D:\Code\Graphics\Gyunity\Test\remaining_scenes_step3"
 ```
+
+Use `-Scenes mesh,slope,sphere,env,triangle,textured,empty,diffuse,water,fog` when
+comparing against the historical ten-scene references; `lucy-bunny` is new and
+has no original-scene baseline. Without `-Scenes`, the runner requires references
+for every registered scene rather than silently skipping missing references.
+
+A Python equivalent is available without additional packages:
+
+```powershell
+uv run --no-project .\GyunityTest\RunSceneRegression.py `
+  --output-directory "D:\Code\Graphics\Gyunity\Test\python-scene-regression" `
+  --reference-directory "D:\Code\Graphics\Gyunity\Test\remaining_scenes_step3" `
+  --scenes mesh slope sphere env triangle textured empty diffuse water fog
+```
+
+It uses Python 3.11 or newer and standard-library modules only. Like the PS1
+version, it invokes the actual app, preserves reference files, writes per-render
+logs and a CSV report, and fails on unknown scenes, missing references, render
+errors or hash mismatches. Both scripts remain supported.
 
 The script enumerates `--list-scenes`, renders each scene with BVH and kd-tree
 through the actual application, and compares PNG file hashes against

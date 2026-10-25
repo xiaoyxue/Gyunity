@@ -140,4 +140,13 @@ bool BSDF::MatchScatterType(ScatterEventType flag) const {
 	}
 	return ret > 0;
 }
+
+bool BSDF::HasMixedDeltaLobes() const {
+	bool delta = false, continuous = false;
+	for (int i = 0; i < mBsdfCnt; ++i) {
+		if (mBxdfs[i]->IsDelta()) delta = true;
+		else continuous = true;
+	}
+	return delta && continuous;
+}
 GYT_NAMESPACE_END

@@ -11,7 +11,7 @@ class Intersection;
 class EnvironmentLight : public Light
 {
 public:
-	EnvironmentLight(const std::string& filename, real rotate, real scale = 1.f) {
+	EnvironmentLight(const std::string& filename, real rotate, real scale = 1.f) : mRotation(rotate) {
 		mEnvMap.reset(new EnvironmentMap(filename, rotate, scale));
 	}
 
@@ -25,13 +25,16 @@ public:
 	Vec3 SampleLight(Intersection* isect, Vec3* dir, real* pdfPos, real* pdfDir, const Vec2& u, const Vec2& v) const override;
 	Vec3 SampleLi(const Intersection& isect, Vec3* wi, real* pdf, Intersection* lightPoint, const Vec2& u) const override;
 	real PdfLi(const Intersection& isect, const Vec3& wi) const override;
+	bool PdfLight(const Intersection& point, const Vec3& dir, real* pdfPos, real* pdfDir) const override;
 	Vec3 Power() const override;
 	bool IsEnvironmentLight() const override { return true; }
+	real GetRotation() const { return mRotation; }
 
 private:
 	std::unique_ptr<EnvironmentMap> mEnvMap;
 	Vec3 mCenter;
-	real mRadius;
+	real mRadius = 0;
+	real mRotation;
 };
 
 GYT_NAMESPACE_END

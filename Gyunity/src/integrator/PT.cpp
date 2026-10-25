@@ -25,7 +25,7 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 		isect.ComputeScatteringFunction(arena);
 		BSDF* bsdf = isect.mBsdf;
 
-		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
+		if (IsPixelDebugEnabled()) {
 			std::cout << "Depth: " << i << " ************************************ \n";
 			std::cout << "wo: " << -ray.mDir << std::endl;
 		}
@@ -39,7 +39,7 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 
 		}
 
-		GYT_DEBUG_PIXEL_IF(ThreadIndex()) {
+		if (IsPixelDebugEnabled()) {
 			std::cout << "Path Tracing: Sample BSDF " << std::endl;
 		}
 		Vec3 wi;

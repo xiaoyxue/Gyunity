@@ -1,5 +1,6 @@
 #include "SceneCommandLine.h"
 #include "integrator/LT.h"
+#include "integrator/BDPT.h"
 #include "integrator/PT.h"
 #include "integrator/SPPM.h"
 #include "integrator/VPT.h"
@@ -86,6 +87,29 @@ void TestVolPathTracing(const std::string& output = ExampleOutputPath("MediaTest
 	auto samplerEnum = std::make_shared<SamplerEnum>();
 	VolPathTracing integrator(spp, 8, sampler, samplerEnum, false);
 	RenderScene(options, integrator);
+}
+
+bool TestBidirectionalPathTracing(const std::string& sceneName = "mesh",
+	const std::string& output = ExampleOutputPath("CornellBoxBdpt.bmp"),
+	int width = 1024, int height = 1024, int spp = 256, int maxDepth = 8,
+	SceneAccelerator accelerator = SceneAccelerator::Bvh) {
+	const SceneDescription* selected = nullptr;
+	for (const auto& scene : GetSceneRegistry()) {
+		if (sceneName == scene.name) selected = &scene;
+	}
+	if (!selected || selected->usesVolume) {
+		GetDefaultLogger()->Error("BDPT requires a registered non-volume scene.", false);
+		return false;
+	}
+	SceneRenderOptions options;
+	options.scene = selected;
+	options.width = width;
+	options.height = height;
+	options.output = output;
+	options.accelerator = accelerator;
+	auto sampler = std::make_shared<RandomSampler>(123);
+	BidirectionalPathTracing integrator(sampler, maxDepth, spp);
+	return RenderScene(options, integrator);
 }
 
 }
