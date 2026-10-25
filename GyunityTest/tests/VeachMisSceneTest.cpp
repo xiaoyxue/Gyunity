@@ -10,6 +10,7 @@ using Json = nlohmann::json;
 
 TEST(VeachMisScene, OriginalDataUsesThreeSourceEmittersAndRawBeckmannParameters) {
 	const auto native = LoadNativeScene(SceneBuilder::Resource("scenes\\mitsuba\\veach-mis\\scene.json"));
+	ASSERT_NE(native, nullptr);
 	EXPECT_EQ(native->name, "veach-mis");
 	EXPECT_EQ(native->width, 1280);
 	EXPECT_EQ(native->height, 720);

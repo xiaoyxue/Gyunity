@@ -115,6 +115,27 @@ by Gyunity are distinct from the archive's supplied Tungsten reference images.
 BDPT currently uses geometric-normal shading and unfiltered camera splats;
 those existing limitations are not claims of exact cross-renderer equivalence.
 
+C++ failures use checked statuses, not exception-based control flow:
+`ParseSceneCommandLine` returns bool and fills output options on success,
+`FindScene`/`LoadNativeScene` return nullable pointers, and rendering/example
+functions propagate bool results. Image loading uses bool output-parameter
+APIs; callers must check them. EXR I/O uses OpenEXRCore result codes and currently
+supports single-part, flat scanline RGB HALF/FLOAT input and Float32 output.
+Unsupported EXR layouts return an error rather than being approximated.
+Python retains normal validation exceptions.
+Only the outermost application `main` boundary catches unexpected standard
+library/dependency exceptions, reports them, and exits with failure; ordinary
+validation and I/O errors still use explicit statuses.
+
+Material-preview support uses the original local `matpreview.zip`, with
+explicit diffuse, glass or copper profiles in place of unsupported source
+plastic. The Python importer preserves real geometry, camera, checkerboard
+and EXR lighting; no approximate replacement mesh is created.
+See [the local import recipe](resources/scenes/matpreview/README.md).
+The archive does not include a license, so its raw/derived assets remain
+outside repository history. OpenEXR and Imath are pinned codec dependencies;
+they do not replace Gyunity's own vector/matrix or array types.
+
 ## Scene builder
 `GyunityApp\scenes\SceneBuilder.h` provides material factories and ordered helpers for
 triangles, quads, spheres, meshes, area lights and environment lights. It does not

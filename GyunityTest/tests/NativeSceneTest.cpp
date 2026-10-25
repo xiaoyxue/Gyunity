@@ -12,6 +12,7 @@ using Json = nlohmann::json;
 
 TEST(NativeScene, CornellSourceParametersAndGeometry) {
 	const auto native = LoadNativeScene(SceneBuilder::Resource("scenes\\mitsuba\\cornell-box\\scene.json"));
+	ASSERT_NE(native, nullptr);
 	EXPECT_EQ(native->name, "CornellBoxStandard");
 	EXPECT_EQ(native->width, 1024);
 	EXPECT_EQ(native->height, 1024);
@@ -35,24 +36,29 @@ TEST(NativeScene, CornellSourceParametersAndGeometry) {
 
 TEST(NativeScene, FileAndNamedCliUseSourceDefaultsAndExplicitOverrides) {
 	const char* defaults[] = { "app", "--scene", "CornellBoxStandard", "--out", "unused.hdr" };
-	const auto original = ParseSceneCommandLine(5, defaults);
+	SceneRenderOptions original;
+	ASSERT_TRUE(ParseSceneCommandLine(5, defaults, original));
 	ASSERT_NE(original.nativeScene, nullptr);
 	EXPECT_EQ(original.width, 1024);
 	EXPECT_EQ(original.maxDepth, 65);
 	const char* overrides[] = { "app", "--width", "64", "--height", "48", "--spp", "8", "--max-depth", "4",
 		"--integrator", "bdpt", "--scene", "CornellBoxStandard", "--out", "unused.hdr" };
-	const auto changed = ParseSceneCommandLine(15, overrides);
+	SceneRenderOptions changed;
+	ASSERT_TRUE(ParseSceneCommandLine(15, overrides, changed));
 	EXPECT_EQ(changed.width, 64);
 	EXPECT_EQ(changed.height, 48);
 	EXPECT_EQ(changed.spp, 8);
 	EXPECT_EQ(changed.maxDepth, 4);
 	EXPECT_EQ(changed.integrator, "bdpt");
 	const char* file[] = { "app", "--scene-file", "..\\resources\\scenes\\native-demo\\scene.json", "--out", "unused.hdr" };
-	EXPECT_EQ(ParseSceneCommandLine(5, file).nativeScene->name, "NativeDemo");
+	SceneRenderOptions parsed;
+	ASSERT_TRUE(ParseSceneCommandLine(5, file, parsed));
+	ASSERT_NE(parsed.nativeScene, nullptr);
+	EXPECT_EQ(parsed.nativeScene->name, "NativeDemo");
 	const char* both[] = { "app", "--scene", "empty", "--scene-file", "anything.json", "--out", "unused.hdr" };
-	EXPECT_THROW(ParseSceneCommandLine(7, both), std::invalid_argument);
+	EXPECT_FALSE(ParseSceneCommandLine(7, both, parsed));
 	const char* fog[] = { "app", "--scene", "fog", "--integrator", "bdpt", "--out", "unused.hdr" };
-	EXPECT_THROW(ParseSceneCommandLine(7, fog), std::invalid_argument);
+	EXPECT_FALSE(ParseSceneCommandLine(7, fog, parsed));
 }
 
 TEST(NativeScene, TentFilterHasTheSourceSupportAndWeights) {
@@ -114,15 +120,15 @@ TEST_F(NativeSceneFiles, InvalidNativeDataFailsExplicitly) {
 		case 2: data["shapes"][0]["material"] = "missing"; break;
 		case 3: data["render"]["width"] = 0; break;
 		case 4: data["camera"]["to_world"] = Json::array({ 0 }); break;
-		case 5: data["materials"]["white"]["two_sided"] = false; break;
+		case 5: data["materials"]["white"]["two_sided"] = "false"; break;
 		case 6: data["shapes"][1]["radius"] = -1; break;
 		case 7: data["shapes"][1]["id"] = data["shapes"][0]["id"]; break;
 		}
 		{ std::ofstream file(filename); file << data.dump(); }
-		EXPECT_THROW(LoadNativeScene(filename), std::exception) << variant;
+		EXPECT_EQ(LoadNativeScene(filename), nullptr) << variant;
 	}
 	{ std::ofstream file(filename); file << "{\"name\":\"first\",\"name\":\"second\"}"; }
-	EXPECT_THROW(LoadNativeScene(filename), std::invalid_argument);
+	EXPECT_EQ(LoadNativeScene(filename), nullptr);
 }
 
 TEST_F(NativeSceneFiles, PythonAuthoredAndOriginalCornellRenderWithPtAndBdpt) {
@@ -131,6 +137,7 @@ TEST_F(NativeSceneFiles, PythonAuthoredAndOriginalCornellRenderWithPtAndBdpt) {
 			for (bool bdpt : { false, true }) {
 				SceneRenderOptions options;
 				options.nativeScene = LoadNativeScene(SceneBuilder::Resource(file));
+				ASSERT_NE(options.nativeScene, nullptr);
 				options.width = options.height = 32;
 				options.spp = 8;
 				options.maxDepth = 6;

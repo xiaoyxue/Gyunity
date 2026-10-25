@@ -8,6 +8,7 @@ TEST(VeachBidirScene, OriginalDataRetainsObjNormalPoliciesAndEmitterBsdfs) {
 	std::ifstream input(directory + "scene.json");
 	const auto data = nlohmann::json::parse(input);
 	const auto native = LoadNativeScene(directory + "scene.json");
+	ASSERT_NE(native, nullptr);
 	EXPECT_EQ(native->name, "veach-bidir");
 	EXPECT_EQ(native->width, 1024);
 	EXPECT_EQ(native->height, 1024);

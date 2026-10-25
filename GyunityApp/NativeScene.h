@@ -14,4 +14,5 @@ struct NativeScene {
 	std::shared_ptr<Camera> CreateCamera(const std::shared_ptr<Film>& film) const;
 };
 
+// Failure is logged and returned as nullptr; callers must check before rendering.
 std::shared_ptr<NativeScene> LoadNativeScene(const std::string& filename);

@@ -48,7 +48,7 @@ class RenderSettings(Model):
     seed: Annotated[int, Field(ge=0, le=4294967295)] = 123
     integrator: Literal["path", "bdpt"] = "path"
     accelerator: Literal["bvh", "kd"] = "bvh"
-    filter: Literal["box", "tent"] = "box"
+    filter: Literal["box", "tent", "gaussian"] = "box"
 
     @model_validator(mode="after")
     def dimensions(self) -> RenderSettings:
@@ -92,10 +92,17 @@ class Camera(Model):
         return cls(to_world=matrix, fov_y=fov_y)
 
 
+class Checkerboard(Model):
+    type: Literal["checkerboard"] = "checkerboard"
+    color0: ReflectanceColor
+    color1: ReflectanceColor
+    scale: tuple[Positive, Positive] = (1., 1.)
+
+
 class Diffuse(Model):
     type: Literal["diffuse"] = "diffuse"
-    reflectance: ReflectanceColor
-    two_sided: Literal[True] = True
+    reflectance: ReflectanceColor | Checkerboard
+    two_sided: bool = True
 
 
 class Conductor(Model):
@@ -192,6 +199,29 @@ class Mesh(Shape):
 Geometry = Annotated[Quad | Box | Sphere | Mesh, Field(discriminator="type")]
 
 
+class Environment(Model):
+    type: Literal["environment"] = "environment"
+    id: Annotated[str, Field(min_length=1)] = "environment"
+    file: Annotated[str, Field(min_length=1)]
+    scale: Positive = 1.
+    to_world: Matrix = IDENTITY
+
+    @model_validator(mode="after")
+    def direction_frame(self) -> Environment:
+        asset_path(self.file)
+        validate_matrix(self.to_world)
+        if any(self.to_world[i] != 0 for i in (3, 7, 11)):
+            raise ValueError("Environment transforms contain directions only, not translation")
+        axes = [self.to_world[j:12:4] for j in range(3)]
+        for i, axis in enumerate(axes):
+            if abs(sum(v*v for v in axis) - 1) > 1e-3:
+                raise ValueError("Environment axes must be unit length")
+            for other in axes[:i]:
+                if abs(sum(a*b for a, b in zip(axis, other))) > 1e-3:
+                    raise ValueError("Environment axes must be orthogonal")
+        return self
+
+
 class Scene(Model):
     schema_version: Literal[1] = 1
     name: Annotated[str, Field(min_length=1)]
@@ -199,6 +229,7 @@ class Scene(Model):
     render: RenderSettings = Field(default_factory=RenderSettings)
     materials: dict[str, Material] = Field(default_factory=dict)
     shapes: list[Geometry] = Field(default_factory=list)
+    lights: list[Environment] = Field(default_factory=list, max_length=1, exclude_if=lambda v: not v)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -221,18 +252,25 @@ class Scene(Model):
     def add(self, shape: Geometry) -> None:
         self.shapes.append(shape)
 
+    def add_light(self, light: Environment) -> None:
+        self.lights.append(light)
+
     def validate_assets(self, directory: Path) -> None:
         for shape in self.shapes:
             if isinstance(shape, Mesh):
                 path = directory / asset_path(shape.file)
                 if not path.is_file():
                     raise ValueError(f"{shape.id}: missing mesh {path}")
+        for light in self.lights:
+            path = directory / asset_path(light.file)
+            if not path.is_file():
+                raise ValueError(f"{light.id}: missing environment {path}")
 
     def to_json(self) -> str:
         # Revalidate mutable authoring collections before writing the runtime contract.
         checked = Scene.model_validate_json(self.model_dump_json())
-        if not checked.shapes or not any(s.emission and any(s.emission) for s in checked.shapes):
-            raise ValueError("A renderable version 1 scene needs geometry and a nonzero area emitter")
+        if not checked.shapes or not (checked.lights or any(s.emission and any(s.emission) for s in checked.shapes)):
+            raise ValueError("A renderable scene needs geometry and an area or environment emitter")
         return json.dumps(checked.model_dump(mode="json"), indent=2, sort_keys=True, allow_nan=False) + "\n"
 
     def write_json(self, filename: str | Path) -> None:

@@ -13,6 +13,7 @@ import re
 
 from .model import Camera, Conductor, Dielectric, Diffuse, IDENTITY, Mesh, RenderSettings, Scene, Sphere
 from .transforms import cross, inverse, look_at, multiply, rotation
+from .meshio import encode_obj
 
 _TOKEN = re.compile(r'\s+|#[^\n]*|"(?:\\.|[^"\\])*"|\[|\]|[^\s\[\]"#]+')
 
@@ -208,35 +209,8 @@ class Importer:
         return identifier
 
     def mesh(self, identifier, positions, indices, normals=(), uv=()):
-        if len(positions) % 3 or len(indices) % 3 or not indices:
-            raise ValueError("Triangle meshes need point triples and index triples")
-        vertices = [positions[i:i+3] for i in range(0, len(positions), 3)]
-        if (normals and len(normals) != len(positions)) or (uv and len(uv) != len(vertices) * 2):
-            raise ValueError("Mesh normal/UV counts must match vertex count")
-        if any(i < 0 or i >= len(vertices) for i in indices):
-            raise ValueError("Triangle index is outside the vertex array")
-        lines = ["# Converted from PBRT source data; original source is retained."]
-        lines.extend("v " + " ".join(format(x, ".17g") for x in vertex) for vertex in vertices)
-        for i in range(0, len(normals), 3):
-            n = normals[i:i+3]
-            if sum(x*x for x in n) == 0:
-                raise ValueError("Vertex normal cannot be zero")
-            lines.append("vn " + " ".join(format(-x if self.state.reverse else x, ".17g") for x in n))
-        for i in range(0, len(uv), 2):
-            lines.append("vt " + " ".join(format(x, ".17g") for x in uv[i:i+2]))
-        for i in range(0, len(indices), 3):
-            face = list(indices[i:i+3])
-            a, b, c = (vertices[index] for index in face)
-            if sum(x*x for x in cross(tuple(y-x for x, y in zip(a, b)), tuple(y-x for x, y in zip(a, c)))) == 0:
-                raise ValueError("Degenerate source triangle")
-            if self.state.reverse:
-                face.reverse()
-            def index(n):
-                n += 1
-                return f"{n}/{n if uv else ''}/{n}" if normals else (f"{n}/{n}" if uv else str(n))
-            lines.append("f " + " ".join(index(n) for n in face))
         relative = f"meshes\\{identifier}.obj"
-        self.meshes[relative] = ("\n".join(lines) + "\n").encode("utf-8")
+        self.meshes[relative] = encode_obj(positions, indices, normals, uv, reverse=self.state.reverse)
         return Mesh(id=identifier, file=relative, material=self.state.material,
                     to_world=self.state.transform, emission=self.state.emission)
 

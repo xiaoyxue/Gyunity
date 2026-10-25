@@ -305,7 +305,9 @@ TEST(FiniteBDPTRender, DirectEmissionIsIndependentOfSampleCount) {
 		const std::string path = std::string(output) + "\\bdpt-emission-" + std::to_string(spp) + ".hdr";
 		film->SetFileName(path);
 		ASSERT_TRUE(film->SaveImage());
-		const auto image = ImageIO::LoadImage(path, 16, 16);
+		std::vector<Vec3> image;
+		int width = 0, height = 0;
+		ASSERT_TRUE(ImageIO::LoadImage(path, image, width, height));
 		for (const auto& pixel : image) {
 			EXPECT_NEAR(pixel.x, 3, 1e-5f);
 			EXPECT_NEAR(pixel.y, 3, 1e-5f);
@@ -329,7 +331,9 @@ TEST(FiniteBDPTRender, TinyCornellBoxRunsBothSubpathsAndConnections) {
 	const std::string path = std::string(output) + "\\bdpt-cornell.hdr";
 	film->SetFileName(path);
 	ASSERT_TRUE(film->SaveImage());
-	const auto image = ImageIO::LoadImage(path, 16, 16);
+	std::vector<Vec3> image;
+	int width = 0, height = 0;
+	ASSERT_TRUE(ImageIO::LoadImage(path, image, width, height));
 	double sum = 0;
 	for (const auto& pixel : image) {
 		ASSERT_TRUE(std::isfinite(pixel.x) && std::isfinite(pixel.y) && std::isfinite(pixel.z));
