@@ -137,6 +137,18 @@ bool Enabled(const PathContext& path, const Strategy& strategy) {
 
 bool Density(const Scene& scene, const PathContext& path, int i, bool forward, real* pdf) {
 	const int n = VertexCount(path), s = path.selected.s;
+	// A reverse event is unchanged only when its source AND sampled successor
+	// remain in the selected prefix. Its cached PDF retains the actual offset-ray
+	// directions; reconstructing them from hit positions changes the event.
+	if (!forward && i < s - 2) {
+		*pdf = path.light[i].mPdfPrev;
+		return true;
+	}
+	const int eyeIndex = n - 1 - i;
+	if (forward && eyeIndex < path.selected.t - 2) {
+		*pdf = path.camera[eyeIndex].mPdfPrev;
+		return true;
+	}
 	if (path.selected.technique == Technique::Merging) {
 		const int j = s - 1;
 		if (forward && i <= j) { *pdf = path.light[i].mPdfFwd; return true; }

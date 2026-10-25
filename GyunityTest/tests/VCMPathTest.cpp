@@ -10,9 +10,12 @@
 #include "material/Glass.h"
 #include "material/Mirror.h"
 #include "texture/ConstantTexture.h"
+#include "visual/Rng.h"
+#include <array>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <sstream>
 
 using namespace Gyunity;
 
@@ -104,6 +107,14 @@ double OriginPdf(const Scene& scene, const PathVertex& origin, const PathVertex&
 	return position * selection;
 }
 
+// Independently re-evaluate an unchanged reverse event from its ORIGINAL
+// sampled directions, not the cached mPdfPrev or a reconstructed polyline.
+double ReverseEventPdf(const std::vector<PathVertex>& path, int i) {
+	const auto& source = path[i + 1];
+	return source.mIsect.mBsdf->Pdf(-path[i + 2].mIsect.mOutDir, source.mIsect.mOutDir) *
+		Jacobian(source, path[i]);
+}
+
 // Report input extraction is separate from the production evaluator. Two
 // geometric chains supply conversions; ONLY the merge scattering comes from x.
 Edges ReportEdges(const Scene& scene, const Vcm::PathContext& path) {
@@ -128,6 +139,7 @@ Edges ReportEdges(const Scene& scene, const Vcm::PathContext& path) {
 	e.r[n - 1] = path.camera[0].mPdfFwd;
 	for (int i = 1; i < n; ++i) {
 		if (i < path.selected.s) e.f[i] = path.light[i].mPdfFwd;
+		else if (n - 1 - i + 2 < path.selected.t) e.f[i] = ReverseEventPdf(path.camera, n - 1 - i);
 		else if (merge && i == path.selected.s) {
 			const auto& x = path.camera[path.selected.t - 1];
 			e.f[i] = x.mIsect.mBsdf->Pdf(path.light[path.selected.s - 1].mIsect.mOutDir, x.mIsect.mOutDir) * e.gf[i];
@@ -137,6 +149,7 @@ Edges ReportEdges(const Scene& scene, const Vcm::PathContext& path) {
 	const int eyeStart = path.selected.s - (merge ? 1 : 0);
 	for (int i = 0; i + 1 < n; ++i) {
 		if (i >= eyeStart) e.r[i] = path.camera[n - 1 - i].mPdfFwd;
+		else if (i + 2 < path.selected.s) e.r[i] = ReverseEventPdf(path.light, i);
 		else if (merge && i == eyeStart - 1) {
 			const auto& x = path.camera[path.selected.t - 1];
 			e.r[i] = x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, path.light[path.selected.s - 1].mIsect.mOutDir) * e.gr[i];
@@ -226,7 +239,10 @@ void SamePaths(const std::vector<PathVertex>& a, const std::vector<PathVertex>& 
 		EXPECT_EQ(a[i].mIsect.mOutDir, b[i].mIsect.mOutDir);
 		EXPECT_EQ(a[i].mIsect.mNormal, b[i].mIsect.mNormal);
 		EXPECT_EQ(a[i].mIsect.mGeometryNormal, b[i].mIsect.mGeometryNormal);
+		EXPECT_EQ(a[i].mIsect.mPointError, b[i].mIsect.mPointError);
 		EXPECT_EQ(a[i].mIsect.mBsdf, b[i].mIsect.mBsdf);
+		EXPECT_EQ(a[i].mType, b[i].mType);
+		EXPECT_EQ(a[i].mDirection, b[i].mDirection);
 		EXPECT_EQ(a[i].mThroughput, b[i].mThroughput);
 		EXPECT_EQ(a[i].mLight, b[i].mLight);
 		EXPECT_EQ(a[i].mCamera, b[i].mCamera);
@@ -241,22 +257,31 @@ void SamePaths(const std::vector<PathVertex>& a, const std::vector<PathVertex>& 
 	}
 }
 
-std::ofstream& Report() {
+std::ofstream* Report() {
 	static std::ofstream stream;
 	static bool initialized = false;
 	if (!initialized) {
 		initialized = true;
 		if (const char* output = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY")) {
+			if (!*output) {
+				ADD_FAILURE() << "Requested VCM CSV report directory is empty (GYUNITY_TEST_OUTPUT_DIRECTORY).";
+				return nullptr;
+			}
 #ifdef _DEBUG
-			stream.open(std::string(output) + "\\vcm-weights-debug.csv");
+			const std::string filename = std::string(output) + "\\vcm-weights-debug.csv";
 #else
-			stream.open(std::string(output) + "\\vcm-weights-release.csv");
+			const std::string filename = std::string(output) + "\\vcm-weights-release.csv";
 #endif
+			stream.open(filename);
+			if (!stream.is_open()) {
+				ADD_FAILURE() << "Cannot open requested VCM CSV report: " << filename;
+				return nullptr;
+			}
 			stream << "case,selected_kind,selected_s,selected_t,mode,radius,N_L,kind,s,t,feasible,production,report,direct,abs_report,abs_direct,log_pdf,direct_log_pdf\n";
 			stream << std::setprecision(17);
 		}
 	}
-	return stream;
+	return stream.is_open() ? &stream : nullptr;
 }
 
 void Close(double actual, double expected) {
@@ -277,6 +302,7 @@ void Compare(const std::string& name, const Scene& scene, const Vcm::PathContext
 	const bool vm = path.mode != Mode::ConnectionOnly;
 	const double area = Pi * path.radius * path.radius;
 	const auto expected = VcmReference::DirectWeights(direct, area, double(path.lightPathCount), vc, vm);
+	std::ofstream* reportFile = Report();
 	double sum = 0;
 	size_t index = 0;
 	for (Technique kind : { Technique::Connection, Technique::Merging }) {
@@ -303,14 +329,21 @@ void Compare(const std::string& name, const Scene& scene, const Vcm::PathContext
 			Close(weight, expected[index]);
 			Close(weight, oracle);
 			sum += weight;
-			Report() << name << ',' << int(path.selected.technique) << ',' << path.selected.s << ',' << path.selected.t <<
-				',' << int(path.mode) << ',' << path.radius << ',' << path.lightPathCount << ',' << int(kind) <<
-				',' << s << ',' << strategy.t << ',' << pdf.feasible << ',' << weight << ',' << oracle << ',' <<
-				expected[index] << ',' << std::abs(weight - oracle) << ',' << std::abs(weight - expected[index]) << ',';
-			if (pdf.feasible) Report() << pdf.logPdf << ',' << expectedLog;
-			else Report() << ',';
-			Report() << '\n';
+			if (reportFile) {
+				*reportFile << name << ',' << int(path.selected.technique) << ',' << path.selected.s << ',' << path.selected.t <<
+					',' << int(path.mode) << ',' << path.radius << ',' << path.lightPathCount << ',' << int(kind) <<
+					',' << s << ',' << strategy.t << ',' << pdf.feasible << ',' << weight << ',' << oracle << ',' <<
+					expected[index] << ',' << std::abs(weight - oracle) << ',' << std::abs(weight - expected[index]) << ',';
+				if (pdf.feasible) *reportFile << pdf.logPdf << ',' << expectedLog;
+				else *reportFile << ',';
+				*reportFile << '\n';
+			}
 		}
+	}
+	if (reportFile) {
+		reportFile->flush();
+		EXPECT_TRUE(reportFile->good()) << "Cannot write requested VCM CSV report under "
+			<< std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY");
 	}
 	EXPECT_NEAR(sum, 1, 1e-6);
 	SamePaths(path.light, beforeLight);
@@ -398,6 +431,152 @@ TEST(VCMPath, CameraHitSurfaceEmitterUsesItsLightEndpointMeasure) {
 		Vcm::PathContext(light, eye, { Technique::Connection, 0, 3 }, 0.2, 16), fixture.direct);
 }
 
+TEST(VCMPath, GeneratedContinuousPathsMatchConnectionWeights) {
+	class Samples : public StateSequence {
+	public:
+		explicit Samples(uint64 seed) : rng(seed) {}
+		real Sample() override { ++mCursor; return rng.UniformFloat(); }
+	private:
+		Pcg32 rng;
+	};
+	Scene scene{};
+	auto material = std::make_shared<DiffuseMaterial>(std::make_shared<ConstantTexture<Vec3>>(Vec3(0.8f)));
+	for (int axis = 0; axis < 3; ++axis) {
+		for (int sign : { -1, 1 }) {
+			Vec3 center(0), u(0), v(0), normal(0);
+			center[axis] = real(2 * sign);
+			normal[axis] = real(-sign);
+			u[(axis + 1) % 3] = 2;
+			v[(axis + 2) % 3] = 2;
+			for (int triangle = 0; triangle < 2; ++triangle) {
+				auto shape = std::make_shared<Triangle>(Transform(), Transform(), center - u - v,
+					triangle == 0 ? center + u - v : center + u + v,
+					triangle == 0 ? center + u + v : center - u + v, normal);
+				std::shared_ptr<AreaLight> emitter;
+				if (axis == 2 && sign == 1) {
+					emitter = std::make_shared<AreaLight>(shape, Vec3(2));
+					scene.AddLight(emitter);
+				}
+				scene.AddPrimitive(std::make_shared<Primitive>(shape, material, emitter));
+			}
+		}
+	}
+	scene.SetAccelerator(std::make_shared<BruteForce>(scene.GetPrimitives()));
+	scene.Initialize();
+	PinHoleCamera camera(std::make_shared<Film>(4, 4), Vec3(0), Vec3(0, 0, 1), Vec3(0, 1, 0), 120, 1);
+	constexpr int pairs = 16, maxDepth = 5;
+	std::array<int, 4> families{}; // emitter hit, light origin, camera splat, interior connection
+	std::array<int, maxDepth + 1> depths{};
+	std::array<bool, 4> checkedSuffix{};
+	int candidates = 0, positive = 0, offsetVertices = 0, reconstructedDirectionsDiffer = 0;
+	double maxBdptDifference = 0, maxDirectionDifference = 0;
+	double maxReverseOriginalDifference = 0, maxReverseGeometricDifference = 0;
+	double maxReverseOriginalRelative = 0, maxReverseGeometricRelative = 0;
+	for (int sample = 0; sample < pairs; ++sample) {
+		SCOPED_TRACE(sample);
+		MemoryPool lightArena, eyeArena;
+		Samples lightSamples(0x1234u + sample), eyeSamples(0x5678u + sample);
+		std::vector<PathVertex> light, eye;
+		const Ray ray = camera.GenerateRay(sample % 4, sample / 4, Vec2(0.37f, 0.61f), 0);
+		ASSERT_EQ(GenerateLightPath(scene, lightSamples, lightArena, maxDepth + 1, light), maxDepth + 1);
+		ASSERT_EQ(GenerateCameraPath(scene, camera, eyeSamples, eyeArena, ray, maxDepth + 2, eye), maxDepth + 2);
+		const auto originalLight = light, originalEye = eye;
+		for (const auto* subpath : { &light, &eye }) {
+			for (size_t i = 1; i < subpath->size(); ++i) {
+				const auto& vertex = (*subpath)[i];
+				if (vertex.mIsect.mPointError.Length2() > 0) ++offsetVertices;
+				const Vec3 reconstructed = ((*subpath)[i - 1].mIsect.mPos - vertex.mIsect.mPos).Norm();
+				const double difference = (reconstructed - vertex.mIsect.mOutDir).Length();
+				if (difference > 0) ++reconstructedDirectionsDiffer;
+				maxDirectionDifference = std::max(maxDirectionDifference, difference);
+			}
+			for (int i = 0; i + 2 < int(subpath->size()); ++i) {
+				const auto& source = (*subpath)[i + 1];
+				const double original = ReverseEventPdf(*subpath, i);
+				const double reconstructed = DirectionPdf(source, &(*subpath)[i + 2], (*subpath)[i]) * Jacobian(source, (*subpath)[i]);
+				const double cached = (*subpath)[i].mPdfPrev;
+				const double difference = std::abs(original - cached);
+				EXPECT_TRUE(difference <= 1e-6 || difference <= 1e-5 * std::abs(cached));
+				maxReverseOriginalDifference = std::max(maxReverseOriginalDifference, difference);
+				maxReverseGeometricDifference = std::max(maxReverseGeometricDifference, std::abs(reconstructed - cached));
+				if (cached > 0) {
+					maxReverseOriginalRelative = std::max(maxReverseOriginalRelative, difference / cached);
+					maxReverseGeometricRelative = std::max(maxReverseGeometricRelative, std::abs(reconstructed - cached) / cached);
+				}
+			}
+		}
+		for (int s = 0; s <= int(light.size()); ++s) {
+			for (int t = 1; t <= int(eye.size()); ++t) {
+				const int depth = s + t - 2;
+				if (depth < 0 || depth > maxDepth || (s == 1 && t == 1)) continue;
+				SCOPED_TRACE(testing::Message() << "generated split " << s << "," << t);
+				++candidates;
+				Vec3 primary;
+				Vec2 raster;
+				ASSERT_TRUE(EvaluateConnection(scene, camera, light, eye, s, t, &primary, &raster));
+				if (primary == Vec3(0)) continue;
+				ASSERT_GT(primary.x, 0);
+				const int family = s == 0 ? 0 : s == 1 ? 1 : t == 1 ? 2 : 3;
+				++positive;
+				++families[family];
+				++depths[depth];
+				const Vcm::PathContext path(light, eye, { Technique::Connection, s, t }, 0.2, pairs, Mode::ConnectionOnly);
+				real weight, bdptWeight;
+				ASSERT_TRUE(Vcm::ComputeMisWeight(scene, path, path.selected, &weight));
+				ASSERT_TRUE(MisWeight(scene, light, eye, s, t, &bdptWeight));
+				Close(weight, bdptWeight);
+				maxBdptDifference = std::max(maxBdptDifference, std::abs(double(weight) - bdptWeight));
+				Compare("generated-" + std::to_string(sample), scene, path, ReportEdges(scene, path));
+				if (!checkedSuffix[family] && s < int(light.size()) && t < int(eye.size())) {
+					auto extendedLight = light, extendedEye = eye;
+					for (auto pair : { std::make_pair(&extendedLight, s), std::make_pair(&extendedEye, t) }) {
+						for (size_t i = pair.second; i < pair.first->size(); ++i) {
+							(*pair.first)[i].mType = PathVertexType::Environment;
+							(*pair.first)[i].mPdfFwd = std::numeric_limits<real>::quiet_NaN();
+							(*pair.first)[i].mIsDelta = true;
+						}
+					}
+					real repeated;
+					ASSERT_TRUE(Vcm::ComputeMisWeight(scene,
+						Vcm::PathContext(extendedLight, extendedEye, path.selected, 0.2, pairs, Mode::ConnectionOnly),
+						path.selected, &repeated));
+					EXPECT_EQ(repeated, weight);
+					checkedSuffix[family] = true;
+				}
+			}
+		}
+		SamePaths(light, originalLight);
+		SamePaths(eye, originalEye);
+	}
+	EXPECT_GE(positive, 100);
+	EXPECT_GE(offsetVertices, 100);
+	EXPECT_GE(reconstructedDirectionsDiffer, 100);
+	for (size_t i = 0; i < families.size(); ++i) {
+		EXPECT_GE(families[i], 4) << "Missing meaningful positive endpoint-family coverage: " << i;
+		EXPECT_TRUE(checkedSuffix[i]) << "Missing generated unused-suffix check: " << i;
+		RecordProperty("positive_family_" + std::to_string(i), families[i]);
+	}
+	for (size_t i = 0; i < depths.size(); ++i) {
+		EXPECT_GE(depths[i], 4) << "Missing positive depth coverage: " << i;
+		RecordProperty("positive_depth_" + std::to_string(i), depths[i]);
+	}
+	RecordProperty("generated_pairs", pairs);
+	RecordProperty("candidate_connections", candidates);
+	RecordProperty("positive_connections", positive);
+	RecordProperty("vertices_with_point_error", offsetVertices);
+	RecordProperty("original_directions_differing_from_reconstruction", reconstructedDirectionsDiffer);
+	for (const auto& metric : { std::make_pair("max_bdpt_weight_difference", maxBdptDifference),
+		std::make_pair("max_original_direction_difference", maxDirectionDifference),
+		std::make_pair("max_cached_reverse_vs_original_difference", maxReverseOriginalDifference),
+		std::make_pair("max_cached_reverse_vs_geometric_difference", maxReverseGeometricDifference),
+		std::make_pair("max_cached_reverse_vs_original_relative", maxReverseOriginalRelative),
+		std::make_pair("max_cached_reverse_vs_geometric_relative", maxReverseGeometricRelative) }) {
+		std::ostringstream value;
+		value << std::setprecision(17) << metric.second;
+		RecordProperty(metric.first, value.str());
+	}
+}
+
 TEST(VCMPath, PositiveCountsAndRadiusAreSharedByEveryAlternative) {
 	Fixture fixture(5, false, true);
 	std::vector<PathVertex> light, eye;
@@ -451,7 +630,10 @@ TEST(VCMPath, SeparatedMergeUsesCameraScatteringAndOriginalSideJacobians) {
 				direct.f[j] = y.mPdfFwd;
 				direct.r[j - 1] = x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, y.mIsect.mOutDir) * Jacobian(y, a);
 				direct.f[j + 1] = x.mIsect.mBsdf->Pdf(y.mIsect.mOutDir, x.mIsect.mOutDir) * Jacobian(x, b);
-				if (j >= 2) direct.r[j - 2] = DirectionPdf(a, &y, light[j - 2]) * Jacobian(a, light[j - 2]);
+				if (j >= 2) {
+					direct.r[j - 2] = DirectionPdf(a, &y, light[j - 2]) * Jacobian(a, light[j - 2]);
+					light[j - 2].mPdfPrev = real(direct.r[j - 2]);
+				}
 				const Vcm::PathContext path(light, eye, { Technique::Merging, s, int(eye.size()) }, 0.35, 16);
 				Compare("separated-directional-" + std::to_string(n), fixture.scene, path, direct);
 
@@ -574,7 +756,7 @@ TEST(VCMPath, UnselectedSuffixesNeverAffectValidationOrProbabilities) {
 			Vcm::PathContext(light, eye, { Technique::Connection, 0, 3 }, 0.2, 16), fixture.direct);
 }
 
-TEST(VCMPath, SampledForwardEventsAndTerminalReverseCachesAreNotReconstructed) {
+TEST(VCMPath, SampledForwardEventsArePreservedAndJoinAdjacentReverseCachesIgnored) {
 	Fixture fixture(5);
 	std::vector<PathVertex> light, eye;
 	fixture.Split(3, false, light, eye);
@@ -583,8 +765,8 @@ TEST(VCMPath, SampledForwardEventsAndTerminalReverseCachesAreNotReconstructed) {
 	direct.f[2] = light[2].mPdfFwd;
 	eye[1].mPdfFwd *= 0.6f;
 	direct.r[3] = eye[1].mPdfFwd;
-	for (auto& v : light) v.mPdfPrev = 123;
-	for (auto& v : eye) v.mPdfPrev = 456;
+	for (size_t i = light.size() - 2; i < light.size(); ++i) light[i].mPdfPrev = 123;
+	for (size_t i = eye.size() - 2; i < eye.size(); ++i) eye[i].mPdfPrev = 456;
 	Compare("sampled-events", fixture.scene,
 			Vcm::PathContext(light, eye, { Technique::Connection, 3, 2 }, 0.2, 16), direct);
 }

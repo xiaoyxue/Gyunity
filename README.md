@@ -427,6 +427,11 @@ The evaluator independently enumerates VC at depth `s+t-2` and VM at depth
 `s+t-3`, excluding `t=0` and `(VC,1,1)`. Origin samples are reused, not resampled;
 their stored forward probability already includes light selection exactly once.
 For an emitter hit, the deterministic origin query includes selection once.
+An unchanged reverse density is reused only when its source and sampled successor
+both remain inside the selected prefix. The builder's cached value preserves the
+original offset-ray directions; reconstructing those directions from hit positions
+can change even a continuous-path weight. The two join-adjacent reverse densities
+are still recomputed, never read from unused suffixes or stale terminal caches.
 No roulette is introduced. `ComputePathPdf` returns the raw effective path
 density in logarithmic form (including `A=pi*R^2` for VM, not its sample count).
 `ComputeMisWeight` uses double log-products and common-maximum subtraction to
@@ -477,6 +482,13 @@ noncoincident directional merges, real glossy reflection/transmission, unequal
 light selection, all finite endpoint families, mode/count/radius invariants,
 immutability/errors, and underflowing long products are covered. The positive
 continuous recurrence oracle does not purport to validate singular paths.
+The generated-path integration test additionally traces 16 deterministic light/
+camera pairs through an enclosed diffuse area-lit scene, checks every positive
+VC construction through depth five against BDPT and the independent oracles, and
+requires positive coverage of all four endpoint families. Its XML properties
+record coverage and original-versus-reconstructed direction differences.
+Reporting is optional when the output variable is unset; when configured,
+failure to open or flush the requested CSV fails the test with a diagnostic.
 
 `TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
 width, height, spp, depth and accelerator. It covers all nine original surface
