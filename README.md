@@ -139,6 +139,76 @@ controller must stop dependent phases on non-success and call `Finish(false)`,
 or `Finish(true)` only after the entire render succeeds. No per-vertex telemetry
 or extra success logging is added.
 
+## VCM photon-map preparation (map only)
+`integrator\VCMPhotonMap.h` provides `Vcm::PhotonMap` for issue #128.
+It is **not a VCM renderer or merge-radiance estimator** and has no dependency
+on VCM MIS. `Build(lightPaths, radius)` borrows a
+`const std::vector<std::vector<PathVertex>>&`; complete light paths are stored
+once by the caller. The index stores only radius-relative positions and
+`PhotonRecord { mLightPathIndex, mVertexIndex }` IDs, never copied prefixes,
+BSDF ownership, or mutable photon deposits.
+
+- Keep the paths, their BSDF arenas, and referenced scene objects alive and
+  immutable until every query finishes. Do not resize/move the paths or reset
+  arenas. `Build`, `Clear`, and destruction must not race queries. Returned IDs
+  refer to that generation only.
+- Every valid `Surface` with a non-delta `BSDF::IsDelta()` is indexed, including
+  the first surface and emitting scattering surfaces. Camera/light/environment
+  **endpoint types** are skipped. Sampled and unsampled terminal pure-delta
+  surfaces are excluded. Missing/empty BSDFs, mixed delta-continuous lobes,
+  medium/camera surface metadata, shading-normal transport, inconsistent delta
+  flags, unknown vertex types, invalid position/normal/direction/throughput or
+  surface forward/reverse PDFs fail explicitly. This is not a full path-PDF or
+  scene validator; the paths must come from the checked surface path builders.
+- `Query(position, geometricNormal, output)` returns `bool`, clearing the
+  caller-owned `std::vector<PhotonRecord>` even on failure. Use separate output
+  vectors for concurrent readers; no shared mutable query scratch exists.
+  Raw-bucket identities are sorted/deduplicated **before** filtering. Results
+  have stable `(path, vertex)` order; distinct coincident photons stay distinct.
+- Acceptance is double-precision squared Euclidean distance `<= radius^2` and
+  the dot product of independently normalized, **oriented geometric normals**
+  `>= 0.9`. There is no primitive-ID equality (adjacent coplanar triangles do
+  not acquire seams), visibility ray, geometry term, or BSDF evaluation.
+  Finite-radius neighborhoods remain approximate near boundaries/nearby
+  surfaces; normal compatibility is not a general visibility solution.
+  The future estimator must check camera-surface eligibility separately.
+- The physical radius is never clamped or rescaled. Only the broad phase uses
+  `(position - firstPhotonPosition) / radius`, computed in double. Each indexed
+  component must lie within `[-2^20, 2^20]`; larger extents fail, not silently
+  lose photons. HashGrid receives explicit **broad-phase** radius 2 and cell
+  width 4. Within these bounds float coordinate rounding is at most 1/8;
+  every physical radius-one candidate is therefore inside the expanded box.
+  Monotone backend arithmetic preserves its cell inclusion. Loose query bounds
+  are checked in double before casts, so distant queries return an empty result
+  without unsafe backend indexing. All backend cells are nonnegative and below
+  `2^20`; counts are checked against `INT_MAX` and vector allocation ranges
+  before building.
+- Positions and normals must be finite, with components no larger than
+  `sqrt(DBL_MAX)/4` in magnitude. Geometric-normal squared length and the
+  finite positive radius's square must be normal finite doubles. These checks
+  support the entire finite float position/radius range, including subnormal
+  radii and huge translations where the relative extent permits them. Distance
+  subtraction/squaring uses double, not float. Unsupported numeric ranges fail
+  explicitly; the map does not change the physical kernel to accommodate them.
+- Every build clears the previous points, radii, and buckets first. A failed
+  checked build leaves `IsBuilt()==false`, `RecordCount()==0`, `Radius()==0`
+  and queries failing; a valid empty build succeeds without querying HashGrid.
+  Invalid input logs through `Error(message, false)` and returns false.
+  As elsewhere in the renderer, allocation failures are not converted into
+  status codes.
+
+`RecordCount()` is **not** the attempted light-path count. No photon-count,
+kernel-area, radiance, or MIS normalization is performed here. The shared
+HashGrid change only adds const bucket access and defined uint32-wrap hashing;
+its legacy mutable API, bucket multiplicity, and LT/SPPM behavior are retained.
+
+`VCMPhotonMap.*` compares queries to an independent exhaustive oracle, including
+boundary/nextafter, collisions, rebuild failures, extreme numbers, generated
+path immutability and eight simultaneous readers. `HashGrid.*` checks independent
+uint32 wrapping and legacy raw-bucket multiplicity. Run these with
+`GyunityTest.exe --gtest_filter=VCMPhotonMap.*:HashGrid.*` from `GyunityApp`;
+the regular framework also contains the small SPPM/scene render smoke tests.
+
 ## Scene builder
 `GyunityApp\scenes\SceneBuilder.h` provides material factories and ordered helpers for
 triangles, quads, spheres, meshes, area lights and environment lights. It does not

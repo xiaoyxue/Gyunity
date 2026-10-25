@@ -22,6 +22,12 @@
     <ClCompile Include="tests\VCMPathTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\HashGridTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VCMPhotonMapTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\BDPTConnectionTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>

@@ -191,6 +191,7 @@
     <ClCompile Include="src\integrator\Integrator.cpp" />
     <ClCompile Include="src\integrator\BDPTPath.cpp" />
     <ClCompile Include="src\integrator\VCMPath.cpp" />
+    <ClCompile Include="src\integrator\VCMPhotonMap.cpp" />
     <ClCompile Include="src\integrator\BDPT.cpp" />
     <ClCompile Include="src\visual\Intersection.cpp" />
     <ClCompile Include="src\accelerator\KdTreeAccel.cpp" />
@@ -231,6 +232,7 @@
     <ClInclude Include="src\integrator\PathVertex.h" />
     <ClInclude Include="src\integrator\BDPTPath.h" />
     <ClInclude Include="src\integrator\VCMPath.h" />
+    <ClInclude Include="src\integrator\VCMPhotonMap.h" />
     <ClInclude Include="src\integrator\BDPT.h" />
     <ClInclude Include="src\math\AABB.h" />
     <ClInclude Include="src\accelerator\Accelerator.h" />
