@@ -139,7 +139,10 @@ public:
 	~BSDF(){}
 	void Add(BxDF* bxdf);
 	real Pdf(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
-	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0), ScatterEventType flags = BSDF_ALL) const;
+	// Optional reverse mass of the selected delta component (including lobe
+	// selection). -1 means unavailable; ordinary Pdf() remains unchanged.
+	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0),
+		ScatterEventType flags = BSDF_ALL, real* reverseDeltaMass = nullptr) const;
 	Vec3 Evaluate(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
 	bool IsDelta() const { 
 		return mIsDelta;
@@ -157,6 +160,8 @@ public:
 	virtual Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand = Vec3(0, 0, 0)) const = 0;
 	virtual Vec3 Evaluate(const Vec3& wo, const Vec3& wi) const = 0;
 	virtual bool IsDelta() const { return mScatterEventType & BSDF_SPECULAR; }
+	// Only queried for a successful sampled delta event, not arbitrary directions.
+	virtual real ReverseDeltaMass(const Vec3& wo, const Vec3& wi) const { return -1; }
 	virtual bool MatchesTypes(ScatterEventType flags) const { return (mScatterEventType & flags) == mScatterEventType; }
 	const ScatterEventType mScatterEventType;
 };
@@ -200,6 +205,8 @@ public:
 		return 0.0;
 	}
 
+	real ReverseDeltaMass(const Vec3&, const Vec3&) const override { return 1; }
+
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 
 	{
 		*wi = Vec3(-wo.x, -wo.y, wo.z);
@@ -237,6 +244,11 @@ public:
 	real Pdf(const Vec3 &wo, const Vec3 &wi) const override 
 	{
 		return 0.0;
+	}
+
+	real ReverseDeltaMass(const Vec3& wo, const Vec3& wi) const override {
+		const real reflection = FrDielectric(BSDFCoordinate::CosTheta(wi), mNc, mNt);
+		return wo.z * wi.z > 0 ? reflection : 1 - reflection;
 	}
 
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 

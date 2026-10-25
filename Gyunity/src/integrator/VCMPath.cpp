@@ -1,5 +1,7 @@
 #include "VCMPath.h"
 #include "camera/PinholeCamera.h"
+#include "light/EnvLight.h"
+#include "light/PointLight.h"
 #include <cmath>
 #include <limits>
 
@@ -44,45 +46,72 @@ const PathVertex& Vertex(const PathContext& path, int i, bool lightSide) {
 		path.light[i] : path.camera[VertexCount(path) - 1 - i];
 }
 
-bool ValidateVertex(const PathVertex& vertex, bool lightOrigin, bool cameraOrigin) {
+bool Delta(const PathVertex& vertex) {
+	return vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf &&
+		vertex.mIsect.mBsdf->IsDelta();
+}
+
+bool Continuous(const PathVertex& vertex) {
+	return vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf && !Delta(vertex);
+}
+
+bool ValidateVertex(const PathVertex& vertex, bool lightOrigin, bool cameraOrigin, bool continued) {
 	if (!ValidPdf(vertex.mPdfFwd) || !ValidPdf(vertex.mPdfPrev) ||
 		!ValidPdf(vertex.mPdfPos) || !ValidPdf(vertex.mPdfDir) ||
 		!ValidPdf(vertex.mLightSelectionPdf)) return Fail("VCM path contains an invalid density.");
 	if (!Finite(vertex.mIsect.mPos)) return Fail("VCM path contains a nonfinite position.");
-	if (vertex.mType == PathVertexType::Environment ||
-		(vertex.mLight && !vertex.mLight->IsAreaLight())) {
-		return Fail("VCM continuous MIS does not yet support point or environment origins.");
-	}
 	if (cameraOrigin) {
 		if (vertex.mType != PathVertexType::Camera ||
-			!dynamic_cast<const PinHoleCamera*>(vertex.mCamera)) {
-			return Fail("VCM continuous MIS requires a pinhole camera origin.");
+			!dynamic_cast<const PinHoleCamera*>(vertex.mCamera) || vertex.mLight) {
+			return Fail("VCM requires a pinhole camera origin.");
 		}
 	}
 	else {
-		if (!Unit(vertex.mIsect.mGeometryNormal) || !Unit(vertex.mIsect.mNormal) ||
-			(vertex.mIsect.mNormal - vertex.mIsect.mGeometryNormal).Length2() > 1e-8f) {
-			return Fail("VCM continuous MIS requires unit geometric-normal shading.");
-		}
 		if (lightOrigin) {
-			if ((vertex.mType != PathVertexType::Light && vertex.mType != PathVertexType::Surface) ||
-				!vertex.mLight) return Fail("VCM continuous MIS requires a finite area-light origin.");
+			if (!vertex.mLight) return Fail("VCM light origin has no emitter.");
+			if (vertex.mLight->IsEnvironmentLight()) {
+				const auto* environment = dynamic_cast<const EnvironmentLight*>(vertex.mLight);
+				if (!environment || vertex.mType != PathVertexType::Environment ||
+					!Unit(vertex.mDirection) || environment->GetRotation() != 0) {
+					return Fail("VCM requires a zero-rotation environment with unit map direction.");
+				}
+			}
+			else if (vertex.mLight->IsDeltaLight()) {
+				if (vertex.mType != PathVertexType::Light || !dynamic_cast<const PointLight*>(vertex.mLight)) {
+					return Fail("VCM discrete origins must be point-light records.");
+				}
+			}
+			else if (!vertex.mLight->IsAreaLight() ||
+				(vertex.mType != PathVertexType::Light && vertex.mType != PathVertexType::Surface)) {
+				return Fail("VCM light origin has mismatched or unsupported endpoint metadata.");
+			}
 		}
 		else if (vertex.mType != PathVertexType::Surface || !vertex.mIsect.mBsdf) {
-			return Fail("VCM continuous MIS requires a BSDF at each scattering vertex.");
+			return Fail("VCM requires a BSDF at each interior surface.");
+		}
+		if ((!lightOrigin || vertex.mLight->IsAreaLight()) &&
+			(!Unit(vertex.mIsect.mGeometryNormal) || !Unit(vertex.mIsect.mNormal) ||
+			(vertex.mIsect.mNormal - vertex.mIsect.mGeometryNormal).Length2() > 1e-8f)) {
+			return Fail("VCM requires unit geometric-normal shading.");
 		}
 	}
-	if (vertex.mIsDelta || (vertex.mIsect.mBsdf &&
-		(vertex.mIsect.mBsdf->IsDelta() || vertex.mIsect.mBsdf->HasMixedDeltaLobes()))) {
-		return Fail("VCM continuous MIS does not yet support specular or mixed-delta paths.");
+	// Endpoints emit/measure rather than scatter. A terminal continuation is
+	// likewise not part of the selected event, even if the builder sampled one.
+	if (!lightOrigin && !cameraOrigin) {
+		if (vertex.mIsect.mBsdf->HasMixedDeltaLobes()) return Fail("VCM does not support mixed delta/continuous lobes.");
+		if (continued && (vertex.mIsDelta != Delta(vertex) ||
+			(Delta(vertex) && (!ValidPdf(vertex.mDeltaPdf) || vertex.mDeltaPdf <= 0 || vertex.mDeltaPdf > 1 ||
+				!ValidPdf(vertex.mDeltaReversePdf) || vertex.mDeltaReversePdf > 1 || !Unit(vertex.mIsect.mOutDir))))) {
+			return Fail("VCM requires the actual forward/reverse masses of each selected delta event.");
+		}
 	}
 	if (vertex.mIsect.mMediumInterface.inside || vertex.mIsect.mMediumInterface.outside) {
-		return Fail("VCM continuous MIS does not support participating media.");
+		return Fail("VCM does not support participating media.");
 	}
 	return true;
 }
 
-bool Validate(const PathContext& path) {
+bool Validate(const Scene& scene, const PathContext& path) {
 	const Strategy& selected = path.selected;
 	if (!ValidTechnique(selected.technique) ||
 		(path.mode != Mode::Combined && path.mode != Mode::ConnectionOnly && path.mode != Mode::MergingOnly)) {
@@ -100,10 +129,50 @@ bool Validate(const PathContext& path) {
 	if (!std::isfinite(path.radius) || path.radius <= 0 || !std::isfinite(area) || area <= 0 ||
 		path.lightPathCount <= 0) return Fail("VCM requires a finite positive disk area and attempted light-path count.");
 	for (int i = 0; i < selected.s; ++i) {
-		if (!ValidateVertex(path.light[i], i == 0, false)) return false;
+		if (!ValidateVertex(path.light[i], i == 0, false, i + 1 < selected.s)) return false;
 	}
 	for (int i = 0; i < selected.t; ++i) {
-		if (!ValidateVertex(path.camera[i], selected.s == 0 && i == selected.t - 1, i == 0)) return false;
+		if (!ValidateVertex(path.camera[i], selected.s == 0 && i == selected.t - 1, i == 0,
+			i + 1 < selected.t)) return false;
+	}
+	const PathVertex& origin = Vertex(path, 0, true);
+	if (!origin.mLight) return Fail("VCM path has no light origin.");
+	real selection = 0;
+	bool registered = false;
+	int environments = 0;
+	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
+		if (scene.GetLights()[i]->IsEnvironmentLight()) {
+			const auto* environment = dynamic_cast<const EnvironmentLight*>(scene.GetLights()[i].get());
+			if (!environment || environment->GetRotation() != 0 || ++environments > 1) {
+				return Fail("VCM supports at most one zero-rotation environment.");
+			}
+		}
+		if (scene.GetLights()[i].get() == origin.mLight) {
+			registered = true;
+			real slot;
+			if (!scene.LightSelectionPdf(i, &slot)) return false;
+			selection += slot;
+		}
+	}
+	if (!registered || !ValidPdf(selection)) return Fail("VCM origin requires a registered light-selection probability.");
+	if (!origin.mLight->IsAreaLight()) {
+		Vec3 emitted;
+		if (!Bidirectional::Direction(origin, Vertex(path, 1, true), &emitted)) return false;
+		real position, direction;
+		if (!origin.mLight->PdfLight(origin.mIsect, emitted, &position, &direction)) return false;
+		if (!ValidPdf(position) || position <= 0 || !ValidPdf(direction) ||
+			(origin.mType == PathVertexType::Environment &&
+				(environments != 1 || scene.GetEnvironmentLight() != origin.mLight))) {
+			return Fail("VCM singular origin has invalid position, direction or scene metadata.");
+		}
+		if (selected.s > 0) {
+			auto same = [](real a, real b) { return a > 0 && std::abs(double(a) - b) <= 1e-4 * std::abs(double(b)); };
+			if (!same(origin.mPdfPos, position) || !same(origin.mPdfDir, direction) ||
+				!same(origin.mLightSelectionPdf, selection) ||
+				!same(origin.mPdfFwd, selection * (origin.mType == PathVertexType::Environment ? direction : position))) {
+				return Fail("VCM sampled singular-origin densities do not match their endpoint metadata.");
+			}
+		}
 	}
 	Vec3 direction;
 	for (int i = 1; i < selected.s; ++i) {
@@ -131,12 +200,41 @@ bool Validate(const PathContext& path) {
 
 bool Enabled(const PathContext& path, const Strategy& strategy) {
 	if (strategy.technique == Technique::Merging) return path.mode != Mode::ConnectionOnly;
-	// With no singular vertices, the only LS*E path is the depth-zero emitter hit.
-	return path.mode != Mode::MergingOnly || (VertexCount(path) == 2 && strategy.s == 0);
+	if (path.mode != Mode::MergingOnly) return true;
+	if (strategy.s != 0) return false;
+	for (int i = 1; i + 1 < VertexCount(path); ++i) {
+		if (!Delta(Vertex(path, i, true))) return false;
+	}
+	return true; // Camera-visible LS*E emission, including the empty S* prefix.
+}
+
+bool Feasible(const PathContext& path, const Strategy& strategy) {
+	const int n = VertexCount(path), s = strategy.s;
+	if (strategy.technique == Technique::Merging) {
+		return s >= 2 && s < n && Continuous(Vertex(path, s - 1, true)) &&
+			Continuous(Vertex(path, s - 1, false));
+	}
+	if (strategy.t == 0 || (s == 1 && strategy.t == 1)) return false;
+	if (s == 0) return !Vertex(path, 0, true).mLight->IsDeltaLight();
+	return (s == 1 || Continuous(Vertex(path, s - 1, true))) &&
+		(s == n - 1 || Continuous(Vertex(path, s, false)));
 }
 
 bool Density(const Scene& scene, const PathContext& path, int i, bool forward, real* pdf) {
 	const int n = VertexCount(path), s = path.selected.s;
+	const int source = i + (forward ? -1 : 1);
+	if (source > 0 && source < n - 1 && Delta(Vertex(path, source, true))) {
+		const bool lightOwned = source < s;
+		const int index = lightOwned ? source : n - 1 - source;
+		if (index + 1 >= (lightOwned ? s : path.selected.t)) {
+			return Fail("VCM cannot invent a delta event across an unsampled connection.");
+		}
+		const PathVertex& vertex = lightOwned ? path.light[index] : path.camera[index];
+		const real mass = forward == lightOwned ? vertex.mDeltaPdf : vertex.mDeltaReversePdf;
+		// Report (52): remove only the shared singular distribution, not its
+		// discrete component mass or geometric conversion. Never remap Pdf()==0.
+		return ConvertDensity(mass, vertex, Vertex(path, i, lightOwned), pdf);
+	}
 	// A reverse event is unchanged only when its source AND sampled successor
 	// remain in the selected prefix. Its cached PDF retains the actual offset-ray
 	// directions; reconstructing them from hit positions changes the event.
@@ -172,7 +270,6 @@ bool Density(const Scene& scene, const PathContext& path, int i, bool forward, r
 	if (forward && i == 0) {
 		return Bidirectional::LightOriginPdf(scene, Vertex(path, 0, lightSide), Vertex(path, 1, lightSide), pdf);
 	}
-	const int source = i + (forward ? -1 : 1);
 	const int previous = i + (forward ? -2 : 2);
 	return Bidirectional::PdfToward(Vertex(path, source, lightSide),
 		previous >= 0 && previous < n ? &Vertex(path, previous, lightSide) : nullptr,
@@ -185,14 +282,12 @@ bool ComputePathPdf(const Scene& scene, const PathContext& path,
 	const Strategy& strategy, StrategyPdf* result) {
 	if (!result) return Fail("VCM PDF output is null.");
 	*result = {};
-	if (!Validate(path)) return false;
+	if (!Validate(scene, path)) return false;
 	if (!ValidTechnique(strategy.technique) || strategy.s < 0 || strategy.t < 0 ||
 		int64(strategy.s) + strategy.t - (strategy.technique == Technique::Merging ? 1 : 0) != VertexCount(path)) {
 		return Fail("VCM alternative must have valid counts at the selected physical depth.");
 	}
-	if (!Enabled(path, strategy) ||
-		(strategy.technique == Technique::Connection && (strategy.t == 0 || (strategy.s == 1 && strategy.t == 1))) ||
-		(strategy.technique == Technique::Merging && (strategy.s < 2 || strategy.t < 2))) return true;
+	if (!Enabled(path, strategy) || !Feasible(path, strategy)) return true;
 
 	double logPdf = 0;
 	bool positive = true;
