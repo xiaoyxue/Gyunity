@@ -137,6 +137,88 @@ TEST(BDPTPath, DensityRejectsCoincidentAndInvalidInputs) {
 	to.mIsect.mPos = Vec3(0, 0, 1);
 	EXPECT_FALSE(ConvertDensity(std::numeric_limits<real>::quiet_NaN(), from, to, &pdf));
 	EXPECT_EQ(pdf, 0);
+	for (real invalid : {-1.f, std::numeric_limits<real>::infinity()}) {
+		EXPECT_FALSE(ConvertDensity(invalid, from, to, &pdf));
+		EXPECT_EQ(pdf, 0);
+	}
+}
+
+TEST(BDPTPath, RoundedAdjacentEndpointsHaveZeroContinuousAreaDensity) {
+	PathVertex from, to;
+	from.mIsect.mPos = Vec3(-1.3118889331817627f, 1.7996618747711182f, 0.8655623197555542f);
+	to.mIsect.mPos = Vec3(-1.3118879795074463f, 1.7996618747711182f, 0.8655621409416199f);
+	to.mIsect.mGeometryNormal = Vec3(0, -1, 0);
+	const Vec3 sampledDirection(0.80235755443573f, 0.4362890124320984f, 0.40727680921554565f);
+	EXPECT_GT((to.mIsect.mPos - from.mIsect.mPos).Length2(), 0);
+	EXPECT_GT(std::abs(Dot(to.mIsect.mGeometryNormal, sampledDirection)), 0.4f);
+	real pdf = 1;
+	ASSERT_TRUE(ConvertDensity(0.20677432417869568f, from, to, &pdf));
+	EXPECT_EQ(pdf, 0);
+}
+
+TEST(BDPTPath, OneUlpNormalDisplacementRetainsPositiveAreaSupport) {
+	PathVertex from, to;
+	from.mIsect.mPos = Vec3(1, 1, 1);
+	to.mIsect.mPos = Vec3(1.000001f, 1, 1);
+	to.mIsect.mGeometryNormal = Vec3(0, 1, 0);
+	real pdf;
+	ASSERT_TRUE(ConvertDensity(0.25f, from, to, &pdf));
+	EXPECT_EQ(pdf, 0);
+	for (real y : {NextFloatUp(1.f), NextFloatDown(1.f)}) {
+		to.mIsect.mPos.y = y;
+		ASSERT_TRUE(ConvertDensity(0.25f, from, to, &pdf));
+		EXPECT_TRUE(std::isfinite(pdf));
+		EXPECT_GT(pdf, 0);
+	}
+}
+
+TEST(BDPTPath, VerySmallPositiveAreaDensityStillExtendsThePath) {
+	auto scene = std::make_shared<Scene>();
+	scene->AddPrimitive(std::make_shared<Primitive>(Plane(0, 1), Diffuse()));
+	Initialize(scene);
+	const Ray ray(Vec3(0, 0, 1e10f), Vec3(0, 0, -1));
+	auto camera = std::make_shared<PinHoleCamera>(std::make_shared<Film>(16, 16),
+		ray.mOrig, Vec3(0), Vec3(0, 1, 0), 45, 1);
+	PathSamples samples;
+	MemoryPool arena;
+	std::vector<PathVertex> path;
+	ASSERT_EQ(GenerateCameraPath(*scene, *camera, samples, arena, ray, 2, path), 2);
+	ASSERT_EQ(path.size(), 2u);
+	EXPECT_TRUE(std::isfinite(path[1].mPdfFwd));
+	EXPECT_GT(path[1].mPdfFwd, 0);
+	EXPECT_LT(path[1].mPdfFwd, 1e-18f);
+}
+
+TEST(BDPTPath, ZeroAreaDensityTerminatesBeforeAppendingAnInvalidVertex) {
+	// CC0 Veach bidir capture: a short hit whose barycentric position rounds onto the ray-origin plane.
+	auto triangle = std::make_shared<Triangle>(Transform(), Transform(),
+		Vec3(-3.7068750858306885f, 1.7996619939804077f, 1.3785699605941772f),
+		Vec3(-1.0668749809265137f, 1.7996619939804077f, -3.7356009483337402f),
+		Vec3(-1.0668749809265137f, 1.7996619939804077f, 1.3785699605941772f),
+		Vec3(0, -1, 0));
+	const Ray ray(Vec3(-1.3118882179260254f, 1.7996618747711182f, 0.8655620813369751f),
+		Vec3(0.80235755443573f, 0.4362890124320984f, 0.40727680921554565f));
+	Intersection hit;
+	real distance = INF;
+	ASSERT_TRUE(triangle->Intersect(ray, &hit, &distance));
+	triangle->QueryIntersectionInfo(ray, &hit);
+	ASSERT_GT(distance, 0);
+	ASSERT_EQ(hit.mPos.y, ray.mOrig.y);
+	ASSERT_GT(std::abs(Dot(hit.mGeometryNormal, ray.mDir)), 0.4f);
+
+	auto scene = std::make_shared<Scene>();
+	scene->AddPrimitive(std::make_shared<Primitive>(triangle, Diffuse()));
+	Initialize(scene);
+	auto camera = std::make_shared<PinHoleCamera>(std::make_shared<Film>(16, 16),
+		ray.mOrig, ray.mOrig + ray.mDir, Vec3(0, 1, 0), 45, 1);
+	PathSamples samples;
+	MemoryPool arena;
+	std::vector<PathVertex> path;
+	EXPECT_EQ(GenerateCameraPath(*scene, *camera, samples, arena, ray, 2, path), 1);
+	ASSERT_EQ(path.size(), 1u);
+	EXPECT_EQ(path.front().mType, PathVertexType::Camera);
+	EXPECT_GT(path.front().mPdfFwd, 0);
+	EXPECT_EQ(samples.GetCursor(), 0);
 }
 
 TEST(BDPTPath, CameraEndpointAndVertexBudget) {
