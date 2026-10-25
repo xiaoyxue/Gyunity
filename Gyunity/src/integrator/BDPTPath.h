@@ -11,6 +11,7 @@ bool ConvertDensity(real pdf, const PathVertex& vertex, const PathVertex& next, 
 // Internal connection/probability ingredients shared by bidirectional estimators.
 namespace Bidirectional {
 
+bool ValidateScene(const Scene& scene);
 bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir);
 bool Connectible(const PathVertex& vertex);
 bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVertex& next, real* pdf);

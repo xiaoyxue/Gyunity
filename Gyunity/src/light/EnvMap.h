@@ -37,7 +37,7 @@ public:
 
 		if (pdfDir) {
 			Vec2 uv = DirToLatLong(normDir);
-			real sinTheta = SinTheta(uv[1]);
+			real sinTheta = std::sqrt(normDir.x * normDir.x + normDir.z * normDir.z);
 
 			if (sinTheta == 0) 
 				*pdfDir = 0;
@@ -56,7 +56,7 @@ public:
 	real PdfDir(const Vec3& dir) const {
 		Vec3 normDir = dir.Norm();
 		Vec2 uv = DirToLatLong(normDir);
-		real sinTheta = SinTheta(uv[1]);
+		real sinTheta = std::sqrt(normDir.x * normDir.x + normDir.z * normDir.z);
 		if (sinTheta == 0)
 			return 0;
 		else 
@@ -106,7 +106,9 @@ private:
 		//real phi = (dir.x != 0 || dir.y != 0) ? std::atan2f(dir.y, dir.x) : 0;
 		//real theta = std::acos(dir.z);
 		real phi = (dir.x != 0 || dir.z != 0) ? std::atan2f(dir.z, dir.x) : 0;
-		real theta = std::acos(dir.y);
+		// acos(y) loses the sampled latitude when y rounds to +/-1 near a pole.
+		// Retain the transverse components, also used by the PDF Jacobian.
+		real theta = std::atan2(std::sqrt(dir.x * dir.x + dir.z * dir.z), dir.y);
 
 		phi = (phi < 0) ? (phi + 2 * PI) : phi;
 

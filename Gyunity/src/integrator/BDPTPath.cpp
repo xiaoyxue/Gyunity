@@ -1,4 +1,6 @@
 #include "BDPTPath.h"
+#include "light/PointLight.h"
+#include "light/EnvLight.h"
 #include <cmath>
 
 GYT_NAMESPACE_BEGIN
@@ -114,6 +116,41 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 }
 
 namespace Bidirectional {
+
+bool ValidateScene(const Scene& scene) {
+	int environments = 0;
+	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
+		const auto& light = scene.GetLights()[i];
+		if (!light || (!light->IsAreaLight() && !light->IsEnvironmentLight() && !dynamic_cast<const PointLight*>(light.get()))) {
+			return Fail("BDPT supports area lights, point lights and an environment light.");
+		}
+		if (light->IsEnvironmentLight()) {
+			++environments;
+			const auto* environment = dynamic_cast<const EnvironmentLight*>(light.get());
+			if (environment && environment->GetRotation() != 0) {
+				return Fail("BDPT currently supports environment maps with zero rotation only.");
+			}
+		}
+		for (size_t j = 0; j < i; ++j) {
+			if (scene.GetLights()[j] == light) return Fail("BDPT requires each light to be registered once.");
+		}
+	}
+	if (environments > 1) return Fail("BDPT currently supports one environment light per scene.");
+	if (environments == 1) {
+		Vec3 center;
+		real radius;
+		scene.GetBoundingSphere(&center, &radius);
+		if (!Finite(center) || !std::isfinite(radius) || radius <= 0) {
+			return Fail("Environment BDPT requires finite nonempty scene bounds.");
+		}
+	}
+	for (const auto& primitive : scene.GetPrimitives()) {
+		if (!primitive || !primitive->GetMaterial() || primitive->mMediumInterface.inside || primitive->mMediumInterface.outside) {
+			return Fail("Surface BDPT requires materials without participating media.");
+		}
+	}
+	return true;
+}
 
 bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
 	if (from.mType == PathVertexType::Environment || to.mType == PathVertexType::Environment) {

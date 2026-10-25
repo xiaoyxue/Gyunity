@@ -49,10 +49,12 @@ TEST_F(EnvironmentMapPdf, SampleUsesContinuousLatitudeJacobian) {
 
 TEST_F(EnvironmentMapPdf, LookupUsesSameContinuousJacobian) {
 	for (real v : { 0.01f, 0.125f, 0.375f, 0.625f, 0.875f, 0.99f }) {
-		const Vec3 direction(std::sin(PI * v), std::cos(PI * v), 0);
-		const real actualV = std::acos(direction.Norm().y) * INV_PI;
-		const double expected = environment->mDistribution->Pdf(0, actualV) /
-			(2 * double(PI) * PI * std::sin(double(PI) * actualV));
+		// Use the known forward latitude, not an acos(float y) round trip
+		// that loses transverse information near the poles.
+		const double theta = double(PI) * v;
+		const Vec3 direction(real(std::sin(theta)), real(std::cos(theta)), 0);
+		const double expected = environment->mDistribution->Pdf(0, v) /
+			(2 * double(PI) * PI * std::sin(theta));
 		real pdf;
 		environment->Lookup(direction, &pdf);
 		EXPECT_GT(pdf, 0);

@@ -48,6 +48,10 @@ bool ComputePathPdf(const Scene& scene, const PathContext& path,
 bool ComputeMisWeight(const Scene& scene, const PathContext& path,
 	const Strategy& current, real* weight);
 
+// Validate a complete generated subpath even when no estimator consumes it.
+// Empty light attempts are valid; sampled terminal delta events are checked too.
+bool ValidateSubpath(const Scene& scene, const std::vector<PathVertex>& path, bool camera);
+
 class PhotonMap;
 
 // Checked LOCAL estimator, not a render loop. The selected technique must be

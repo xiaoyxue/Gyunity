@@ -80,6 +80,10 @@ public:
 		return mEnvLight.get();
 	}
 
+	bool IsInitialized() const {
+		return mAccelerator && (mLights.empty() || mLightPowerDistribution);
+	}
+
 	bool Intersect(const Ray& r, Intersection* isect) const {
 		return mAccelerator->Intersect(r, isect);
 	}
