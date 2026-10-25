@@ -241,17 +241,17 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 	if (static_cast<int64>(s) + t < 2 || (s == 1 && t == 1)) return true;
 	const PathVertex& pt = cameraPath[t - 1];
 	if (pt.mType == PathVertexType::Environment && s != 0) return true;
-	Vec3 value(0);
+	Vec3 unweightedContribution(0);
 	if (s == 0) {
 		if (!pt.mLight) return true;
 		if (pt.mType == PathVertexType::Environment) {
-			value = pt.mThroughput * pt.mLight->Emission(pt.mDirection);
+			unweightedContribution = pt.mThroughput * pt.mLight->Emission(pt.mDirection);
 		}
 		else {
 			if (!pt.mLight->IsAreaLight()) return true;
 			Vec3 dir;
 			if (!Direction(pt, cameraPath[t - 2], &dir)) return false;
-			value = pt.mThroughput * pt.mLight->Emission(pt.mIsect, dir);
+			unweightedContribution = pt.mThroughput * pt.mLight->Emission(pt.mIsect, dir);
 		}
 	}
 	else {
@@ -263,7 +263,7 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 			const Vec3 importance = camera.SampleWi(qs.mIsect, &pdf, &wi, Vec3(0.5f));
 			if (!std::isfinite(pdf) || pdf < 0) return Fail("BDPT camera connection PDF is invalid.");
 			if (pdf == 0) return true;
-			value = qs.mThroughput * qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi) *
+			unweightedContribution = qs.mThroughput * qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi) *
 				importance * std::abs(Dot(qs.mIsect.mNormal, wi)) / pdf;
 		}
 		else if (s == 1) {
@@ -278,7 +278,7 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 				qs.mLight->Emission(qs.mIsect, toCamera) : qs.mLight->Emission();
 			real geometry;
 			if (!GeometryTerm(qs, pt, &geometry)) return false;
-			value = emission / originPdf * pt.mThroughput *
+			unweightedContribution = emission / originPdf * pt.mThroughput *
 				pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -toCamera) * geometry;
 		}
 		else {
@@ -287,22 +287,22 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 			if (!Direction(qs, pt, &wi)) return false;
 			real geometry;
 			if (!GeometryTerm(qs, pt, &geometry)) return false;
-			value = qs.mThroughput * pt.mThroughput * geometry *
+			unweightedContribution = qs.mThroughput * pt.mThroughput * geometry *
 				qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi) *
 				pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -wi);
 		}
-		if (value != Vec3(0)) {
+		if (unweightedContribution != Vec3(0)) {
 			if (qs.mType == PathVertexType::Environment) {
 				if (scene.Intersect(pt.mIsect.SpawnRay(qs.mDirection))) return true;
 			}
 			else if (!VisibilityTester(qs.mIsect, pt.mIsect).Unoccluded(scene)) return true;
 		}
 	}
-	if (!Finite(value)) return Fail("BDPT connection contribution is not finite.");
-	if (value == Vec3(0)) return true;
+	if (!Finite(unweightedContribution)) return Fail("BDPT connection contribution is not finite.");
+	if (unweightedContribution == Vec3(0)) return true;
 	real weight;
 	if (!MisWeight(scene, lightPath, cameraPath, s, t, &weight)) return false;
-	*contribution = value * weight;
+	*contribution = unweightedContribution * weight;
 	return true;
 }
 
@@ -376,7 +376,7 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 					const int nCamera = GenerateCameraPath(scene, camera, rand, arena, ray, mMaxDepth + 2, cameraPath);
 					const int nLight = GenerateLightPath(scene, rand, arena, mMaxDepth + 1, lightPath);
 					if (nCamera < 0 || nLight < 0) { success = false; break; }
-					Vec3 value(0);
+					Vec3 pixelContribution(0);
 					for (int t = 1; t <= nCamera && success; ++t) {
 						for (int s = 0; s <= nLight && success; ++s) {
 							const int64 depth = static_cast<int64>(s) + t - 2;
@@ -388,10 +388,10 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 								break;
 							}
 							if (t == 1) camera.GetFilm()->AddSplat(raster.x, raster.y, contribution / real(mSpp));
-							else value += contribution;
+							else pixelContribution += contribution;
 						}
 					}
-					if (success) camera.GetFilm()->AddSample(x + u, y + v, value);
+					if (success) camera.GetFilm()->AddSample(x + u, y + v, pixelContribution);
 					arena.Reset();
 				}
 			}
