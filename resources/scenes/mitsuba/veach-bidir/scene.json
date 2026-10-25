@@ -85,6 +85,7 @@
     "archive_sha256": "53ad0f938de0f6e6f5b980fd3ce6d64b2743e409612d2e327cd3bb63c284b321",
     "importer_version": "0.1.0",
     "license": "CC0-1.0",
+    "native_integrator_override": "bdpt",
     "source_camera_to_world": [
       -0.00500708,
       -0.00467005,
@@ -107,6 +108,7 @@
     "source_format": "mitsuba-3",
     "source_fov": 35.0,
     "source_fov_axis": "x",
+    "source_integrator": "path",
     "source_max_depth": 7,
     "xml_sha256": "06e391581b3e673400f34d81767a591395ef3808454af989eac155f40ea46ea6"
   },
@@ -115,7 +117,7 @@
     "accelerator": "bvh",
     "filter": "tent",
     "height": 1024,
-    "integrator": "path",
+    "integrator": "bdpt",
     "max_depth": 7,
     "seed": 123,
     "spp": 64,

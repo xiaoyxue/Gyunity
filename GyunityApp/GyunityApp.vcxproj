@@ -152,11 +152,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Examples.cpp" />
     <ClCompile Include="legacy\main_lagcy.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
       <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <ClCompile Include="SceneCommandLine.cpp" />
+    <ClCompile Include="SceneRenderer.cpp" />
     <ClCompile Include="NativeScene.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -165,6 +167,8 @@
     <ClInclude Include="scenes\SceneBuilder.h" />
     <ClInclude Include="scenes\SceneRegistry.h" />
     <ClInclude Include="SceneCommandLine.h" />
+    <ClInclude Include="SceneRenderer.h" />
+    <ClInclude Include="Examples.h" />
     <ClInclude Include="NativeScene.h" />
   </ItemGroup>
   <ItemDefinitionGroup>

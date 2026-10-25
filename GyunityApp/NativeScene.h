@@ -3,6 +3,11 @@
 #include "camera/PinholeCamera.h"
 #include <array>
 
+struct SppmSettings {
+	int iterations = 256;
+	int photonsPerStage = 300000;
+};
+
 struct NativeScene {
 	std::string name, integrator, accelerator, filter;
 	int width, height, spp, maxDepth;
@@ -10,6 +15,7 @@ struct NativeScene {
 	real fovY;
 	std::array<real, 16> cameraToWorld;
 	std::shared_ptr<Scene> scene;
+	SppmSettings sppm;
 
 	std::shared_ptr<Camera> CreateCamera(const std::shared_ptr<Film>& film) const;
 };

@@ -36,25 +36,27 @@ TEST(NativeScene, CornellSourceParametersAndGeometry) {
 
 TEST(NativeScene, FileAndNamedCliUseSourceDefaultsAndExplicitOverrides) {
 	const char* defaults[] = { "app", "--scene", "CornellBoxStandard", "--out", "unused.hdr" };
-	SceneRenderOptions original;
-	ASSERT_TRUE(ParseSceneCommandLine(5, defaults, original));
+	SceneCommandLineOptions originalCommand;
+	ASSERT_TRUE(ParseSceneCommandLine(5, defaults, originalCommand));
+	const auto& original = originalCommand.render;
 	ASSERT_NE(original.nativeScene, nullptr);
 	EXPECT_EQ(original.width, 1024);
 	EXPECT_EQ(original.maxDepth, 65);
 	const char* overrides[] = { "app", "--width", "64", "--height", "48", "--spp", "8", "--max-depth", "4",
 		"--integrator", "bdpt", "--scene", "CornellBoxStandard", "--out", "unused.hdr" };
-	SceneRenderOptions changed;
-	ASSERT_TRUE(ParseSceneCommandLine(15, overrides, changed));
+	SceneCommandLineOptions changedCommand;
+	ASSERT_TRUE(ParseSceneCommandLine(15, overrides, changedCommand));
+	const auto& changed = changedCommand.render;
 	EXPECT_EQ(changed.width, 64);
 	EXPECT_EQ(changed.height, 48);
 	EXPECT_EQ(changed.spp, 8);
 	EXPECT_EQ(changed.maxDepth, 4);
 	EXPECT_EQ(changed.integrator, "bdpt");
 	const char* file[] = { "app", "--scene-file", "..\\resources\\scenes\\native-demo\\scene.json", "--out", "unused.hdr" };
-	SceneRenderOptions parsed;
+	SceneCommandLineOptions parsed;
 	ASSERT_TRUE(ParseSceneCommandLine(5, file, parsed));
-	ASSERT_NE(parsed.nativeScene, nullptr);
-	EXPECT_EQ(parsed.nativeScene->name, "NativeDemo");
+	ASSERT_NE(parsed.render.nativeScene, nullptr);
+	EXPECT_EQ(parsed.render.nativeScene->name, "NativeDemo");
 	const char* both[] = { "app", "--scene", "empty", "--scene-file", "anything.json", "--out", "unused.hdr" };
 	EXPECT_FALSE(ParseSceneCommandLine(7, both, parsed));
 	const char* fog[] = { "app", "--scene", "fog", "--integrator", "bdpt", "--out", "unused.hdr" };
@@ -168,6 +170,106 @@ TEST_F(NativeSceneFiles, PythonAuthoredAndOriginalCornellRenderWithPtAndBdpt) {
 				EXPECT_TRUE(nonblack);
 			}
 		}
+	}
+}
+
+TEST_F(NativeSceneFiles, AddedMaterialsReuseTheExistingBsdfImplementations) {
+	std::ifstream source(SceneBuilder::Resource("scenes\\native-demo\\scene.json"));
+	const Json original = Json::parse(source, nullptr, false);
+	ASSERT_FALSE(original.is_discarded());
+	const std::vector<std::pair<Json, std::shared_ptr<Material>>> cases = {
+		{Json{{"type","mirror"},{"reflection",{0.8,0.7,0.6}}}, SceneBuilder::Mirror(Vec3(0.8f,0.7f,0.6f))},
+		{Json{{"type","rough_dielectric"},{"roughness",{0.1,0.3}},{"eta_inside",1.9},
+			{"reflection",{0.8,0.7,0.6}},{"transmission",{0.6,0.7,0.8}}},
+			SceneBuilder::RoughDielectric(Vec3(0.8f,0.7f,0.6f), Vec3(0.6f,0.7f,0.8f), 0.1f, 0.3f, 1.9f)},
+		{Json{{"type","plastic"},{"diffuse",{0.2,0.7,0.3}},{"specular",{0.8,0.8,0.8}},{"roughness",0.2}},
+			SceneBuilder::Plastic(Vec3(0.2f,0.7f,0.3f), Vec3(0.8f), 0.2f)}
+	};
+	for (const auto& entry : cases) {
+		Json data = original;
+		data["materials"]["white"] = entry.first;
+		const auto filename = directory + "\\native-material-" + entry.first.at("type").get<std::string>() + ".json";
+		{ std::ofstream file(filename); file << data.dump(); }
+		const auto native = LoadNativeScene(filename);
+		ASSERT_NE(native, nullptr);
+		const auto actual = native->scene->GetPrimitives()[0]->GetMaterial();
+		EXPECT_EQ(typeid(*actual), typeid(*entry.second));
+		for (auto mode : {TransportMode::Radiance, TransportMode::Importance}) {
+			Intersection hit, reference;
+			hit.mNormal = hit.mGeometryNormal = Vec3(0,0,1);
+			hit.mShadingDpDu = Vec3(1,0,0);
+			hit.mShadingDpDv = Vec3(0,1,0);
+			reference = hit;
+			MemoryPool arena, referenceArena;
+			actual->ComputeScatteringFunction(&hit, arena, mode);
+			entry.second->ComputeScatteringFunction(&reference, referenceArena, mode);
+			const Vec3 wo = Vec3(0.2f,0.1f,1).Norm();
+			for (const Vec3& wi : {Vec3(0.3f,-0.1f,1).Norm(), Vec3(0.1f,0.2f,-1).Norm()}) {
+				EXPECT_EQ(hit.mBsdf->Evaluate(wo, wi), reference.mBsdf->Evaluate(wo, wi));
+				EXPECT_EQ(hit.mBsdf->Pdf(wo, wi), reference.mBsdf->Pdf(wo, wi));
+			}
+		}
+	}
+}
+
+TEST_F(NativeSceneFiles, SppmJsonDefaultsAndExplicitBudgetsAreChecked) {
+	std::ifstream source(SceneBuilder::Resource("scenes\\native-demo\\scene.json"));
+	Json data = Json::parse(source, nullptr, false);
+	ASSERT_FALSE(data.is_discarded());
+	data["render"]["integrator"] = "sppm";
+	data["render"]["spp"] = 13;
+	data["render"]["sppm"] = {{"iterations", 2}, {"photons_per_stage", 512}};
+	const auto filename = directory + "\\native-sppm.json";
+	{ std::ofstream file(filename); file << data.dump(); }
+	const auto native = LoadNativeScene(filename);
+	ASSERT_NE(native, nullptr);
+	EXPECT_EQ(native->integrator, "sppm");
+	EXPECT_EQ(native->spp, 13);
+	EXPECT_EQ(native->sppm.iterations, 2);
+	EXPECT_EQ(native->sppm.photonsPerStage, 512);
+	SceneCommandLineOptions parsed;
+	const char* arguments[] = {"app", "--scene-file", filename.c_str(), "--iterations", "3", "--out", "unused.png"};
+	ASSERT_TRUE(ParseSceneCommandLine(7, arguments, parsed));
+	EXPECT_EQ(parsed.render.sppm.iterations, 3);
+	EXPECT_EQ(parsed.render.sppm.photonsPerStage, 512);
+	for (const auto& invalid : std::vector<Json>{
+		{{"iterations", 0}}, {{"photons_per_stage", -1}}, {{"iterations", true}},
+		{{"photons_per_stage", 2147483648LL}}, {{"spp", 4}}}) {
+		data["render"]["sppm"] = invalid;
+		{ std::ofstream file(filename); file << data.dump(); }
+		EXPECT_EQ(LoadNativeScene(filename), nullptr);
+	}
+	data["render"].erase("sppm");
+	{ std::ofstream file(filename); file << data.dump(); }
+	const auto defaults = LoadNativeScene(filename);
+	ASSERT_NE(defaults, nullptr);
+	EXPECT_EQ(defaults->sppm.iterations, 256);
+	EXPECT_EQ(defaults->sppm.photonsPerStage, 300000);
+}
+
+TEST_F(NativeSceneFiles, AddedMaterialParametersRejectInvalidAndUnsupportedValues) {
+	std::ifstream source(SceneBuilder::Resource("scenes\\native-demo\\scene.json"));
+	const Json original = Json::parse(source, nullptr, false);
+	ASSERT_FALSE(original.is_discarded());
+	const std::vector<Json> invalid = {
+		{{"type","mirror"},{"reflection",{2,1,1}}},
+		{{"type","mirror"},{"roughness",0.1}},
+		{{"type","rough_dielectric"},{"roughness",{0,0.1}}},
+		{{"type","rough_dielectric"},{"roughness",{0.1,1.1}}},
+		{{"type","rough_dielectric"},{"roughness",{0.1}}},
+		{{"type","rough_dielectric"},{"roughness",{0.1,0.1}},{"eta_inside",0}},
+		{{"type","rough_dielectric"},{"roughness",{0.1,0.1}},{"eta_outside",1.3}},
+		{{"type","plastic"},{"diffuse",{0.2,0.2,0.2}},{"roughness",0}},
+		{{"type","plastic"},{"diffuse",{0.2,0.2,0.2}},{"roughness",1.1}},
+		{{"type","plastic"},{"diffuse",{0.2,0.2,0.2}},{"roughness",true}},
+		{{"type","plastic"},{"diffuse",{0.2,0.2,0.2}},{"roughness",0.1},{"distribution","beckmann"}}
+	};
+	const auto filename = directory + "\\invalid-native-material.json";
+	for (const auto& material : invalid) {
+		Json data = original;
+		data["materials"]["white"] = material;
+		{ std::ofstream file(filename); file << data.dump(); }
+		EXPECT_EQ(LoadNativeScene(filename), nullptr) << material.dump();
 	}
 }
 }

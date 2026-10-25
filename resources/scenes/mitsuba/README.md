@@ -10,9 +10,12 @@ hand-transcribed into C++.
 Reproduce an import from the worktree root:
 
 ```powershell
-uv run --project tools\gyscene --locked gyscene import-mitsuba --archive-dir D:\Code\mitsuba3-scene --scene cornell-box --output-root resources\scenes\mitsuba
+$TestRoot = Join-Path (Resolve-Path (Join-Path (git --no-pager rev-parse --path-format=relative --git-common-dir) '..')).Path 'Test'
+uv run --project tools\gyscene --locked gyscene import-mitsuba --archive-dir "$TestRoot\archives" --scene cornell-box --output-root resources\scenes\mitsuba
 ```
 
+Place original ZIPs in the main checkout's `Test\archives` before importing;
+see [command instructions](../../../INSTRUCTIONS.md).
 Use `veach-mis` or `veach-bidir` for the other reviewed source ZIPs.
 Archive hashes are pinned by the importer and stored in generated metadata.
 Git attributes preserve original XML, OBJ and license bytes without line-ending

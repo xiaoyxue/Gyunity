@@ -7,12 +7,15 @@ import re
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
 
+from pydantic import TypeAdapter
+
 from .meshio import encode_obj
-from .model import Camera, Checkerboard, Conductor, Dielectric, Diffuse, Environment, Mesh, RenderSettings, Scene
+from .model import Camera, Checkerboard, Conductor, Dielectric, Diffuse, Environment, Material, Mesh, Mirror, Plastic, RenderSettings, RoughDielectric, Scene
 from .transforms import multiply
 
 ARCHIVE_SHA256 = "0dd0b3303e7b3f97995bb37490ae05256c93d6a2e618eeef9adeee54bd838587"
-PROFILES = ("diffuse", "glass", "copper")
+PROFILES = ("diffuse", "glass", "copper", "checkerboard", "mirror", "rough-glass",
+            "copper-beckmann", "copper-anisotropic", "plastic")
 
 
 def rgb(node):
@@ -50,10 +53,21 @@ def profile_material(profile: str, root):
         return Diffuse(reflectance=rgb(source.find("rgb[@name='diffuse_reflectance']")), two_sided=False)
     if profile == "glass":
         return Dielectric(eta_inside=float(source.find("float[@name='int_ior']").attrib["value"]))
-    if profile == "copper":
+    if profile in ("copper", "copper-beckmann", "copper-anisotropic"):
         # An explicit native demonstration preset, not an approximation of source plastic.
-        return Conductor(distribution="ggx", alpha=(0.1, 0.1),
+        return Conductor(distribution="beckmann" if profile == "copper-beckmann" else "ggx",
+                         alpha=(0.05, 0.25) if profile == "copper-anisotropic" else (0.1, 0.1),
                          eta=(0.200438, 0.924033, 1.10221), k=(3.91295, 2.45285, 2.14219))
+    if profile == "checkerboard":
+        return Diffuse(reflectance=Checkerboard(color0=(0.8, 0.8, 0.8), color1=(0.05, 0.05, 0.05),
+                                               scale=(8., 8.)), two_sided=False)
+    if profile == "mirror":
+        return Mirror()
+    if profile == "rough-glass":
+        return RoughDielectric(roughness=(0.1, 0.1),
+                               eta_inside=float(source.find("float[@name='int_ior']").attrib["value"]))
+    if profile == "plastic":
+        return Plastic(diffuse=rgb(source.find("rgb[@name='diffuse_reflectance']")), roughness=0.1)
     raise ValueError(f"Unsupported material profile: {profile}")
 
 
@@ -65,12 +79,28 @@ def preserve(path: Path, data: bytes):
 
 
 def import_preview(archive_file: Path, output_root: Path, *, profile_name: str,
-                   exterior: Diffuse | Conductor | Dielectric, max_depth: int) -> Path:
-    """Decode real source meshes; only the explicitly supplied exterior BSDF is replaced."""
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", profile_name):
-        raise ValueError("Profile name must contain only letters, digits, underscores or hyphens")
-    if not isinstance(exterior, (Diffuse, Conductor, Dielectric)):
-        raise ValueError("Choose an explicit supported native exterior material")
+                   exterior: Material, max_depth: int) -> Path:
+    """Import one explicitly supplied material, using the shared batch decoder."""
+    return import_previews(archive_file, output_root, profiles={profile_name: exterior}, max_depth=max_depth)[0]
+
+
+def import_presets(archive_file: Path, output_root: Path, *, profile: str, max_depth: int) -> list[Path]:
+    names = PROFILES if profile == "all" else (profile,)
+    root, _ = source_data(archive_file)
+    profiles = {name: profile_material(name, root) for name in names}
+    return import_previews(archive_file, output_root, profiles=profiles, max_depth=max_depth)
+
+
+def import_previews(archive_file: Path, output_root: Path, *, profiles: dict[str, Material],
+                    max_depth: int) -> list[Path]:
+    """Decode shared original assets once; replace only each explicitly supplied exterior BSDF."""
+    if not profiles:
+        raise ValueError("Choose at least one explicit material profile")
+    for name in profiles:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise ValueError("Profile name must contain only letters, digits, underscores or hyphens")
+    adapter = TypeAdapter(Material)
+    profiles = {name: adapter.validate_python(material) for name, material in profiles.items()}
     if not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth <= 0:
         raise ValueError("Choose an explicit positive depth budget for the unlimited source")
     try:
@@ -95,7 +125,7 @@ def import_preview(archive_file: Path, output_root: Path, *, profile_name: str,
         raise ValueError("Unexpected source camera convention")
     fov_y = fov if width >= height else math.degrees(2 * math.atan(math.tan(math.radians(fov)/2) * height/width))
     defaults = {node.attrib["name"]: node.attrib["value"] for node in root.findall("default")}
-    scene = Scene(name="matpreview-" + profile_name,
+    scene = Scene(name="matpreview",
                   camera=Camera(to_world=tuple(float(x) for x in camera_matrix.ravel()), fov_y=fov_y),
                   render=RenderSettings(width=width, height=height, spp=int(defaults["spp"]),
                                         max_depth=max_depth, filter="gaussian"))
@@ -115,8 +145,8 @@ def import_preview(archive_file: Path, output_root: Path, *, profile_name: str,
             color = textures[reference.attrib["id"]] if reference is not None else rgb(node.find("rgb[@name='reflectance']"))
             material = Diffuse(reflectance=color, two_sided=False)
         elif node.get("type") == "plastic":
-            material = exterior
-            overrides[identifier] = {"source_type": "plastic", "replacement": exterior.model_dump(mode="json")}
+            material = next(iter(profiles.values()))
+            overrides[identifier] = {"source_type": "plastic", "replacement": material.model_dump(mode="json")}
         else:
             raise ValueError(f"Unsupported source material: {node.get('type')}")
         scene.add_material(identifier, material)
@@ -173,6 +203,14 @@ def import_preview(archive_file: Path, output_root: Path, *, profile_name: str,
         "source_files": {name: hashlib.sha256(data).hexdigest() for name, data in payload.items()},
         "note": "Original geometry, camera, checkerboard and EXR are retained. Exterior material is an explicit supported profile, not source plastic."
     }
-    output = destination / ("matpreview-" + profile_name + ".json")
-    scene.write_json(output)
-    return output
+    outputs = []
+    for profile_name, exterior in profiles.items():
+        variant = scene.model_copy(deep=True)
+        variant.name = "matpreview-" + profile_name
+        for identifier in overrides:
+            variant.materials[identifier] = exterior
+            variant.metadata["material_overrides"][identifier]["replacement"] = exterior.model_dump(mode="json")
+        output = destination / (variant.name + ".json")
+        variant.write_json(output)
+        outputs.append(output)
+    return outputs

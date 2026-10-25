@@ -7,7 +7,7 @@ import unittest
 from zipfile import ZipFile
 
 from pydantic import ValidationError
-from gyscene import Camera, Conductor, Diffuse, Mesh, Quad, Scene, Sphere
+from gyscene import Camera, Conductor, Diffuse, Mesh, Quad, RenderSettings, Scene, Sphere, SppmSettings
 from gyscene.mitsuba import ARCHIVES, import_archive, import_xml, matrix, parse_scene
 import xml.etree.ElementTree as ET
 
@@ -24,6 +24,24 @@ class NativeSceneTests(unittest.TestCase):
         self.assertEqual(text, scene.to_json())
         self.assertEqual(text, Scene.model_validate_json(text).to_json())
         self.assertEqual(len(scene.shapes), 3)
+
+    def test_sppm_has_independent_iteration_and_photon_budgets(self):
+        scene = self.demo()
+        self.assertNotIn("sppm", json.loads(scene.to_json())["render"])
+        scene.render = RenderSettings(integrator="sppm", spp=13,
+                                      sppm=SppmSettings(iterations=2, photons_per_stage=512))
+        restored = Scene.model_validate_json(scene.to_json())
+        self.assertEqual(restored.render.spp, 13)
+        self.assertEqual(restored.render.sppm.iterations, 2)
+        self.assertEqual(restored.render.sppm.photons_per_stage, 512)
+        defaults = RenderSettings(integrator="sppm")
+        self.assertEqual(defaults.sppm, SppmSettings(iterations=256, photons_per_stage=300000))
+        for key in ("iterations", "photons_per_stage"):
+            for value in (0, -1, True, 1.5, 2147483648):
+                with self.assertRaises(ValidationError):
+                    SppmSettings(**{key: value})
+        with self.assertRaises(ValidationError):
+            SppmSettings(spp=4)
 
     def test_invalid_contract_values_are_rejected(self):
         data = json.loads(self.demo().to_json())
@@ -95,6 +113,10 @@ class GalleryTests(unittest.TestCase):
                 self.assertEqual(first, result.read_bytes())
                 self.assertEqual(scene.name, name)
                 self.assertEqual(scene.render.filter, "tent")
+                self.assertEqual(scene.render.integrator, "bdpt" if key == "veach-bidir" else "path")
+                if key == "veach-bidir":
+                    self.assertEqual(scene.metadata["source_integrator"], "path")
+                    self.assertEqual(scene.metadata["native_integrator_override"], "bdpt")
                 with ZipFile(archive_path) as archive:
                     self.assertEqual((result.parent / "scene.xml").read_bytes(), archive.read(key + "/scene.xml"))
                     self.assertEqual((result.parent / "LICENSE.txt").read_bytes(), archive.read(key + "/LICENSE.txt"))

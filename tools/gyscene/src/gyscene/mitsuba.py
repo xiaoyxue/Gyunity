@@ -263,6 +263,9 @@ def import_archive(archive_file: Path, output_root: Path) -> Path:
         if b"CC0" not in license_text:
             raise ValueError("Expected the reviewed CC0 license")
         scene = parse_scene(xml, name)
+        if key == "veach-bidir":
+            scene.metadata.update(source_integrator=scene.render.integrator, native_integrator_override="bdpt")
+            scene.render.integrator = "bdpt"
         scene.metadata.update(archive=archive_file.name, archive_sha256=digest,
                               xml_sha256=hashlib.sha256(xml).hexdigest(), license="CC0-1.0")
         required = {"scene.xml", "LICENSE.txt"}

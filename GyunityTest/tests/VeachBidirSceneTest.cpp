@@ -1,4 +1,4 @@
-#include "../../GyunityApp/SceneCommandLine.h"
+#include "../../GyunityApp/SceneRenderer.h"
 #include "json/single_include/nlohmann/json.hpp"
 #include "gtest/gtest.h"
 #include <sstream>

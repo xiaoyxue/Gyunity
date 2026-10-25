@@ -1,5 +1,5 @@
 #include "stb/stb_image.h"
-#include "../../GyunityApp/SceneCommandLine.h"
+#include "../../GyunityApp/SceneRenderer.h"
 #include "accelerator/BVHAccel.h"
 #include "image/ImageIO.h"
 #include "json/single_include/nlohmann/json.hpp"
