@@ -181,7 +181,8 @@ medium and preserves the original material-free front boundary; use
 ## Named scenes and rendering
 `GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
-`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, `CornellBoxStandard`, and `veach-mis`.
+`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, `CornellBoxStandard`, `veach-mis`,
+and `veach-bidir`.
 The sphere and triangle scenes use their large-room camera; the imported
 Cornell and Veach scenes use their source cameras, and other builders use the standard Cornell camera. Fog automatically
 uses volume path tracing; the other scenes use surface path tracing.
@@ -219,6 +220,26 @@ The importer and source license are under `resources\scenes\mitsuba\veach-mis`.
 `VeachMisScene.*` checks the real geometry/light counts, radiance/power,
 camera orientation and raw-alpha conductor response; it does not compare
 against a fabricated scene.
+
+### Original Veach bidir
+`veach-bidir` loads the original gallery XML-to-JSON conversion and **all 12
+unaltered OBJ files**: the room, floor lamp, wall-mounted light, table and
+glass object. It is not the removed procedural room substitute. Original
+Beckmann lamp materials, glass IORs, per-mesh normal settings, emitting
+rectangle BSDFs/radiances and the source camera are retained.
+
+```powershell
+# From GyunityApp; use --integrator path for the PT comparison.
+..\x64\Release\GyunityApp.exe --scene veach-bidir --integrator bdpt --width 512 --height 512 --spp 128 --max-depth 8 --out "D:\Code\Graphics\Gyunity\Test\veach-bidir-bdpt.png"
+```
+
+The source default depth is 7; the command explicitly overrides it to 8.
+PT may have considerable noise/fireflies at this sample budget; changing the
+materials or light intensity to hide that would invalidate the import.
+BDPT currently uses geometric-normal shading even when the imported OBJ has
+smooth normals. `VeachBidirScene.*` checks primitive counts against the actual
+OBJ faces, source normal policies, camera conversion and nonblack diffuse
+BSDFs on the emitting rectangles.
 
 ## C++ integrator examples
 `GyunityApp\main.cpp` keeps five runnable mock examples. With no arguments,

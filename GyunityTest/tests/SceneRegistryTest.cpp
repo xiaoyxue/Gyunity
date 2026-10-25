@@ -24,7 +24,7 @@ TEST(SceneRegistry, NamesMapToAllBuilders) {
 		{ "empty", CornellBoxScenes::Empty }, { "diffuse", CornellBoxScenes::DiffuseBunny },
 		{ "water", CornellBoxScenes::Water }, { "fog", CornellBoxScenes::FogBunny },
 		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny },
-		{ "CornellBoxStandard", nullptr }, { "veach-mis", nullptr }
+		{ "CornellBoxStandard", nullptr }, { "veach-mis", nullptr }, { "veach-bidir", nullptr }
 	};
 	ASSERT_EQ(GetSceneRegistry().size(), sizeof(expected) / sizeof(expected[0]));
 	std::set<std::string> names;
