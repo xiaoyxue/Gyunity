@@ -19,6 +19,9 @@
     <ClCompile Include="tests\BDPTPathTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\VCMPathTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\BDPTConnectionTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
@@ -64,5 +67,10 @@
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp">
       <Filter>GyunityApp</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="tests\VCMReference.h">
+      <Filter>tests</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

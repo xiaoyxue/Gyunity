@@ -53,6 +53,7 @@
     <ClCompile Include="tests\LightTracingEmissionTest.cpp" />
     <ClCompile Include="tests\LightProbabilityTest.cpp" />
     <ClCompile Include="tests\BDPTPathTest.cpp" />
+    <ClCompile Include="tests\VCMPathTest.cpp" />
     <ClCompile Include="tests\BDPTConnectionTest.cpp" />
     <ClCompile Include="tests\BDPTEnvironmentTest.cpp" />
     <ClCompile Include="tests\PixelDebugTest.cpp" />
@@ -61,6 +62,9 @@
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup />
+  <ItemGroup>
+    <ClInclude Include="tests\VCMReference.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

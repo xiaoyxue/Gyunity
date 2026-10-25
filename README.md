@@ -412,6 +412,72 @@ bounds without changing geometry, and checks latitude/longitude signs using a
 directional HDR marker map. Generated fixtures and images use
 `GYUNITY_TEST_OUTPUT_DIRECTORY` under the main checkout's `Test` directory.
 
+#### Preparatory VCM probability layer (feature branch, milestone 2)
+
+`integrator\VCMPath.h` adds `Vcm::PathContext`, `Strategy`, `ComputePathPdf`, and
+`ComputeMisWeight`. This is **not a VCM renderer** and changes no example, CLI,
+default integrator, BDPT MIS, RNG, or film behavior. The non-owning context keeps
+immutable selected light/eye prefixes; the paths and BSDF arenas must outlive it.
+Only finite area-light origins, the existing pinhole convention, and continuous
+surface scattering are currently accepted. Point/environment origins, specular
+chains (including terminal delta BSDFs), mixed delta lobes, and media fail
+explicitly. Milestone 3 must complete the singular/environment measures.
+
+The evaluator independently enumerates VC at depth `s+t-2` and VM at depth
+`s+t-3`, excluding `t=0` and `(VC,1,1)`. Origin samples are reused, not resampled;
+their stored forward probability already includes light selection exactly once.
+For an emitter hit, the deterministic origin query includes selection once.
+No roulette is introduced. `ComputePathPdf` returns the raw effective path
+density in logarithmic form (including `A=pi*R^2` for VM, not its sample count).
+`ComputeMisWeight` uses double log-products and common-maximum subtraction to
+normalize the balance scores `pVC` and `N_L*pVM`. It does **not** hide `1/N_L` in
+the VM weight. `N_L` is attempted light paths, not stored photons or query hits.
+Invalid input returns `false`; ordinary zero/disabled alternatives return
+`true` with `feasible=false`. Read `logPdf` only when feasible. Requesting a
+weight for a zero-support/disabled current strategy fails.
+
+Finite-radius mapping follows [Implementing VCM, revision 2, Section 4.3 /
+Figure 3](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf).
+For light predecessor `a`, photon landing `y`, camera query `x`, and camera
+predecessor `b`, the current VM density is `A*p_L(...,a,y)*p_E(...,b,x)`.
+The density for sampling `a` backwards uses the BSDF **at x** with original
+eye/photon directions, converted along `y->a`; sampling `b` forwards uses
+the same camera interaction with swapped directions, converted along `x->b`.
+The next reverse density at the light predecessor still sees `y`, not `x`.
+The adjacent VC cuts join `a->x` and `y->b`, respectively: their connection
+edges are **unsampled**, so their PDFs are just the corresponding unchanged
+prefix products (one excludes the photon landing density, the other excludes
+the camera-query density). Neither an `x-y` edge nor a universally collapsed
+polyline is introduced. This is the report's finite-radius approximation,
+not an assertion that all techniques sample one identical geometric path.
+
+Combined and connection-only modes use their respective strategy families.
+Merging-only retains VM plus depth-zero visible-emitter hits; the later
+singular-path stage must extend this to `LS*E`. No photon map, local merge
+estimator, progressive radius schedule, or render loop exists yet.
+
+`VCMPathTest.cpp` compares every normalized strategy against **two test-only
+computations**: the report's `dVCM/dVC/dVM` initialization/update/final equations
+(31)-(47), and direct Eq. (10)-(12) products (binary-exponent products for long
+paths). The recurrence helper is linked only into `GyunityTest`; production
+never calls it or the old BDPT weight. Its geometry conversions are independent
+of the production helpers. Endpoint reuse sets `p_connect=p_trace`. To align
+the report's conditional-pixel camera density with Gyunity's global-film
+density, the reference supplies `q_pixel=P*q_film` and `n_light=P`, with
+`P=N_L`; these factors cancel in Eq. (31) and (46). When testing a different
+`N_L`, both reference inputs change together, while `eta=N_L*A` changes
+independently in the VC/VM competition. This is a density-convention comparison,
+not an image comparison or a new arbitrary render-budget contract.
+
+Run `GyunityTest.exe --gtest_filter="VCMPath.*"` from the worktree's `GyunityApp`.
+With `GYUNITY_TEST_OUTPUT_DIRECTORY` pointing to an existing directory under
+the main checkout's `Test`, tests also write per-strategy
+`vcm-weights-debug.csv` / `vcm-weights-release.csv`. The exact depth-one fixture,
+noncoincident directional merges, real glossy reflection/transmission, unequal
+light selection, all finite endpoint families, mode/count/radius invariants,
+immutability/errors, and underflowing long products are covered. The positive
+continuous recurrence oracle does not purport to validate singular paths.
+
 `TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
 width, height, spp, depth and accelerator. It covers all nine original surface
 scenes plus `lucy-bunny`, rejects `fog`, and does not change the default no-argument
