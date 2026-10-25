@@ -8,7 +8,8 @@ from zipfile import ZipFile
 
 from pydantic import ValidationError
 from gyscene import Camera, Conductor, Diffuse, Mesh, Quad, Scene, Sphere
-from gyscene.mitsuba import ARCHIVES, import_archive, parse_scene
+from gyscene.mitsuba import ARCHIVES, import_archive, import_xml, matrix, parse_scene
+import xml.etree.ElementTree as ET
 
 PROJECT = Path(__file__).resolve().parents[1]
 
@@ -70,6 +71,14 @@ class NativeSceneTests(unittest.TestCase):
         self.assertIn("Box", schema["$defs"])
         self.assertIn("Conductor", schema["$defs"])
 
+    def test_mitsuba_transform_operations_follow_source_order(self):
+        result = matrix(ET.fromstring('<transform name="to_world"><translate x="2"/><scale value="3"/></transform>'))
+        self.assertEqual(result[3], 6.)
+        camera = matrix(ET.fromstring('<transform name="to_world"><lookat origin="0,0,3" target="0,0,0" up="0,1,0"/></transform>'))
+        self.assertEqual(camera[0], -1.)
+        self.assertEqual(camera[10], -1.)
+        self.assertEqual(camera[11], 3.)
+
 
 @unittest.skipUnless(os.environ.get("GYUNITY_MITSUBA_ARCHIVES"), "Set GYUNITY_MITSUBA_ARCHIVES for original-data checks")
 class GalleryTests(unittest.TestCase):
@@ -96,6 +105,9 @@ class GalleryTests(unittest.TestCase):
                     xml = archive.read(key + "/scene.xml")
                     with self.assertRaises(ValueError):
                         parse_scene(xml.replace(b'<scene version="3.0.0">', b'<scene version="3.0.0"><unknown/>'), name)
+                direct = import_xml(result.parent / "scene.xml", Path(temp) / "direct", name)
+                self.assertEqual(Scene.read_json(direct).shapes, scene.shapes)
+                self.assertEqual(Scene.read_json(direct).camera, scene.camera)
                 self.assertEqual(len(scene.shapes), {"cornell-box": 8, "veach-mis": 9, "veach-bidir": 14}[key])
                 if key == "veach-mis":
                     self.assertEqual(sum(s.type == "sphere" for s in scene.shapes), 3)

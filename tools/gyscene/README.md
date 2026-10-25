@@ -21,7 +21,72 @@ retains the original CC0 license, XML and all referenced OBJ files unchanged.
 Supplied reference images are not copied into production assets and must not
 be presented as renderer output.
 
-## Version 1
+## Three Python entry points
+
+All three paths construct the same `gyscene.Scene` and serialize our native
+JSON. Python code is in the repository, not hidden in a renderer executable:
+
+| Purpose | Runnable example | Reusable module |
+|---|---|---|
+| Author a custom scene in Python | `examples\native_demo.py` | `gyscene.model` |
+| Parse original Mitsuba XML/OBJ packages | `examples\import_mitsuba.py` | `gyscene.mitsuba` |
+| Parse the supported PBRT v4 surface subset | `examples\import_pbrt.py` | `gyscene.pbrt` |
+
+```powershell
+uv run --project tools\gyscene --locked python tools\gyscene\examples\native_demo.py --out "D:\Code\Graphics\Gyunity\Test\custom-scene.json"
+uv run --project tools\gyscene --locked python tools\gyscene\examples\import_mitsuba.py --archive-dir D:\Code\mitsuba3-scene --scene cornell-box --output-root "D:\Code\Graphics\Gyunity\Test\python-imports"
+uv run --project tools\gyscene --locked python tools\gyscene\examples\import_mitsuba.py resources\scenes\mitsuba\cornell-box\scene.xml --name CornellBoxStandard --output-root "D:\Code\Graphics\Gyunity\Test\xml-imports"
+uv run --project tools\gyscene --locked --extra pbrt python tools\gyscene\examples\import_pbrt.py tools\gyscene\examples\pbrt_demo.pbrt --rgb-radiance-scale 1 --output-root "D:\Code\Graphics\Gyunity\Test\python-imports"
+```
+
+The equivalent CLI is `gyscene import-pbrt FILE --output-root DIRECTORY
+--rgb-radiance-scale SCALE`. PLY import uses the optional `pbrt` dependency
+group; inline triangle meshes and spheres do not need it.
+
+Standalone Mitsuba XML uses `gyscene import-mitsuba-file FILE --output-root
+DIRECTORY [--name NAME] [--max-depth N]`, or `gyscene.mitsuba.import_xml`.
+The bounded adapter supports source matrix/translate/scale/rotate/look-at
+transforms and FOV axes, and copies referenced OBJ/license files unchanged.
+Unlimited source depth requires an explicit finite native depth budget.
+Unimplemented plugins still fail rather than being silently approximated.
+
+### PBRT v4 subset and explicit differences
+
+The parser follows [PBRT v4's file format](https://www.pbrt.org/fileformat-v4):
+typed scalar/array parameters, comments, Include (including gzip), named
+materials, attribute scopes, coordinate systems and static transforms.
+Includes and referenced meshes resolve from the **initial input directory**;
+paths escaping that source package are rejected. PBRT file matrices are
+column-major and camera transforms are world-to-camera; both are converted
+explicitly to the native conventions. PBRT FOV applies to the smaller axis.
+
+Supported geometry is full spheres under positive uniform transforms,
+inline triangle meshes and triangular PLY meshes, retaining positions,
+normals, UVs, winding and original source files. Supported materials are
+diffuse, smooth dielectric and rough RGB-parameter conductors. PBRT v4's
+roughness remapping is **sqrt(roughness)**, not the v3 polynomial.
+
+Specify `Camera "perspective"`, `Sampler "independent"`, `Integrator "path"`
+or `"bdpt"`, and an explicit `PixelFilter`. The current filter subset is box
+radius 0.5 or triangle radius 1. Missing declarations would otherwise select
+PBRT defaults that the native backend cannot faithfully reproduce, so they
+are rejected. RGB Film defaults are 1280x720. Arbitrary shaders, textures,
+volumes, instances, animation, spectral/blackbody parameters, clipped shapes
+and unsupported filter settings fail explicitly; this is not a full PBRT parser.
+
+**Light units are not silently copied.** PBRT v4 photometrically normalizes
+its light spectra. `--rgb-radiance-scale` is therefore required: it explicitly
+chooses the native RGB scale after normalization by linear-sRGB luminance.
+Scale 1 means unit native RGB luminance before the source light's `scale`
+factor. This is a documented RGB projection, not PBRT spectral or film
+calibration equivalence. Source files and the conversion choice remain in
+metadata. Unsupported spectra are rejected, not guessed.
+
+`pbrt_demo.pbrt` is an authored API example, **not** a replacement for any
+gallery dataset. Generated OBJ files are data-format conversions of the
+actual source triangles, not guessed replacement geometry.
+
+## Native version 1
 
 JSON uses `schema_version: 1`, `name`, `render`, `camera`, named `materials`,
 ordered `shapes`, and non-rendering `metadata`. Unknown fields, invalid numbers,

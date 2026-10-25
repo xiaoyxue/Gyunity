@@ -9,6 +9,7 @@ from zipfile import ZipFile
 import xml.etree.ElementTree as ET
 
 from .model import Box, Camera, Conductor, Dielectric, Diffuse, IDENTITY, Mesh, Quad, RenderSettings, Scene, Sphere
+from .transforms import look_at, multiply, rotation
 
 ARCHIVES = {
     "cornell-box": ("CornellBoxStandard", "273bbbe0f2c319359b21488d83d3de7a098a9f7cb3270cb603347ee31a63aa08"),
@@ -37,13 +38,49 @@ def matrix(node: ET.Element | None) -> tuple[float, ...]:
     if node is None:
         return IDENTITY
     attributes(node, {"name"})
-    if len(node) != 1 or node[0].tag != "matrix":
-        raise ValueError("Only explicit source transform matrices are supported")
-    attributes(node[0], {"value"})
-    return tuple(float(x) for x in node[0].attrib["value"].split())
+    result = None
+    for operation in node:
+        if len(operation):
+            raise ValueError("Transform operations cannot have children")
+        if operation.tag == "matrix":
+            attributes(operation, {"value"})
+            component = tuple(float(x) for x in operation.attrib["value"].split())
+            if len(component) != 16:
+                raise ValueError("Expected sixteen matrix elements")
+        elif operation.tag in ("translate", "scale"):
+            attributes(operation, {"x", "y", "z", "value"})
+            default = 1. if operation.tag == "scale" else 0.
+            if "value" in operation.attrib:
+                if len(operation.attrib) != 1:
+                    raise ValueError("Use either value or x/y/z transform attributes")
+                values = tuple(float(x) for x in operation.attrib["value"].replace(",", " ").split())
+                if len(values) == 1:
+                    values *= 3
+                if len(values) != 3:
+                    raise ValueError("Expected three transform components")
+            else:
+                values = tuple(float(operation.get(axis, default)) for axis in "xyz")
+            component = list(IDENTITY)
+            for i, value in enumerate(values):
+                component[4*i + (3 if operation.tag == "translate" else i)] = value
+            component = tuple(component)
+        elif operation.tag == "rotate":
+            attributes(operation, {"x", "y", "z", "angle"})
+            component = rotation(float(operation.attrib["angle"]), tuple(float(operation.get(axis, 0)) for axis in "xyz"))
+        elif operation.tag == "lookat":
+            attributes(operation, {"origin", "target", "up"})
+            vectors = [tuple(float(v) for v in operation.attrib[key].replace(",", " ").split()) for key in ("origin", "target", "up")]
+            if any(len(v) != 3 for v in vectors):
+                raise ValueError("Look-at vectors need three components")
+            component = look_at(*vectors)
+        else:
+            raise ValueError(f"Unsupported transform operation: {operation.tag}")
+        # Mitsuba applies XML operations in declaration order (pre-multiplication).
+        result = component if result is None else multiply(component, result)
+    return result if result is not None else IDENTITY
 
 
-def parse_scene(xml: bytes, name: str) -> Scene:
+def parse_scene(xml: bytes, name: str, *, max_depth: int | None = None) -> Scene:
     root = ET.fromstring(xml)
     attributes(root, {"version"})
     if root.tag != "scene" or root.get("version") != "3.0.0":
@@ -72,6 +109,8 @@ def parse_scene(xml: bytes, name: str) -> Scene:
 
     def rgb(node: ET.Element) -> tuple[float, float, float]:
         values = tuple(float(v) for v in value(node).replace(",", " ").split())
+        if len(values) == 1:
+            values *= 3
         if len(values) != 3:
             raise ValueError("Expected three linear RGB components")
         return values
@@ -80,7 +119,7 @@ def parse_scene(xml: bytes, name: str) -> Scene:
     if len(sensors) != 1 or len(integrators) != 1:
         raise ValueError("Expected exactly one sensor and integrator")
     sensor, integrator = sensors[0], integrators[0]
-    attributes(sensor, {"type"})
+    attributes(sensor, {"type", "id"})
     attributes(integrator, {"type"})
     if sensor.get("type") != "perspective":
         raise ValueError("Only perspective source sensors are supported")
@@ -92,20 +131,25 @@ def parse_scene(xml: bytes, name: str) -> Scene:
     ip = parameters(integrator, {"max_depth": "integer"})
     sp = parameters(sensor, {"fov": "float", "fov_axis": "string", "to_world": "transform", "sampler": "sampler", "film": "film"})
     film, sampler = sp["film"], sp["sampler"]
-    attributes(film, {"type"})
+    attributes(film, {"type", "id"})
     attributes(sampler, {"type"})
     if film.get("type") != "hdrfilm" or sampler.get("type") != "independent":
         raise ValueError("Only hdrfilm and independent source sampling are supported")
     fp = parameters(film, {"width": "integer", "height": "integer", "file_format": "string", "pixel_format": "string", "rfilter": "rfilter"})
     sm = parameters(sampler, {"sample_count": "integer"})
-    if value(fp["file_format"]) != "openexr" or value(fp["pixel_format"]) != "rgb":
+    file_format = value(fp["file_format"]) if "file_format" in fp else "openexr"
+    pixel_format = value(fp["pixel_format"]) if "pixel_format" in fp else "rgb"
+    if file_format != "openexr" or pixel_format != "rgb":
         raise ValueError("Only RGB OpenEXR source film metadata is supported")
     attributes(fp["rfilter"], {"type"})
     if len(fp["rfilter"]):
         raise ValueError("Parameterized source filters are not supported")
+    source_depth = int(value(ip["max_depth"])) if "max_depth" in ip else -1
+    if max_depth is None and source_depth <= 0:
+        raise ValueError("An unlimited source depth requires an explicit --max-depth native budget")
     render = RenderSettings(
         width=int(value(fp["width"])), height=int(value(fp["height"])),
-        spp=int(value(sm["sample_count"])), max_depth=int(value(ip["max_depth"])),
+        spp=int(value(sm["sample_count"])), max_depth=source_depth if max_depth is None else max_depth,
         filter=fp["rfilter"].attrib["type"],
     )
     source_matrix = matrix(sp["to_world"])
@@ -115,9 +159,17 @@ def parse_scene(xml: bytes, name: str) -> Scene:
         camera_matrix[row * 4] *= -1
     fov = float(value(sp["fov"]))
     axis = value(sp["fov_axis"]) if "fov_axis" in sp else "x"
-    if axis not in ("x", "y"):
+    if axis not in ("x", "y", "smaller", "larger", "diagonal"):
         raise ValueError(f"Unsupported source FOV axis: {axis}")
-    fov_y = math.degrees(2 * math.atan(math.tan(math.radians(fov) / 2) * render.height / render.width)) if axis == "x" else fov
+    effective_axis = axis
+    if axis in ("smaller", "larger"):
+        horizontal = (render.width < render.height) == (axis == "smaller")
+        effective_axis = "x" if horizontal else "y"
+    fov_y = fov
+    if effective_axis == "x":
+        fov_y = math.degrees(2 * math.atan(math.tan(math.radians(fov) / 2) * render.height / render.width))
+    elif axis == "diagonal":
+        fov_y = math.degrees(2 * math.atan(math.tan(math.radians(fov) / 2) * render.height / math.hypot(render.width, render.height)))
     scene = Scene(name=name, camera=Camera(to_world=tuple(camera_matrix), fov_y=fov_y), render=render)
 
     for node in root.findall("bsdf"):
@@ -187,7 +239,7 @@ def parse_scene(xml: bytes, name: str) -> Scene:
             raise ValueError(f"Unsupported source element: {node.tag}")
     scene.metadata = {"source_format": "mitsuba-3", "source_camera_to_world": list(source_matrix),
                       "source_fov": fov, "source_fov_axis": axis, "source_file_format": "openexr",
-                      "source_max_depth": render.max_depth, "importer_version": "0.1.0"}
+                      "source_max_depth": source_depth, "importer_version": "0.1.0"}
     scene.to_json()
     return scene
 
@@ -218,7 +270,10 @@ def import_archive(archive_file: Path, output_root: Path) -> Path:
         required = {"scene.xml", "LICENSE.txt"}
         required.update(shape.file.replace("\\", "/") for shape in scene.shapes if isinstance(shape, Mesh))
         payload = {relative: archive.read(f"{key}/{relative}") for relative in sorted(required)}
-    destination = output_root / key
+    return write_package(scene, payload, output_root / key)
+
+
+def write_package(scene: Scene, payload: dict[str, bytes], destination: Path) -> Path:
     for relative, data in payload.items():
         path = destination.joinpath(*PurePosixPath(relative).parts)
         if path.exists() and path.read_bytes() != data:
@@ -230,3 +285,27 @@ def import_archive(archive_file: Path, output_root: Path) -> Path:
     output = destination / "scene.json"
     scene.write_json(output)
     return output
+
+
+def import_xml(filename: Path, output_root: Path, name: str | None = None, *, max_depth: int | None = None) -> Path:
+    """Import a supported standalone Mitsuba XML package without a pinned ZIP."""
+    filename = filename.resolve()
+    package = name or filename.stem
+    if package in ("", ".", "..") or any(c in package for c in '<>:"/\\|?*'):
+        raise ValueError("The output scene name must be a safe directory component")
+    xml = filename.read_bytes()
+    scene = parse_scene(xml, package, max_depth=max_depth)
+    payload = {filename.name: xml}
+    for shape in scene.shapes:
+        if isinstance(shape, Mesh):
+            relative = PurePosixPath(shape.file.replace("\\", "/"))
+            asset = filename.parent.joinpath(*relative.parts).resolve()
+            if not asset.is_relative_to(filename.parent):
+                raise ValueError(f"Mesh escapes the source XML directory: {shape.file}")
+            payload[str(relative)] = asset.read_bytes()
+    license_file = filename.parent / "LICENSE.txt"
+    if license_file.is_file():
+        payload["LICENSE.txt"] = license_file.read_bytes()
+        scene.metadata["license_file"] = "LICENSE.txt"
+    scene.metadata.update(source_file=filename.name, xml_sha256=hashlib.sha256(xml).hexdigest())
+    return write_package(scene, payload, output_root / package)

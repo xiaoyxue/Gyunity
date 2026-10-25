@@ -12,3 +12,13 @@ scene.add(Quad(id="floor", vertices=((-2., -0.2, 2.), (2., -0.2, 2.), (2., -0.2,
 scene.add(Sphere(id="sphere", center=(0.3, 0.4, 0.), radius=0.6, material="red"))
 scene.add(Quad(id="light", vertices=((-0.4, 2., -0.4), (0.4, 2., -0.4), (0.4, 2., 0.4), (-0.4, 2., 0.4)),
                material="black", emission=(8., 8., 8.)))
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Author a native scene entirely in Python.")
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    scene.write_json(args.out)
+    print(args.out)

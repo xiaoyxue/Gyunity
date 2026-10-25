@@ -83,6 +83,15 @@ The importer accepts the original `cornell-box.zip`, `veach-mis.zip` and
 OBJ data. The imported Cornell scene is named `CornellBoxStandard`.
 No gallery geometry, camera or material values are manually transcribed.
 
+The repository also includes directly runnable Python examples:
+`tools\gyscene\examples\native_demo.py` authors a custom scene,
+`import_mitsuba.py` parses either a supported XML file or a reviewed archive,
+and `import_pbrt.py` parses the documented PBRT v4 surface subset. All three
+produce the same native JSON. Use `uv run --project tools\gyscene --locked`
+with these scripts; PLY support uses the optional `pbrt` dependency group.
+The PBRT adapter requires an explicit RGB photometric unit conversion and
+rejects unsupported spectral/material/scene features rather than guessing.
+
 From `GyunityApp`, render either a file or the imported Cornell registry entry:
 
 ```powershell
