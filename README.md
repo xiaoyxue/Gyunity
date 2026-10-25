@@ -70,6 +70,18 @@ these app folders in Visual Studio and group `GyunityTest`'s existing `tests`
 folder and shared application source. Filters organize Solution Explorer only;
 compilation and legacy exclusion remain controlled by the `.vcxproj` files.
 
+## Native Python scene authoring
+`tools\gyscene` provides a uv-managed native scene model, versioned JSON and
+generated JSON Schema. Python-authored scenes and the original Mitsuba gallery
+importer use the same model and serializer; the format is not XML-shaped JSON.
+See [the tool documentation](tools/gyscene/README.md) for authoring, import and
+validation commands. Runtime JSON loading is being integrated separately.
+
+The importer accepts the original `cornell-box.zip`, `veach-mis.zip` and
+`veach-bidir.zip`, verifies source hashes, and preserves XML, CC0 licenses and
+OBJ data. The imported Cornell scene is named `CornellBoxStandard`.
+No gallery geometry, camera or material values are manually transcribed.
+
 ## Scene builder
 `GyunityApp\scenes\SceneBuilder.h` provides material factories and ordered helpers for
 triangles, quads, spheres, meshes, area lights and environment lights. It does not

@@ -1,0 +1,16 @@
+[project]
+name = "gyscene"
+version = "0.1.0"
+description = "Native Gyunity scene authoring and source-data import"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.12,<3"]
+
+[project.scripts]
+gyscene = "gyscene.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gyscene"]
