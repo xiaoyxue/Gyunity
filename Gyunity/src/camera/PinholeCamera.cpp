@@ -4,11 +4,11 @@
 GYT_NAMESPACE_BEGIN
 
 //Vec3 PinHoleCamera::We(const Ray& ray) const  {
-//	real pdfA = 1.0; // for pinhole camera
+//	real pdfPos = 1.0; // for pinhole camera
 //	real area = mFilm->mArea;
 //	real cosTheta = mCz.Dot(ray.mDir);
 //	real cos2Theta = cosTheta * cosTheta;
-//	real value = mFilmDistance * mFilmDistance * pdfA / (area * cos2Theta * cos2Theta);
+//	real value = mFilmDistance * mFilmDistance * pdfPos / (area * cos2Theta * cos2Theta);
 //	return Vec3(value, value, value);
 //}
 //
