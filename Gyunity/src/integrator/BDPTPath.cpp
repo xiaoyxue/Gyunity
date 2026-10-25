@@ -109,6 +109,90 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 
 }
 
+namespace Bidirectional {
+
+bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
+	if (from.mType == PathVertexType::Environment || to.mType == PathVertexType::Environment) {
+		if (from.mType == PathVertexType::Environment && to.mType == PathVertexType::Environment) {
+			return Fail("BDPT cannot connect two environment endpoints.");
+		}
+		*dir = from.mType == PathVertexType::Environment ? -from.mDirection : to.mDirection;
+		if (!Finite(*dir) || std::abs(dir->Length2() - 1) > 1e-4f) {
+			return Fail("BDPT environment endpoint requires a unit map direction.");
+		}
+		return true;
+	}
+	const Vec3 offset = to.mIsect.mPos - from.mIsect.mPos;
+	const real length2 = offset.Length2();
+	if (!std::isfinite(length2) || length2 <= 0) return Fail("BDPT connection endpoints must be distinct and finite.");
+	*dir = offset / std::sqrt(length2);
+	return true;
+}
+
+bool Connectible(const PathVertex& vertex) {
+	return vertex.mType == PathVertexType::Camera ||
+		(vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf &&
+			!vertex.mIsect.mBsdf->IsDelta());
+}
+
+bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVertex& next, real* pdf) {
+	*pdf = 0;
+	if (!light.mLight) return Fail("BDPT emitter has no light reference.");
+	Vec3 dir;
+	if (!Direction(light, next, &dir)) return false;
+	real positionPdf, directionPdf;
+	if (!light.mLight->PdfLight(light.mIsect, dir, &positionPdf, &directionPdf)) return false;
+	real selectionPdf = 0;
+	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
+		if (scene.GetLights()[i].get() == light.mLight) {
+			real slotPdf;
+			if (!scene.LightSelectionPdf(i, &slotPdf)) return false;
+			selectionPdf += slotPdf;
+		}
+	}
+	*pdf = selectionPdf * (light.mType == PathVertexType::Environment ? directionPdf : positionPdf);
+	return true;
+}
+
+bool PdfToward(const PathVertex& vertex, const PathVertex* previous, const PathVertex& next, real* pdf) {
+	Vec3 wi;
+	if (!Direction(vertex, next, &wi)) return false;
+	real directionalPdf = 0;
+	if (vertex.mType == PathVertexType::Environment) {
+		if (!vertex.mLight) return Fail("BDPT environment endpoint has no light reference.");
+		real positionPdf, emissionPdf;
+		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &emissionPdf)) return false;
+		return ConvertDensity(positionPdf, vertex, next, pdf);
+	}
+	if (vertex.mType == PathVertexType::Light || (!previous && vertex.mLight)) {
+		real positionPdf;
+		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &directionalPdf)) return false;
+	}
+	else if (vertex.mType == PathVertexType::Camera) {
+		if (!vertex.mCamera) return Fail("BDPT camera endpoint has no camera reference.");
+		directionalPdf = vertex.mCamera->PdfDir(Ray(vertex.mIsect.mPos, wi));
+	}
+	else {
+		if (!previous || !vertex.mIsect.mBsdf) return Fail("BDPT surface PDF requires a predecessor and BSDF.");
+		Vec3 wo;
+		if (!Direction(vertex, *previous, &wo)) return false;
+		directionalPdf = vertex.mIsect.mBsdf->IsDelta() ? 0 : vertex.mIsect.mBsdf->Pdf(wo, wi);
+	}
+	return ConvertDensity(directionalPdf, vertex, next, pdf);
+}
+
+bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, size_t s, size_t t) {
+	if (t == 0 || s + t < 2) return false;
+	if (s == 0) return cameraEnd.mLight &&
+		(cameraEnd.mLight->IsAreaLight() || cameraEnd.mType == PathVertexType::Environment);
+	if (cameraEnd.mType == PathVertexType::Environment) return false;
+	if (s == 1 && t == 1) return false;
+	if (s == 1) return lightEnd && lightEnd->mLight && Connectible(cameraEnd);
+	return lightEnd && Connectible(*lightEnd) && Connectible(cameraEnd);
+}
+
+}
+
 bool ConvertDensity(real pdf, const PathVertex& vertex, const PathVertex& next, real* converted) {
 	*converted = 0;
 	if (!ValidPdf(pdf)) return Fail("BDPT density must be finite and nonnegative.");

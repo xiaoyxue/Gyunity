@@ -85,8 +85,10 @@ TEST_F(BDPTAcceptance, EverySupportedFiniteStrategyProducesAContribution) {
 	const real cameraPdf = camera->PdfDir(Ray(camera->mPos, Vec3(0, 0, 1)));
 	const std::array<real, 4> f = { 0.5f, 4 / (25 * PI), 4 / (25 * PI), 1 / (9 * PI) };
 	const std::array<real, 4> r = { 4 / (25 * PI), 4 / (25 * PI), cameraPdf / 9, 1 };
+	const std::array<real, 4> expectedPrimary = { 1, 8 / (25 * PI), 4 / (25 * PI * PI), 1 / (9 * PI) };
 	double sum = 0;
 	for (int s = 0; s < 4; ++s) {
+		SCOPED_TRACE(s);
 		std::vector<PathVertex> light, eye;
 		for (int i = 0; i < s; ++i) {
 			auto vertex = path[i];
@@ -102,16 +104,66 @@ TEST_F(BDPTAcceptance, EverySupportedFiniteStrategyProducesAContribution) {
 			if (i < 3) vertex.mIsect.mOutDir = (path[i + 1].mIsect.mPos - vertex.mIsect.mPos).Norm();
 			eye.push_back(vertex);
 		}
-		Vec3 contribution;
-		Vec2 raster;
+		auto originalLight = light;
+		auto originalEye = eye;
+		const auto expectUnchanged = [&]() {
+			for (const auto& pair : { std::make_pair(&light, &originalLight),
+				std::make_pair(&eye, &originalEye) }) {
+				ASSERT_EQ(pair.first->size(), pair.second->size());
+				for (size_t i = 0; i < pair.first->size(); ++i) {
+					const auto& actual = (*pair.first)[i];
+					const auto& original = (*pair.second)[i];
+					EXPECT_EQ(actual.mPdfFwd, original.mPdfFwd);
+					EXPECT_EQ(actual.mPdfPrev, original.mPdfPrev);
+					EXPECT_EQ(actual.mIsDelta, original.mIsDelta);
+					EXPECT_EQ(actual.mType, original.mType);
+					EXPECT_EQ(actual.mIsect.mPos, original.mIsect.mPos);
+					EXPECT_EQ(actual.mIsect.mNormal, original.mIsect.mNormal);
+					EXPECT_EQ(actual.mIsect.mGeometryNormal, original.mIsect.mGeometryNormal);
+					EXPECT_EQ(actual.mIsect.mOutDir, original.mIsect.mOutDir);
+					EXPECT_EQ(actual.mIsect.mBsdf, original.mIsect.mBsdf);
+					EXPECT_EQ(actual.mThroughput, original.mThroughput);
+					EXPECT_EQ(actual.mLight, original.mLight);
+					EXPECT_EQ(actual.mCamera, original.mCamera);
+					EXPECT_EQ(actual.mDirection, original.mDirection);
+					EXPECT_EQ(actual.mPdfPos, original.mPdfPos);
+					EXPECT_EQ(actual.mPdfDir, original.mPdfDir);
+					EXPECT_EQ(actual.mLightSelectionPdf, original.mLightSelectionPdf);
+				}
+			}
+		};
+		Vec3 contribution, primary;
+		Vec2 raster, primaryRaster;
 		real weight;
+		ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, s, 4 - s, &primary, &primaryRaster));
+		for (int channel = 0; channel < 3; ++channel) {
+			EXPECT_NEAR(primary[channel], expectedPrimary[s], 1e-6f);
+		}
 		ASSERT_TRUE(MisWeight(*scene, light, eye, s, 4 - s, &weight));
 		ASSERT_TRUE(ConnectPaths(*scene, *camera, light, eye, s, 4 - s, &contribution, &raster));
+		EXPECT_EQ(contribution, primary * weight);
+		EXPECT_EQ(raster.x, primaryRaster.x);
+		EXPECT_EQ(raster.y, primaryRaster.y);
+		EXPECT_NEAR(raster.x, s == 3 ? 8 : 0, 1e-5f);
+		EXPECT_NEAR(raster.y, s == 3 ? 8 : 0, 1e-5f);
+		expectUnchanged();
 		ASSERT_TRUE(std::isfinite(contribution.x));
 		EXPECT_GT(contribution.x, 0) << "s=" << s << " t=" << 4 - s;
 		if (s == 2) EXPECT_NEAR(contribution.x, weight * INV_PI * INV_PI * 4 / 25, 1e-6f);
 		RecordProperty("strategy_" + std::to_string(s) + "_contribution", std::to_string(contribution.x));
 		sum += weight;
+
+		eye[0].mPdfFwd = -1;
+		originalEye[0].mPdfFwd = -1;
+		Vec3 independentPrimary;
+		ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, s, 4 - s, &independentPrimary, &raster));
+		EXPECT_EQ(independentPrimary, primary);
+		contribution = Vec3(7);
+		EXPECT_FALSE(ConnectPaths(*scene, *camera, light, eye, s, 4 - s, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+		EXPECT_EQ(raster.x, primaryRaster.x);
+		EXPECT_EQ(raster.y, primaryRaster.y);
+		expectUnchanged();
 	}
 	EXPECT_NEAR(sum, 1, 1e-6);
 }
@@ -214,6 +266,8 @@ TEST_F(BDPTAcceptance, MarkerEnvironmentPreservesLatitudeLongitudeAndEmissionSig
 	scene->AddLight(environment);
 	scene->SetAccelerator(std::make_shared<BruteForce>(scene->GetPrimitives()));
 	scene->Initialize();
+	PinHoleCamera camera(std::make_shared<Film>(16, 16), Vec3(0, 0, 3), Vec3(0),
+		Vec3(0, 1, 0), 53.13010235415597f, 1);
 	for (const Vec2& sample : { Vec2(0.1f, 0.2f), Vec2(0.3f, 0.7f), Vec2(0.8f, 0.4f) }) {
 		Intersection point;
 		Vec3 emittedDir;
@@ -221,6 +275,20 @@ TEST_F(BDPTAcceptance, MarkerEnvironmentPreservesLatitudeLongitudeAndEmissionSig
 		const Vec3 actual = environment->SampleLight(&point, &emittedDir, &pdfPos, &pdfDir, sample, Vec2(0.5f));
 		const Vec3 expected = environment->Emission(-emittedDir);
 		for (int channel = 0; channel < 3; ++channel) EXPECT_NEAR(actual[channel], expected[channel], 1e-4f);
+		std::vector<PathVertex> escaped(2);
+		escaped[0].mType = PathVertexType::Camera;
+		escaped[0].mCamera = &camera;
+		escaped[0].mIsect.mPos = camera.mPos;
+		escaped[1].mType = PathVertexType::Environment;
+		escaped[1].mLight = environment.get();
+		escaped[1].mDirection = -emittedDir;
+		escaped[1].mThroughput = Vec3(2, 0.5f, 3);
+		for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+			Vec3 contribution;
+			Vec2 raster;
+			ASSERT_TRUE(evaluate(*scene, camera, {}, escaped, 0, 2, &contribution, &raster));
+			EXPECT_EQ(contribution, escaped[1].mThroughput * expected);
+		}
 	}
 }
 

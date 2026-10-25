@@ -10,6 +10,7 @@
 #include "image/ImageIO.h"
 #include "../../GyunityApp/scenes/SceneBuilder.h"
 #include <array>
+#include <limits>
 
 using namespace Gyunity;
 
@@ -140,6 +141,72 @@ TEST_F(FiniteBDPT, GeometryUsesInverseSquareAndNormalizedDirections) {
 	EXPECT_FLOAT_EQ(farValue, 0.0625f);
 }
 
+TEST_F(FiniteBDPT, GeometryAndDensityRetainDistinctSurfacePredicates) {
+	PathVertex endpoint = full[2];
+	endpoint.mLight = full[0].mLight;
+	endpoint.mIsect.mPos = Vec3(0, 0, 2);
+	endpoint.mIsect.mGeometryNormal = Vec3(0.6f, 0, -0.8f);
+	real geometry, density;
+	ASSERT_TRUE(GeometryTerm(full[1], endpoint, &geometry));
+	ASSERT_TRUE(ConvertDensity(4, full[1], endpoint, &density));
+	EXPECT_FLOAT_EQ(geometry, 0.2f);
+	EXPECT_FLOAT_EQ(density, 1);
+}
+
+TEST_F(FiniteBDPT, ConnectionEvaluatorsRejectInvalidCountsAndResetOutputs) {
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(1, &lightPath, &cameraPath);
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		for (const auto& counts : { std::make_pair(-1, 2), std::make_pair(1, 0),
+			std::make_pair(2, 2), std::make_pair(1, 3) }) {
+			Vec3 contribution(7);
+			Vec2 raster(7);
+			EXPECT_FALSE(evaluate(*scene, *camera, lightPath, cameraPath,
+				counts.first, counts.second, &contribution, &raster));
+			EXPECT_EQ(contribution, Vec3(0));
+			EXPECT_EQ(raster.x, 0);
+			EXPECT_EQ(raster.y, 0);
+		}
+	}
+}
+
+TEST_F(FiniteBDPT, ZeroStrategiesDoNotReadMisDensities) {
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(1, &lightPath, &cameraPath);
+	cameraPath[0].mPdfFwd = -1;
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		for (int s : { 0, 1 }) {
+			Vec3 contribution(7);
+			Vec2 raster(7);
+			ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, s, 1, &contribution, &raster));
+			EXPECT_EQ(contribution, Vec3(0));
+			EXPECT_EQ(raster.x, 0);
+			EXPECT_EQ(raster.y, 0);
+		}
+	}
+	cameraPath.back().mThroughput = Vec3(0);
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		Vec3 contribution(7);
+		Vec2 raster(7);
+		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+	}
+}
+
+TEST_F(FiniteBDPT, PrimaryFailureLeavesBothEvaluatorOutputsZero) {
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(0, &lightPath, &cameraPath);
+	cameraPath.back().mThroughput = Vec3(std::numeric_limits<real>::infinity());
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		Vec3 contribution(7);
+		Vec2 raster(7);
+		EXPECT_FALSE(evaluate(*scene, *camera, lightPath, cameraPath, 0, 3, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+		EXPECT_EQ(raster.x, 0);
+		EXPECT_EQ(raster.y, 0);
+	}
+}
+
 TEST_F(FiniteBDPT, BlockedConnectionContributesZero) {
 	auto blocker = std::make_shared<Sphere>(Transform(), Transform(), 0.2f, Vec3(0.5f, 0, 1));
 	scene->AddPrimitive(std::make_shared<Primitive>(blocker));
@@ -150,6 +217,29 @@ TEST_F(FiniteBDPT, BlockedConnectionContributesZero) {
 	Vec2 raster;
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
+	cameraPath[0].mPdfFwd = -1;
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		contribution = Vec3(7);
+		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+	}
+}
+
+TEST_F(FiniteBDPT, BlockedCameraConnectionRetainsProjectedRasterAndSkipsMis) {
+	auto blocker = std::make_shared<Sphere>(Transform(), Transform(), 0.2f, Vec3(0, 0, 1));
+	scene->AddPrimitive(std::make_shared<Primitive>(blocker));
+	scene->SetAccelerator(std::make_shared<BruteForce>(scene->GetPrimitives()));
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(2, &lightPath, &cameraPath);
+	cameraPath[0].mPdfFwd = -1;
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		Vec3 contribution(7);
+		Vec2 raster(7);
+		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 2, 1, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+		EXPECT_NEAR(raster.x, 8, 1e-5f);
+		EXPECT_NEAR(raster.y, 8, 1e-5f);
+	}
 }
 
 TEST_F(FiniteBDPT, SpecularConnectionEndpointIsNotConnectible) {
@@ -164,6 +254,10 @@ TEST_F(FiniteBDPT, SpecularConnectionEndpointIsNotConnectible) {
 	EXPECT_EQ(weight, 0);
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
+	EXPECT_EQ(contribution, Vec3(0));
+	EXPECT_FALSE(Bidirectional::Connectible(cameraPath.back()));
+	EXPECT_FALSE(Bidirectional::ValidConnection(&lightPath.back(), cameraPath.back(), 1, 2));
 }
 
 TEST_F(FiniteBDPT, CameraConnectionRejectsOffFilmBeforeSplatClamping) {
@@ -174,6 +268,14 @@ TEST_F(FiniteBDPT, CameraConnectionRejectsOffFilmBeforeSplatClamping) {
 	Vec2 raster;
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 2, 1, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
+	cameraPath[0].mPdfFwd = -1;
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		raster = Vec2(7);
+		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 2, 1, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+		EXPECT_EQ(raster.x, 0);
+		EXPECT_EQ(raster.y, 0);
+	}
 }
 
 TEST_F(FiniteBDPT, PointLightCannotBeAHitEmitterStrategy) {
@@ -194,6 +296,11 @@ TEST_F(FiniteBDPT, PointLightCannotBeAHitEmitterStrategy) {
 		ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, s, 3 - s, &weight));
 		if (s == 0) EXPECT_EQ(weight, 0);
 		sum += weight;
+		Vec3 primary;
+		Vec2 raster;
+		ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, s, 3 - s, &primary, &raster));
+		const real expected = s == 0 ? 0 : s == 1 ? 2 / (5 * std::sqrt(5.f) * PI) : 1 / (9 * PI);
+		EXPECT_NEAR(primary.x, expected, 1e-6f);
 	}
 	EXPECT_NEAR(sum, 1, 1e-6);
 }
@@ -216,6 +323,12 @@ TEST_F(FiniteBDPT, UnequalLightPmfAppearsExactlyOnceInStrategyProducts) {
 		real weight;
 		ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, s, 3 - s, &weight));
 		EXPECT_NEAR(weight, probabilities[s] / total, 1e-6);
+		if (s == 1) {
+			Vec3 primary;
+			Vec2 raster;
+			ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, s, 3 - s, &primary, &raster));
+			EXPECT_NEAR(primary.x, 32 / (25 * PI), 1e-6f);
+		}
 	}
 }
 
