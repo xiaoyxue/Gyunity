@@ -54,6 +54,7 @@
     <ClCompile Include="tests\LightProbabilityTest.cpp" />
     <ClCompile Include="tests\BDPTPathTest.cpp" />
     <ClCompile Include="tests\VCMPathTest.cpp" />
+    <ClCompile Include="tests\VCMEstimatorTest.cpp" />
     <ClCompile Include="tests\HashGridTest.cpp" />
     <ClCompile Include="tests\VCMPhotonMapTest.cpp" />
     <ClCompile Include="tests\BDPTConnectionTest.cpp" />
