@@ -2,13 +2,14 @@
 ## Description
 This is a physically based renderer (CPU based ray tracing), and it's original name is SmallSPPM since I have answered someone's question about sppm to write a demo. But now I decide to extend it to a graphics library, so I rename this project to "Gyunity" [dʒiːjuːnəti].
 
-Next plan is to implement the GPU based renderer and add more features like MCMC(MMLT), VCM, Differentiable Rendering core, Path Guiding methods...
+Next plan is to implement the GPU based renderer and add more features like MCMC(MMLT), Differentiable Rendering core, Path Guiding methods...
 
 ## Features
 - PathTracing (PT)
 - Stochastic progressive photon mapping (SPPM)
 - LightTracing (LT)
 - Bidirectional PathTracing (BDPT)
+- Surface Vertex Connection and Merging (VCM, opt-in)
 - Volume PathTracing (VPT)
 - Equi-angular sampling
 - Multiple importance sampling (MIS)
@@ -139,7 +140,7 @@ controller must stop dependent phases on non-success and call `Finish(false)`,
 or `Finish(true)` only after the entire render succeeds. No per-vertex telemetry
 or extra success logging is added.
 
-## Progressive surface VCM (feature branch, milestone 5)
+## Progressive surface VCM (opt-in)
 
 `integrator\VCM.h` adds the opt-in checked renderer:
 
@@ -151,8 +152,63 @@ bool success = vcm.RenderChecked(scene, camera);
 ```
 
 `RenderChecked` never saves files; `RenderScene` saves only after success.
-No default example, `main()` selection, or CLI behavior changes. Broader scene
-evaluation and callable examples remain milestone 6 / issue #128 acceptance.
+No default example, `main()` selection, or CLI behavior changes. The callable
+example below and renderer-level acceptance tests cover issue #128; bounded
+tests are not a universal convergence or performance claim.
+
+`TestVertexConnectionMerging` lives alongside the other local C++ examples in
+`GyunityApp\main.cpp` (not a separately exported library function):
+
+```cpp
+bool TestVertexConnectionMerging(const std::string& sceneName = "mesh",
+    const std::string& output = ExampleOutputPath("CornellBoxVcm.hdr"),
+    int width = 128, int height = 128, int iterations = 16, int maxDepth = 8,
+    real initialRadius = 0.05f, real alpha = real(2.0 / 3.0),
+    Vcm::Mode mode = Vcm::Mode::Combined,
+    SceneAccelerator accelerator = SceneAccelerator::Bvh,
+    int concurrency = ThreadedTaskManager::DefaultConcurrency(),
+    VertexConnectionMerging::Statistics* statistics = nullptr);
+```
+
+For example, a bounded call from that translation unit is:
+
+```cpp
+bool ok = TestVertexConnectionMerging("lucy-bunny",
+    ExampleOutputPath("LucyBunnyVcm.hdr"), 32, 32, 16, 6, 0.15f,
+    real(2.0 / 3.0), Vcm::Mode::Combined, SceneAccelerator::Bvh, 1);
+```
+
+All ten registered surface scenes are accepted; `fog`, unknown names and invalid
+accelerator values return false. Renderer validation failures return false and
+are never saved. Like the existing examples, invalid image dimensions/empty
+output throw `std::invalid_argument`; missing assets and failed writes throw
+`std::runtime_error` through `RenderScene`. The optional statistics pointer is
+reset on entry and copied after a normal `RenderScene` return, not after an
+exception. A non-null pointer is not needed to render.
+
+Run from the worktree's `GyunityApp` directory: `..\resources` must contain the
+registry's assets (`meshs\bunny3.obj`, `meshs\Alucy.obj`, `meshs\water.obj` and
+`media\pictures\uffizi-large.hdr` for the representative mesh/env/water scenes).
+Defaults use `Test\CornellBoxVcm.hdr` under the **main checkout**, including from
+nested worktrees. Explicit output paths are unchanged and their parent directory
+must exist. Tests include the actual `main.cpp` example without changing its
+entry point; no `--integrator` option or PT/VPT routing change is introduced.
+
+Start small: retained light paths and BSDF arenas scale with resolution times
+depth, and the map, camera scratch, film and acceleration structures add more
+memory. Increasing iterations does not increase retained path storage, but
+explicit MIS and large photon neighborhoods can be costly. The modest
+128x128/16/depth-8 default is not a promise that 1024x1024/1600 will fit or finish
+quickly. Radius is in **scene units**, never inferred from a scene's bounds.
+
+References: [Georgiev et al., *Light Transport Simulation with Vertex Connection
+and Merging*, SIGGRAPH Asia 2012](https://iliyan.com/publications/VertexMerging/VertexMerging_SigAsia2012.pdf)
+and [Georgiev, *Implementing Vertex Connection and Merging*, revision 2,
+2013](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf).
+The report's recursive `dVCM/dVC/dVM` implementation is a **test-only oracle**;
+production enumerates explicit path densities. Alpha 2/3 satisfies the paper's
+sufficient alpha <= 0.75 condition for its qualified asymptotic rate, not a
+universal rate for all point-light/pinhole specular configurations.
 
 Each iteration attempts exactly `P = width * height` light paths, then traces one
 camera path per pixel, pairing pixel `k` with complete light path `k` for VC.
@@ -178,6 +234,10 @@ Modes reuse `Vcm::Mode`: Combined uses joint VC/VM MIS; ConnectionOnly skips map
 construction; MergingOnly retains VM and camera-visible `LS*E` emission/background
 (zero or only pure-delta interior scatters), not continuous emitter-hit overlap.
 VC depth is `s+t-2`; VM depth is `s+t-3`. No `t=0` or `(1,1)` strategy is included.
+Separate ConnectionOnly/MergingOnly images use different MIS denominators:
+they are **not additive components** of a Combined image. Continuous
+ConnectionOnly weights share BDPT's common domain; singular VCM weights follow
+the report convention and need not equal legacy BDPT weights.
 
 Requirements: initialized surface scene, valid pinhole camera/film storage, finite
 positive radius, positive iterations, `0<alpha<1`, a sampler-supported depth,
@@ -225,6 +285,16 @@ completed iterations/attempts/samples, last physical radius/area, phase counts
 and times, last task-group results, and peak light-arena/path bytes and photons.
 It is not process RSS and excludes map buckets, eye scratch, film and allocator
 overhead. One renderer instance must not render concurrently.
+Its three RGB diagnostic sums are the actual terms using the selected mode's
+MIS weights: `mCameraConnectionSum` (including retained `LS*E`),
+`mCameraMergingSum` (already kernel/count-normalized), and
+`mSplatConnectionSum` (already divided by iterations). They do not affect film
+arithmetic. For a successful fresh box-filter render with one sample per pixel
+per iteration, divide camera sums by `P*iterations` and splat sums by `P` to
+compare image means (allow float accumulation/RGBE quantization). They are
+**pre-filter diagnostics**, not component images for arbitrary filters or
+rounded boundary samples. Only interpret totals after success; failures can
+contain partial work. The bounded tile-local sums are reduced after barriers.
 Each VM-enabled iteration declares `2*tileCount+1` progress units (light tiles,
 one map task, camera tiles); ConnectionOnly declares `2*tileCount`.
 `mLastMapPhase` records the map task's scoped concurrency/status/timing.
@@ -239,8 +309,19 @@ streams, partial tiles, barriers, arena reuse and single-worker determinism.
 `VCMRendererNegative.*` records expected checked failures separately. Tiny HDR
 checks allow RGBE quantization; the diffuse-environment check uses a separately
 declared Monte Carlo/finite-radius tolerance, not a relaxed MIS tolerance.
+`ExpandedEnvironmentBoundsDoNotDimDiffuseIndependentSeeds` uses 48 independent
+seed-pairs, fixed geometry and doubled launch radius in all three modes. Its
+central diffuse disks have no boundary bias; acceptance uses four standard
+errors plus RGBE quantization and a separate precision gate. Photon-sharing
+pixels are not treated as independent samples. `MainExampleRenders` calls the
+real example across all registered surface scenes/modes, KD and explicit
+concurrency, including no-save and filesystem-failure probes.
 Run from `GyunityApp` with `GYUNITY_TEST_OUTPUT_DIRECTORY` pointing to an existing
 main-checkout `Test` directory. No image-hash comparison to PT is an oracle.
+Finite-radius bias, the map's normal-dot cutoff 0.9 and extent limit of 2^20
+radii remain explicit approximations/limits. There is no media, mixed
+delta/continuous BSDF, shading-normal adjoint, new camera, rotated/multiple
+environment, adaptive-radius, independent photon-budget or GPU support.
 
 The renderer exposed an environment PDF round-trip failure near the poles:
 `acos(y)` lost latitude after float rounding. Inverse mapping now uses
@@ -477,7 +558,7 @@ commands. Invalid options, missing assets and failed image writes report an
 error and return a nonzero exit code; no image is silently substituted.
 
 ## C++ integrator examples
-`GyunityApp\main.cpp` keeps five runnable mock examples. With no arguments,
+`GyunityApp\main.cpp` keeps six callable examples. With no arguments,
 `main()` calls `TestPathTracing()` instead of the previous LightTracing demo.
 To select another C++ example, replace that call with `TestSPPM()`,
 `TestLightTracing()`, or `TestVolPathTracing()` and rebuild. Explicit CLI
@@ -490,6 +571,7 @@ arguments still use `RunSceneCommandLine`; they do not select these examples.
 | `TestLightTracing` | `mesh` | 1024x1024, 512 spp, depth 15 | `Test\CornellBoxLT.bmp` |
 | `TestVolPathTracing` | `fog` | 1024x1024, 2000 spp, depth 8 | `Test\MediaTestFogEquiAngular.bmp` |
 | `TestBidirectionalPathTracing` | Any non-volume scene; default `mesh` | 1024x1024, 256 spp, depth 8 | `Test\CornellBoxBdpt.bmp` |
+| `TestVertexConnectionMerging` | Any non-volume scene; default `mesh` | 128x128, 16 iterations, depth 8, radius 0.05, alpha 2/3, Combined | `Test\CornellBoxVcm.hdr` |
 
 Default outputs always go to `Test` at the **main repository root**, not the
 working directory or a worktree's root. The examples locate the main checkout
@@ -826,8 +908,8 @@ escapes using their actual ray directions. Independent reverse-event
 reconstruction does not consume the stored delta masses or reverse densities.
 Additional generated oblique glass reflection/refraction, TIR, and emissive
 mirror cases verify `LS*E` weights and sampling-compensated emission values.
-These are probability/primary-estimate tests, not a completed VCM render loop
-or a convergence/radiance acceptance claim for the future combined renderer.
+These probability/primary-estimate tests are separate from the progressive
+renderer acceptance above and do not alone prove convergence or radiance.
 
 `TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
 width, height, spp, depth and accelerator. It covers all nine original surface

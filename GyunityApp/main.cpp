@@ -4,6 +4,7 @@
 #include "integrator/PT.h"
 #include "integrator/SPPM.h"
 #include "integrator/VPT.h"
+#include "integrator/VCM.h"
 #include "sampler/Halton.h"
 #include "sampler/HaltonEnum.h"
 #include "sampler/SamplerEnum.h"
@@ -110,6 +111,39 @@ bool TestBidirectionalPathTracing(const std::string& sceneName = "mesh",
 	auto sampler = std::make_shared<RandomSampler>(123);
 	BidirectionalPathTracing integrator(sampler, maxDepth, spp);
 	return RenderScene(options, integrator);
+}
+
+bool TestVertexConnectionMerging(const std::string& sceneName = "mesh",
+	const std::string& output = ExampleOutputPath("CornellBoxVcm.hdr"),
+	int width = 128, int height = 128, int iterations = 16, int maxDepth = 8,
+	real initialRadius = 0.05f, real alpha = real(2.0 / 3.0), Vcm::Mode mode = Vcm::Mode::Combined,
+	SceneAccelerator accelerator = SceneAccelerator::Bvh,
+	int concurrency = ThreadedTaskManager::DefaultConcurrency(),
+	VertexConnectionMerging::Statistics* statistics = nullptr) {
+	if (statistics) *statistics = {};
+	const SceneDescription* selected = nullptr;
+	for (const auto& scene : GetSceneRegistry()) {
+		if (sceneName == scene.name) selected = &scene;
+	}
+	if (!selected || selected->usesVolume) {
+		GetDefaultLogger()->Error("VCM requires a registered non-volume scene.", false);
+		return false;
+	}
+	if (accelerator != SceneAccelerator::Bvh && accelerator != SceneAccelerator::Kd) {
+		GetDefaultLogger()->Error("VCM example requires BVH or KD acceleration.", false);
+		return false;
+	}
+	SceneRenderOptions options;
+	options.scene = selected;
+	options.width = width;
+	options.height = height;
+	options.output = output;
+	options.accelerator = accelerator;
+	auto sampler = std::make_shared<RandomSampler>(123);
+	VertexConnectionMerging integrator(sampler, maxDepth, iterations, initialRadius, alpha, mode, concurrency);
+	const bool success = RenderScene(options, integrator);
+	if (statistics) *statistics = integrator.GetStatistics();
+	return success;
 }
 
 }

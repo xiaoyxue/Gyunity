@@ -125,6 +125,7 @@ struct Tile {
 	Arena lightArena, cameraArena;
 	std::vector<PathVertex> cameraPath;
 	int64 lightAttempts = 0, cameraSamples = 0;
+	std::array<double, 3> cameraConnectionSum{}, cameraMergingSum{}, splatConnectionSum{};
 };
 
 bool Store(const double sum[3], Vec3* result) {
@@ -236,10 +237,18 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 	const auto storage = [&]() {
 		size_t bytes = 0, pathBytes = lightPaths.capacity() * sizeof(std::vector<PathVertex>);
 		mStatistics.mLightAttempts = mStatistics.mCameraSamples = 0;
+		mStatistics.mCameraConnectionSum = {};
+		mStatistics.mCameraMergingSum = {};
+		mStatistics.mSplatConnectionSum = {};
 		for (const auto& tile : tiles) {
 			bytes += tile.lightArena->TotalAllocated();
 			mStatistics.mLightAttempts += tile.lightAttempts;
 			mStatistics.mCameraSamples += tile.cameraSamples;
+			for (int c = 0; c < 3; ++c) {
+				mStatistics.mCameraConnectionSum[c] += tile.cameraConnectionSum[c];
+				mStatistics.mCameraMergingSum[c] += tile.cameraMergingSum[c];
+				mStatistics.mSplatConnectionSum[c] += tile.splatConnectionSum[c];
+			}
 		}
 		for (const auto& path : lightPaths) pathBytes += path.capacity() * sizeof(PathVertex);
 		mStatistics.mPeakLightArenaBytes = std::max(mStatistics.mPeakLightArenaBytes, bytes);
@@ -343,14 +352,23 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 									Fail("VCM camera splat lies outside the film.");
 									return Tasks::Status::Failed;
 								}
-								film->AddSplat(raster.x, raster.y, primary * (weight / real(mIterations)));
+								const Vec3 splat = primary * (weight / real(mIterations));
+								film->AddSplat(raster.x, raster.y, splat);
+								for (int c = 0; c < 3; ++c) tile.splatConnectionSum[c] += splat[c];
 							}
-							else for (int c = 0; c < 3; ++c) sum[c] += double(primary[c]) * weight;
+							else for (int c = 0; c < 3; ++c) {
+								const double value = double(primary[c]) * weight;
+								sum[c] += value;
+								tile.cameraConnectionSum[c] += value;
+							}
 						}
 						if (mMode != Vcm::Mode::ConnectionOnly && t >= 2 && t - 1 <= mMaxDepth) {
 							Vec3 merged;
 							if (!Vcm::GatherMerging(scene, map, lightPaths, eye, t, mMaxDepth, mMode, &merged)) return Tasks::Status::Failed;
-							for (int c = 0; c < 3; ++c) sum[c] += merged[c];
+							for (int c = 0; c < 3; ++c) {
+								sum[c] += merged[c];
+								tile.cameraMergingSum[c] += merged[c];
+							}
 						}
 					}
 					Vec3 contribution;
