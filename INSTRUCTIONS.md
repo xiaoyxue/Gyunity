@@ -89,6 +89,25 @@ Do not run both dependency setup scripts for the same build. `init.cmd` and
 `init.ps1` are alternatives. Python/uv commands below work in either shell;
 replace PowerShell's `$TestRoot` with cmd's `%GYUNITY_TEST%` when needed.
 
+## Temporary gallery asset checkout
+
+The published image repository can be cloned beneath the main checkout's
+ignored `.worktree` directory. From the setup above:
+
+```powershell
+$GyunityRoot = Split-Path $TestRoot
+git clone https://github.com/xiaoyxue/GyunityAssets "$GyunityRoot\.worktree\gyunity-assets"
+git -C "$GyunityRoot\.worktree\gyunity-assets" worktree add ..\gyunity-assets-gallery -b user/your-alias/scene-gallery origin/main
+```
+
+Choose your own branch alias and reuse an existing clone rather than cloning
+over it. Make publication changes in the asset worktree's
+`GyunityAssets\Gallery`, not its main checkout. Render PNGs and keep logs under
+`$TestRoot\gallery-publication` first, then copy only completed images into the
+Gallery. Do not upload raw Matpreview geometry, source environments or supplied
+reference images. The asset repository stores gallery outputs; it does not
+replace the original ZIP inputs needed by the scene importers.
+
 ## Python authoring and import commands (uv)
 
 Return to the checkout/worktree root and use the PowerShell `$TestRoot` defined

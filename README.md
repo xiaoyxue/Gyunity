@@ -20,6 +20,37 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 - Simple Memory Pool
 
 ## Some Results
+### Original scene previews
+Height 1024 with original aspect ratios, 512 samples per pixel and depth 10.
+Veach bidir uses BDPT; the other five use PT. These are generated Gyunity
+renders with no resizing or reference-image substitution.
+[Settings and image hashes](https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/transport-scenes-1024h.json).
+
+<div align="center">
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/CornellBoxStandard-path-1024x1024-spp512-depth10.png?raw=true" alt="CornellBoxStandard, path tracing"/>
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-mis-path-1820x1024-spp512-depth10.png?raw=true" alt="Original Veach MIS, path tracing"/>
+  <p>CornellBoxStandard (PT) / Veach MIS (PT)</p>
+</div>
+
+<br/>
+<div align="center">
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-bidir-bdpt-1024x1024-spp512-depth10.png?raw=true" alt="Original Veach bidir, bidirectional path tracing"/>
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-copper-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native copper, path tracing"/>
+  <p>Veach bidir (BDPT) / Matpreview copper (PT)</p>
+</div>
+
+<br/>
+<div align="center">
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-glass-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native glass, path tracing"/>
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-diffuse-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native diffuse material, path tracing"/>
+  <p>Matpreview glass (PT) / Matpreview diffuse (PT)</p>
+</div>
+
+Matpreview uses explicit supported native material overrides. Source geometry
+and environments are not redistributed here. Some Monte Carlo noise,
+fireflies and caustic speckles remain.
+
+### Earlier renders
 <div align="center">
   <img width="400px" height="400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/bunny2.png?raw=true"/>
   <img width="400px" height="400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/bunny.png?raw=true"/>
