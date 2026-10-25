@@ -145,8 +145,9 @@ medium and preserves the original material-free front boundary; use
 ## Named scenes and rendering
 `GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
-`empty`, `diffuse`, `water`, and `fog`. The sphere and triangle scenes use their
-large-room camera; all others use the standard Cornell camera. Fog automatically
+`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, and `mis-glossy`. The sphere and
+triangle scenes use their large-room camera, and `mis-glossy` uses its own
+elevated overview camera; the others use the standard Cornell camera. Fog automatically
 uses volume path tracing; the other scenes use surface path tracing.
 
 ```powershell
@@ -164,6 +165,34 @@ lowercase `.png`, `.bmp`, or `.hdr`; output directories must already exist.
 Paths with spaces must be quoted. `--help` and `--list-scenes` are standalone
 commands. Invalid options, missing assets and failed image writes report an
 error and return a nonzero exit code; no image is silently substituted.
+
+### Procedural MIS scene
+`mis-glossy` is an asset-free, original scene inspired by the
+[Veach MIS diagnostic](https://mitsuba.readthedocs.io/en/stable/src/gallery.html#simple-scenes),
+not a copy of its geometry or a numerical reference for another renderer.
+Four tilted strips have roughness 0.025, 0.07, 0.18 and 0.4 from back to front.
+Four sphere lights, left to right, have radii 0.06, 0.12, 0.24 and 0.48.
+Their radiance is `1.5 / radius^2`, so all four have equal emitted power;
+small lights are intentionally brighter, not weaker.
+
+The strips face the default camera and emitter row to show the transition from
+narrow reflections to broad highlights. Geometry, normals, material order and
+light order are deterministic; no textures, meshes or environment map are loaded.
+Use depth 4 and 128 spp for a preview, and increase to 1024 spp when inspecting
+small-light noise. These are starting budgets, not convergence guarantees.
+
+```powershell
+.\x64\Release\GyunityApp.exe --scene mis-glossy --width 512 --height 384 --spp 128 --max-depth 4 --out "D:\Code\Graphics\Gyunity\Test\mis-glossy.png"
+```
+
+Run this asset-free scene from the worktree root. `--accel kd` selects the
+alternative accelerator. The CLI uses the existing PT light/BSDF MIS estimator;
+it does not expose light-only or BSDF-only modes. C++ callers can use
+`RenderScene(options, integrator)` with `BidirectionalPathTracing` instead.
+The new `MisScene.*` checks cover framing, roughness, equal light power,
+sample/PDF agreement and unoccluded light paths with both accelerators.
+`MisSceneRenders.*` additionally exercises PT and BDPT at 32x24, 16 spp when
+`GYUNITY_TEST_OUTPUT_DIRECTORY` points under the main checkout's `Test` folder.
 
 ## C++ integrator examples
 `GyunityApp\main.cpp` keeps five runnable mock examples. With no arguments,

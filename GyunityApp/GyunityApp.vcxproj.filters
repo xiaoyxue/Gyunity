@@ -23,6 +23,9 @@
     <ClInclude Include="scenes\SceneBuilder.h">
       <Filter>scenes</Filter>
     </ClInclude>
+    <ClInclude Include="scenes\MisScenes.h">
+      <Filter>scenes</Filter>
+    </ClInclude>
     <ClInclude Include="scenes\SceneRegistry.h">
       <Filter>scenes</Filter>
     </ClInclude>
