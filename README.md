@@ -261,6 +261,10 @@ normals; interpolated shading-normal transport is not advertised as supported.
 Media, null-material boundaries and mixed delta/continuous BSDFs are rejected.
 Pure mirror/glass events remain supported. A zero-contribution sample stops
 extension without losing the surface vertex already reached.
+If conversion of a non-delta edge to area density yields zero, the walk stops
+before appending that vertex and retains its valid prefix. This covers rounded
+nearby intersections without an epsilon cutoff or remapping a continuous zero
+to one. Delta-generated zero-density markers still propagate through the path.
 
 `mPdfFwd` stores the incoming density at a vertex and `mPdfPrev` stores the reverse
 density at that vertex from its successor. Finite destinations use geometric-normal
