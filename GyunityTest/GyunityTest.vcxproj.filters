@@ -64,6 +64,12 @@
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp">
       <Filter>GyunityApp</Filter>
     </ClCompile>
+    <ClCompile Include="..\GyunityApp\SceneRenderer.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GyunityApp\Examples.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
     <ClCompile Include="..\GyunityApp\NativeScene.cpp">
       <Filter>GyunityApp</Filter>
     </ClCompile>

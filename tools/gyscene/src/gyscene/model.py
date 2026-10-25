@@ -13,6 +13,7 @@ Number = Annotated[float, Field(allow_inf_nan=False)]
 Positive = Annotated[Number, Field(gt=0)]
 Nonnegative = Annotated[Number, Field(ge=0)]
 Reflectance = Annotated[Number, Field(ge=0, le=1)]
+Roughness = Annotated[Number, Field(gt=0, le=1)]
 Vec3 = tuple[Number, Number, Number]
 Color = tuple[Nonnegative, Nonnegative, Nonnegative]
 ReflectanceColor = tuple[Reflectance, Reflectance, Reflectance]
@@ -40,18 +41,26 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
 
+class SppmSettings(Model):
+    iterations: Annotated[int, Field(gt=0, le=2147483647)] = 256
+    photons_per_stage: Annotated[int, Field(gt=0, le=2147483647)] = 300000
+
+
 class RenderSettings(Model):
     width: Annotated[int, Field(gt=0)] = 512
     height: Annotated[int, Field(gt=0)] = 512
     spp: Annotated[int, Field(gt=0)] = 64
     max_depth: Annotated[int, Field(gt=0)] = 8
     seed: Annotated[int, Field(ge=0, le=4294967295)] = 123
-    integrator: Literal["path", "bdpt"] = "path"
+    integrator: Literal["path", "bdpt", "sppm"] = "path"
+    sppm: SppmSettings | None = Field(default=None, exclude_if=lambda v: v is None)
     accelerator: Literal["bvh", "kd"] = "bvh"
     filter: Literal["box", "tent", "gaussian"] = "box"
 
     @model_validator(mode="after")
     def dimensions(self) -> RenderSettings:
+        if self.integrator == "sppm" and self.sppm is None:
+            self.sppm = SppmSettings()
         if self.width * self.height > 2147483647 // 3:
             raise ValueError("Film dimensions exceed the renderer's pixel limit")
         return self
@@ -123,7 +132,27 @@ class Dielectric(Model):
     transmission: ReflectanceColor = (1., 1., 1.)
 
 
-Material = Annotated[Diffuse | Conductor | Dielectric, Field(discriminator="type")]
+class Mirror(Model):
+    type: Literal["mirror"] = "mirror"
+    reflection: ReflectanceColor = (1., 1., 1.)
+
+
+class RoughDielectric(Model):
+    type: Literal["rough_dielectric"] = "rough_dielectric"
+    roughness: tuple[Roughness, Roughness]
+    eta_inside: Positive = 1.5
+    reflection: ReflectanceColor = (1., 1., 1.)
+    transmission: ReflectanceColor = (1., 1., 1.)
+
+
+class Plastic(Model):
+    type: Literal["plastic"] = "plastic"
+    diffuse: ReflectanceColor
+    specular: ReflectanceColor = (1., 1., 1.)
+    roughness: Roughness
+
+
+Material = Annotated[Diffuse | Conductor | Dielectric | Mirror | RoughDielectric | Plastic, Field(discriminator="type")]
 
 
 class Shape(Model):

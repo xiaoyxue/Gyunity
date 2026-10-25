@@ -644,6 +644,121 @@
       "title": "Mesh",
       "type": "object"
     },
+    "Mirror": {
+      "additionalProperties": false,
+      "properties": {
+        "reflection": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Reflection",
+          "type": "array"
+        },
+        "type": {
+          "const": "mirror",
+          "default": "mirror",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "Mirror",
+      "type": "object"
+    },
+    "Plastic": {
+      "additionalProperties": false,
+      "properties": {
+        "diffuse": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Diffuse",
+          "type": "array"
+        },
+        "roughness": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Roughness",
+          "type": "number"
+        },
+        "specular": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Specular",
+          "type": "array"
+        },
+        "type": {
+          "const": "plastic",
+          "default": "plastic",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "diffuse",
+        "roughness"
+      ],
+      "title": "Plastic",
+      "type": "object"
+    },
     "Quad": {
       "additionalProperties": false,
       "properties": {
@@ -831,7 +946,8 @@
           "default": "path",
           "enum": [
             "path",
-            "bdpt"
+            "bdpt",
+            "sppm"
           ],
           "title": "Integrator",
           "type": "string"
@@ -855,6 +971,17 @@
           "title": "Spp",
           "type": "integer"
         },
+        "sppm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SppmSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "width": {
           "default": 512,
           "exclusiveMinimum": 0,
@@ -863,6 +990,102 @@
         }
       },
       "title": "RenderSettings",
+      "type": "object"
+    },
+    "RoughDielectric": {
+      "additionalProperties": false,
+      "properties": {
+        "eta_inside": {
+          "default": 1.5,
+          "exclusiveMinimum": 0,
+          "title": "Eta Inside",
+          "type": "number"
+        },
+        "reflection": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Reflection",
+          "type": "array"
+        },
+        "roughness": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            }
+          ],
+          "title": "Roughness",
+          "type": "array"
+        },
+        "transmission": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Transmission",
+          "type": "array"
+        },
+        "type": {
+          "const": "rough_dielectric",
+          "default": "rough_dielectric",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "roughness"
+      ],
+      "title": "RoughDielectric",
       "type": "object"
     },
     "Sphere": {
@@ -974,6 +1197,27 @@
       ],
       "title": "Sphere",
       "type": "object"
+    },
+    "SppmSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "iterations": {
+          "default": 256,
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "photons_per_stage": {
+          "default": 300000,
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647,
+          "title": "Photons Per Stage",
+          "type": "integer"
+        }
+      },
+      "title": "SppmSettings",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -995,7 +1239,10 @@
           "mapping": {
             "conductor": "#/$defs/Conductor",
             "dielectric": "#/$defs/Dielectric",
-            "diffuse": "#/$defs/Diffuse"
+            "diffuse": "#/$defs/Diffuse",
+            "mirror": "#/$defs/Mirror",
+            "plastic": "#/$defs/Plastic",
+            "rough_dielectric": "#/$defs/RoughDielectric"
           },
           "propertyName": "type"
         },
@@ -1008,6 +1255,15 @@
           },
           {
             "$ref": "#/$defs/Dielectric"
+          },
+          {
+            "$ref": "#/$defs/Mirror"
+          },
+          {
+            "$ref": "#/$defs/RoughDielectric"
+          },
+          {
+            "$ref": "#/$defs/Plastic"
           }
         ]
       },

@@ -46,6 +46,8 @@
     <ClCompile Include="tests\SceneRegistryTest.cpp" />
     <ClCompile Include="tests\SphereLightPdfTest.cpp" />
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
+    <ClCompile Include="..\GyunityApp\SceneRenderer.cpp" />
+    <ClCompile Include="..\GyunityApp\Examples.cpp" />
     <ClCompile Include="..\GyunityApp\NativeScene.cpp" />
     <ClCompile Include="tests\NativeSceneTest.cpp" />
     <ClCompile Include="tests\MaterialPreviewTest.cpp" />

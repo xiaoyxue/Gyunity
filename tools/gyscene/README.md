@@ -8,16 +8,25 @@ Python nor uv once JSON and referenced assets exist.
 From the worktree root:
 
 ```powershell
+$TestRoot = Join-Path (Resolve-Path (Join-Path (git --no-pager rev-parse --path-format=relative --git-common-dir) '..')).Path 'Test'
 uv sync --project tools\gyscene --locked
 uv run --project tools\gyscene --locked gyscene build tools\gyscene\examples\native_demo.py --out resources\scenes\native-demo\scene.json
-uv run --project tools\gyscene --locked gyscene import-mitsuba --archive-dir D:\Code\mitsuba3-scene --scene cornell-box --output-root resources\scenes\mitsuba
+uv run --project tools\gyscene --locked gyscene import-mitsuba --archive-dir "$TestRoot\archives" --scene cornell-box --output-root resources\scenes\mitsuba
 uv run --project tools\gyscene --locked gyscene schema --out tools\gyscene\scene.schema.json
 uv run --project tools\gyscene --locked gyscene validate resources\scenes\mitsuba\cornell-box\scene.json
 ```
 
+Place original user-supplied ZIPs in the main checkout's `Test\archives`
+before importing. `$TestRoot` is resolved from Git rather than a machine-specific
+directory, and remains valid after changing the working directory.
+See [INSTRUCTIONS.md](../../INSTRUCTIONS.md) for cmd.exe and PowerShell usage.
+
 Repeat import with `veach-mis` and `veach-bidir`. The imported Cornell scene is
 named **CornellBoxStandard**. Import checks pinned archive SHA-256 values and
 retains the original CC0 license, XML and all referenced OBJ files unchanged.
+The reviewed `veach-bidir` preset defaults to BDPT, recording its native
+integrator override separately from the source XML's path integrator. Generic
+standalone XML imports retain the source integrator convention.
 Supplied reference images are not copied into production assets and must not
 be presented as renderer output.
 
@@ -34,10 +43,10 @@ JSON. Python code is in the repository, not hidden in a renderer executable:
 | Import original material-preview geometry with an explicit supported BSDF | `examples\import_matpreview.py` | `gyscene.matpreview` |
 
 ```powershell
-uv run --project tools\gyscene --locked python tools\gyscene\examples\native_demo.py --out "D:\Code\Graphics\Gyunity\Test\custom-scene.json"
-uv run --project tools\gyscene --locked python tools\gyscene\examples\import_mitsuba.py --archive-dir D:\Code\mitsuba3-scene --scene cornell-box --output-root "D:\Code\Graphics\Gyunity\Test\python-imports"
-uv run --project tools\gyscene --locked python tools\gyscene\examples\import_mitsuba.py resources\scenes\mitsuba\cornell-box\scene.xml --name CornellBoxStandard --output-root "D:\Code\Graphics\Gyunity\Test\xml-imports"
-uv run --project tools\gyscene --locked --extra pbrt python tools\gyscene\examples\import_pbrt.py tools\gyscene\examples\pbrt_demo.pbrt --rgb-radiance-scale 1 --output-root "D:\Code\Graphics\Gyunity\Test\python-imports"
+uv run --project tools\gyscene --locked python tools\gyscene\examples\native_demo.py --out "$TestRoot\custom-scene.json"
+uv run --project tools\gyscene --locked python tools\gyscene\examples\import_mitsuba.py --archive-dir "$TestRoot\archives" --scene cornell-box --output-root "$TestRoot\python-imports"
+uv run --project tools\gyscene --locked python tools\gyscene\examples\import_mitsuba.py resources\scenes\mitsuba\cornell-box\scene.xml --name CornellBoxStandard --output-root "$TestRoot\xml-imports"
+uv run --project tools\gyscene --locked --extra pbrt python tools\gyscene\examples\import_pbrt.py tools\gyscene\examples\pbrt_demo.pbrt --rgb-radiance-scale 1 --output-root "$TestRoot\python-imports"
 ```
 
 The equivalent CLI is `gyscene import-pbrt FILE --output-root DIRECTORY
@@ -94,11 +103,43 @@ checkerboard reflectance and Gaussian filtering. Its plastic exterior is
 not silently mapped to another material. Select an explicit supported profile:
 
 ```powershell
-uv run --project tools\gyscene --locked --extra mitsuba python tools\gyscene\examples\import_matpreview.py D:\Code\mitsuba3-scene\matpreview.zip --profile diffuse --max-depth 8 --output-root "D:\Code\Graphics\Gyunity\Test\material-preview"
+uv run --project tools\gyscene --locked --extra mitsuba python tools\gyscene\examples\import_matpreview.py "$TestRoot\archives\matpreview.zip" --profile diffuse --max-depth 8 --output-root "$TestRoot\material-preview"
 ```
 
-`glass` and `copper` are also available. A custom script may pass its own
-native material to `import_preview`. The real geometry/camera/UVs/normals and
+Use `--profile all` to decode the original meshes once and generate all nine
+registered examples: `diffuse`, `glass`, `copper`, `checkerboard`, `mirror`,
+`rough-glass`, `copper-beckmann`, `copper-anisotropic` and `plastic`.
+For direct `--scene matpreview-NAME` invocation, use `--output-root resources\scenes`
+from the worktree root; that local Matpreview package is git-ignored.
+
+A custom script may pass its own native material to `import_preview`, or a
+name-to-material dictionary to `import_previews` for a single-decode custom batch.
+Set `$env:GYUNITY_TEST_OUTPUT_DIRECTORY = $TestRoot` in PowerShell before running
+the script:
+
+```python
+from pathlib import Path
+import os
+from gyscene import Mirror, Plastic, RoughDielectric
+from gyscene.matpreview import import_previews
+
+test_root = Path(os.environ["GYUNITY_TEST_OUTPUT_DIRECTORY"])
+import_previews(
+    test_root / "archives" / "matpreview.zip",
+    test_root / "custom-previews",
+    profiles={
+        "custom-mirror": Mirror(reflection=(0.9, 0.9, 0.9)),
+        "custom-plastic": Plastic(diffuse=(0.2, 0.7, 0.3), roughness=0.2),
+        "custom-rough-glass": RoughDielectric(roughness=(0.1, 0.3), eta_inside=1.5),
+    },
+    max_depth=8,
+)
+```
+
+The native plastic profile uses Gyunity's existing diffuse-plus-GGX material
+with its fixed IOR, **not** the original Mitsuba plastic BSDF. Adding native
+material types does not expand the supported Mitsuba/PBRT adapter vocabulary.
+The real geometry/camera/UVs/normals and
 EXR bytes remain unchanged apart from converting serialized mesh arrays to
 world-space OBJ. The optional Mitsuba package only decodes source data; it is
 not used for Gyunity rendering.
@@ -128,7 +169,15 @@ Colors/radiance are linear RGB. Conductors store raw `alpha` (X, Y), complex
 IOR and explicit `ggx` or `beckmann` distribution: no roughness remapping.
 Diffuse materials can be one- or two-sided and accept constant RGB or a native
 `Checkerboard` reflectance. Conductors currently require two-sided behavior;
-dielectric IORs and reflection/transmission are explicit. Area emission is
+smooth dielectric IORs and reflection/transmission are explicit.
+`Mirror` exposes ideal specular reflection. `RoughDielectric` exposes the
+existing GGX model with exterior IOR fixed at 1; `Plastic` exposes the existing
+diffuse-plus-GGX model with its fixed 1.5/1 Fresnel parameters. Their
+`roughness` values lie in (0,1] and use the renderer's existing
+`GGXDistribution::RoughnessToAlpha` mapping, unlike conductors' raw `alpha`.
+Rough dielectric has two roughness axes, plastic one. Neither accepts a
+distribution or unsupported IOR override. All six material types share the
+same Python/schema/C++ validation path. Area emission is
 attached to a shape independently of its material. One `Environment` light
 may reference a linear RGB HDR/EXR map, positive scale and orthonormal
 direction-only transform. Native longitude zero points +X; the Mitsuba adapter
@@ -137,7 +186,7 @@ Checkerboard periods have four alternating quadrants per unit UV square,
 with explicit UV scale. Volumes, arbitrary image material textures and other
 external plugins remain outside this bounded version.
 
-Render settings use native PT/BDPT scattering-depth budgets, resolution,
+Render settings use native PT/BDPT/SPPM scattering-depth budgets, resolution,
 sample count, seed, BVH/kd and box/tent/Gaussian filtering. Native Gaussian
 filtering uses standard deviation 0.5 and radius 2. Source output format/depth
 are retained in metadata; native PNG/HDR/EXR output is selected by the renderer.
@@ -145,9 +194,20 @@ Cross-renderer depth accounting, filtering of camera splats, sampling and
 BDPT geometric-normal shading can still differ; importing data does not
 promise pixel-identical reference renders.
 
+SPPM uses a separate optional `render.sppm` group. With `integrator="sppm"`,
+omitted settings become `SppmSettings(iterations=256, photons_per_stage=300000)`.
+Both budgets must be positive 32-bit integers. `spp` remains the PT/BDPT budget;
+it is not an alias for SPPM iterations. SPPM settings may be retained in a scene
+for an explicit integrator override. CLI `--iterations` / `--photons-per-stage`
+override them; those flags require SPPM, and `--spp` is rejected with SPPM.
+The existing SPPM Halton sampling, fixed initial radius/alpha, glossy-ray tracing
+and final per-pixel density estimate are unchanged, not a promise of the same
+reconstruction-filter behavior as PT/BDPT.
+
 ```powershell
-$env:GYUNITY_MITSUBA_ARCHIVES = "D:\Code\mitsuba3-scene"
-$env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\native-scenes"
+$env:GYUNITY_MITSUBA_ARCHIVES = "$TestRoot\archives"
+New-Item -ItemType Directory -Force "$TestRoot\native-scenes" | Out-Null
+$env:GYUNITY_TEST_OUTPUT_DIRECTORY = "$TestRoot\native-scenes"
 uv run --project tools\gyscene --locked python -m unittest discover -s tools\gyscene\tests -v
 ```
 

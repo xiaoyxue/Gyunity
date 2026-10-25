@@ -204,6 +204,35 @@ std::shared_ptr<Material> ReadMaterial(const Json& value) {
 		if (*inside <= 0 || *outside <= 0) { Fail("Dielectric IORs must be positive."); return nullptr; }
 		return SceneBuilder::Glass(*reflection, *transmission, *outside, *inside);
 	}
+	if (*type == "mirror") {
+		if (!Fields(value, {"type","reflection"})) return nullptr;
+		const auto reflection = Color(value.value("reflection", Json::array({1,1,1})), true);
+		return reflection ? SceneBuilder::Mirror(*reflection) : nullptr;
+	}
+	if (*type == "rough_dielectric") {
+		if (!Fields(value, {"type","roughness","eta_inside","reflection","transmission"}, {"roughness"})) return nullptr;
+		const auto& roughness = value.at("roughness");
+		if (!roughness.is_array() || roughness.size() != 2) { Fail("Roughness requires two values."); return nullptr; }
+		const auto x = Number(roughness[0]), y = Number(roughness[1]);
+		const auto inside = Number(value.value("eta_inside", Json(1.5)));
+		const auto reflection = Color(value.value("reflection", Json::array({1,1,1})), true);
+		const auto transmission = Color(value.value("transmission", Json::array({1,1,1})), true);
+		if (!x || !y || !inside || !reflection || !transmission) return nullptr;
+		if (*x <= 0 || *x > 1 || *y <= 0 || *y > 1 || *inside <= 0) {
+			Fail("Rough dielectric requires roughness in (0,1] and a positive interior IOR.");
+			return nullptr;
+		}
+		return SceneBuilder::RoughDielectric(*reflection, *transmission, *x, *y, *inside);
+	}
+	if (*type == "plastic") {
+		if (!Fields(value, {"type","diffuse","specular","roughness"}, {"diffuse","roughness"})) return nullptr;
+		const auto diffuse = Color(value.at("diffuse"), true);
+		const auto specular = Color(value.value("specular", Json::array({1,1,1})), true);
+		const auto roughness = Number(value.at("roughness"));
+		if (!diffuse || !specular || !roughness) return nullptr;
+		if (*roughness <= 0 || *roughness > 1) { Fail("Plastic roughness must be in (0,1]."); return nullptr; }
+		return SceneBuilder::Plastic(*diffuse, *specular, *roughness);
+	}
 	if (*type == "conductor") {
 		if (!Fields(value, {"type","distribution","alpha","reflectance","eta","k","two_sided"}, {"distribution","alpha","eta","k"})) return nullptr;
 		const auto distribution = Text(value.at("distribution"));
@@ -291,7 +320,7 @@ std::shared_ptr<NativeScene> LoadNativeScene(const std::string& filename) {
 	const auto name = Text(root.at("name"));
 	if (!name) return nullptr;
 	const auto render = root.value("render", Json::object());
-	if (!Fields(render, {"width","height","spp","max_depth","seed","integrator","accelerator","filter"})) return nullptr;
+	if (!Fields(render, {"width","height","spp","max_depth","seed","integrator","accelerator","filter","sppm"})) return nullptr;
 	const auto width = PositiveInteger(render.value("width", Json(512))), height = PositiveInteger(render.value("height", Json(512)));
 	const auto spp = PositiveInteger(render.value("spp", Json(64))), depth = PositiveInteger(render.value("max_depth", Json(8)));
 	const auto integrator = Text(render.value("integrator", Json("path"))), accelerator = Text(render.value("accelerator", Json("bvh")));
@@ -300,8 +329,14 @@ std::shared_ptr<NativeScene> LoadNativeScene(const std::string& filename) {
 	const auto seed = render.value("seed", Json(123));
 	if (!seed.is_number_integer() || seed.get<double>() < 0 || seed.get<double>() > UINT32_MAX) { Fail("Seed must be an unsigned 32-bit integer."); return nullptr; }
 	if (int64(*width) * *height > INT_MAX / 3) { Fail("Film dimensions exceed the supported range."); return nullptr; }
-	if ((*integrator != "path" && *integrator != "bdpt") || (*accelerator != "bvh" && *accelerator != "kd") ||
+	if ((*integrator != "path" && *integrator != "bdpt" && *integrator != "sppm") || (*accelerator != "bvh" && *accelerator != "kd") ||
 		(*filter != "box" && *filter != "tent" && *filter != "gaussian")) { Fail("Unsupported renderer, accelerator or filter."); return nullptr; }
+	auto sppm = render.value("sppm", Json::object());
+	if (sppm.is_null()) sppm = Json::object();
+	if (!Fields(sppm, {"iterations","photons_per_stage"})) return nullptr;
+	const auto iterations = PositiveInteger(sppm.value("iterations", Json(256)));
+	const auto photons = PositiveInteger(sppm.value("photons_per_stage", Json(300000)));
+	if (!iterations || !photons) return nullptr;
 	const auto& camera = root.at("camera");
 	if (!Fields(camera, {"type","to_world","fov_y"}, {"to_world","fov_y"})) return nullptr;
 	const auto cameraType = Text(camera.value("type", Json("pinhole")));
@@ -313,6 +348,7 @@ std::shared_ptr<NativeScene> LoadNativeScene(const std::string& filename) {
 	auto result = std::make_shared<NativeScene>();
 	result->name = *name; result->width = *width; result->height = *height;
 	result->spp = *spp; result->maxDepth = *depth; result->seed = seed.get<uint32>();
+	result->sppm.iterations = *iterations; result->sppm.photonsPerStage = *photons;
 	result->integrator = *integrator; result->accelerator = *accelerator; result->filter = *filter;
 	result->cameraToWorld = *cameraMatrix; result->fovY = *fov;
 	const auto& materials = root.at("materials");
