@@ -139,7 +139,7 @@ controller must stop dependent phases on non-success and call `Finish(false)`,
 or `Finish(true)` only after the entire render succeeds. No per-vertex telemetry
 or extra success logging is added.
 
-## VCM photon-map preparation (map only)
+## VCM photon map and local estimator
 `integrator\VCMPhotonMap.h` provides `Vcm::PhotonMap` for issue #128.
 It is **not a VCM renderer or merge-radiance estimator** and has no dependency
 on VCM MIS. `Build(lightPaths, radius)` borrows a
@@ -171,7 +171,7 @@ BSDF ownership, or mutable photon deposits.
   not acquire seams), visibility ray, geometry term, or BSDF evaluation.
   Finite-radius neighborhoods remain approximate near boundaries/nearby
   surfaces; normal compatibility is not a general visibility solution.
-  The future estimator must check camera-surface eligibility separately.
+  `GatherMerging` checks camera-surface eligibility separately.
 - The physical radius is never clamped or rescaled. Only the broad phase uses
   `(position - firstPhotonPosition) / radius`, computed in double. Each indexed
   component must lie within `[-2^20, 2^20]`; larger extents fail, not silently
@@ -208,6 +208,69 @@ path immutability and eight simultaneous readers. `HashGrid.*` checks independen
 uint32 wrapping and legacy raw-bucket multiplicity. Run these with
 `GyunityTest.exe --gtest_filter=VCMPhotonMap.*:HashGrid.*` from `GyunityApp`;
 the regular framework also contains the small SPPM/scene render smoke tests.
+
+### Local VM contribution and gather (not a renderer)
+`integrator\VCMPath.h` now also provides checked `Vcm::EvaluateMerging` and
+`Vcm::GatherMerging`. Both return `bool` and clear the output on failure. Errors
+use `Error(message, false)`, not exception control flow or contribution clamping.
+
+- `EvaluateMerging(scene, pathContext, &contribution)` requires a selected VM
+  strategy with `s >= 2`, `t >= 2`, valid **selected prefixes**, continuous
+  scattering endpoints within the physical radius, and the map's oriented
+  geometric-normal compatibility test. Off-radius/incompatible/pure-delta direct
+  calls fail; this low-level API does not perform a search or enforce a renderer's
+  depth budget. `PathContext::lightPathCount` is the positive **attempted emitted
+  path count**, including empty/missed attempts, supplied by the caller.
+- `GatherMerging(scene, map, lightPaths, cameraPath, cameraPrefixCount, maxDepth,
+  mode, &contribution)` queries **one** camera vertex. Call it at every eligible
+  camera prefix, not just the first hit. The map must have been built from that
+  exact immutable `lightPaths` object (`PhotonMap::References` checks identity).
+  It derives `N_L = lightPaths.size()` after range/zero checks. Keep a complete
+  per-attempt vector; do not remove empty/missed paths. A valid map containing
+  no photons but a positive number of attempts returns zero. A zero-attempt batch
+  is not an estimate. Neither record count nor query-hit count is a denominator.
+- Gather selects `s = photon.mVertexIndex + 1`, `t = cameraPrefixCount`, and keeps
+  physical depth `s + t - 3 <= maxDepth`. Depth zero has no VM; depth one includes
+  first-light-surface/first-camera-surface merging. Camera origins, escapes and
+  pure-delta surfaces return zero, using actual BSDF kind rather than only the
+  sampled `mIsDelta` flag. Continuous surfaces after mirror/glass transport and
+  environment-emitted surface photons are supported.
+- **Normalization is per pair, exactly once, inside the estimator:**
+  `w_VM * beta_camera * f_camera(eyeOut, originalPhotonOut) * beta_light /
+  (N_L * pi * R * R)`. The weight comes from joint VCM MIS once, at that pair's
+  selected counts. The camera path's **radiance-mode** BSDF is evaluated once;
+  the photon BSDF is not evaluated for the local scatter. Throughputs already
+  include sampling/emission compensation. There is no extra cosine, full-path
+  PDF division, light-selection/emission factor, inverse-square factor or
+  visibility ray between the distinct endpoints. Gather only **sums** these
+  already normalized pairs; callers must not normalize its output again.
+- Products, area/count normalization, and the sum use `double`, with a checked
+  final conversion to `real`. Nonfinite or out-of-range results fail, without
+  clipping. A valid zero BSDF/throughput returns zero, but never bypasses active
+  input/MIS validation. `ConnectionOnly` returns zero without requiring a built
+  map or inspecting paths/count/radius; mode/output and selected technique (pair)
+  or nonnegative maxDepth (gather) still must be valid.
+- Inputs must come from successful checked surface path builders. The map
+  validates batch surfaces; MIS validates candidate selected prefixes. Camera
+  prefixes are validated even with no hits. No unselected suffix is used by
+  pair evaluation, and no positions/directions/throughputs/metadata are changed.
+  Unsupported mixed lobes, media, nonzero environment rotation and malformed
+  consumed metadata fail explicitly. MIS requires unit geometric-normal shading.
+  Keep the scene, paths and BSDF arenas alive and immutable through all calls;
+  outputs must not alias paths. Identity checking is not mutation detection:
+  replacing/moving/resizing the borrowed batch in place still violates its
+  lifetime contract.
+
+`VCMEstimator.*` covers independent Lambertian and manual joint-score fixtures,
+camera-side/original-direction scatter, blocked finite-radius neighborhoods,
+normalization/depth/mode contracts, and a brute-force/report reference.
+`VCMEstimatorGenerated.*` exercises real area/point/environment light and camera
+paths, including specular transport. Expected invalid-input probes are separated
+under `VCMEstimatorNegative.*`. Set `GYUNITY_TEST_OUTPUT_DIRECTORY` to an existing
+main-root `Test` subdirectory for generated HDR/CSV fixtures; requested I/O failures
+fail the tests explicitly. This local API does **not** establish renderer,
+iteration scheduling, radius progression, film normalization or convergence
+acceptance.
 
 ## Scene builder
 `GyunityApp\scenes\SceneBuilder.h` provides material factories and ordered helpers for

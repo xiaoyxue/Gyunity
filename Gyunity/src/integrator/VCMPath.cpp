@@ -1,4 +1,5 @@
 #include "VCMPath.h"
+#include "VCMPhotonMap.h"
 #include "camera/PinholeCamera.h"
 #include "light/EnvLight.h"
 #include "light/PointLight.h"
@@ -188,8 +189,11 @@ bool Validate(const Scene& scene, const PathContext& path) {
 	else {
 		const PathVertex& y = path.light[selected.s - 1];
 		const PathVertex& x = path.camera[selected.t - 1];
-		const Vec3 offset = y.mIsect.mPos - x.mIsect.mPos;
-		const double distance2 = double(offset.x) * offset.x + double(offset.y) * offset.y + double(offset.z) * offset.z;
+		double distance2 = 0;
+		for (int axis = 0; axis < 3; ++axis) {
+			const double offset = double(y.mIsect.mPos[axis]) - double(x.mIsect.mPos[axis]);
+			distance2 += offset * offset;
+		}
 		if (!std::isfinite(distance2) || distance2 > path.radius * path.radius ||
 			!Unit(y.mIsect.mOutDir) || !Unit(x.mIsect.mOutDir)) {
 			return Fail("VCM merge requires in-radius endpoints and original unit incoming directions.");
@@ -343,6 +347,160 @@ bool ComputeMisWeight(const Scene& scene, const PathContext& path,
 	if (!std::isfinite(normalized) || normalized < 0 || normalized > 1) return Fail("VCM normalized weight is invalid.");
 	*weight = static_cast<real>(normalized);
 	return true;
+}
+
+namespace {
+
+bool ValidMode(Mode mode) {
+	return mode == Mode::Combined || mode == Mode::ConnectionOnly || mode == Mode::MergingOnly;
+}
+
+bool ValidLocalScene(const Scene& scene) {
+	int environments = 0;
+	for (const auto& light : scene.GetLights()) {
+		if (!light) return Fail("VCM merging requires valid scene lights.");
+		if (!light->IsEnvironmentLight()) continue;
+		const auto* environment = dynamic_cast<const EnvironmentLight*>(light.get());
+		if (!environment || environment->GetRotation() != 0 || ++environments > 1 ||
+			scene.GetEnvironmentLight() != light.get())
+			return Fail("VCM merging supports at most one zero-rotation environment.");
+	}
+	return true;
+}
+
+bool ValidLocalPrefix(const std::vector<PathVertex>& vertices, int count, bool camera) {
+	if (count < 1 || size_t(count) > vertices.size())
+		return Fail("VCM merging received an invalid prefix count.");
+	for (int i = 0; i < count; ++i) {
+		const auto& vertex = vertices[i];
+		const bool endpoint = i == 0 || (camera && i + 1 == count &&
+			(vertex.mType == PathVertexType::Environment || vertex.mType == PathVertexType::Light));
+		if (!ValidateVertex(vertex, endpoint && !(camera && i == 0), camera && i == 0, i + 1 < count))
+			return false;
+		if (!Finite(vertex.mThroughput))
+			return Fail("VCM merging requires finite selected throughputs.");
+		if (!endpoint && (!Unit(vertex.mIsect.mOutDir) || vertex.mCamera ||
+			!vertex.mIsect.mBsdf->MatchScatterType(BSDF_ALL) ||
+			(vertex.mIsDelta && !Delta(vertex))))
+			return Fail("VCM merging requires original unit directions and consistent scattering metadata.");
+	}
+	Vec3 direction;
+	for (int i = 1; i < count; ++i)
+		if (!Bidirectional::Direction(vertices[i - 1], vertices[i], &direction)) return false;
+	return true;
+}
+
+bool Normalization(double radius, int64 count, double* normalization) {
+	const double area = std::acos(-1.0) * radius * radius;
+	*normalization = double(count) * area;
+	if (!std::isfinite(radius) || radius <= 0 || !std::isfinite(area) || area <= 0 ||
+		count <= 0 || !std::isfinite(*normalization) || *normalization <= 0)
+		return Fail("VCM merging requires a representable positive disk area times attempted path count.");
+	return true;
+}
+
+bool StoreContribution(const double value[3], Vec3* contribution) {
+	for (int axis = 0; axis < 3; ++axis)
+		if (!std::isfinite(value[axis]) || std::abs(value[axis]) > (std::numeric_limits<real>::max)())
+			return Fail("VCM merging contribution is nonfinite or outside the real range.");
+	*contribution = Vec3(real(value[0]), real(value[1]), real(value[2]));
+	return true;
+}
+
+bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
+	if (path.selected.s < 2 || path.selected.t < 2)
+		return Fail("VCM merging requires valid light and camera surface prefixes.");
+	if (!ValidLocalPrefix(path.light, path.selected.s, false) ||
+		!ValidLocalPrefix(path.camera, path.selected.t, true)) return false;
+	const auto& y = path.light[path.selected.s - 1];
+	const auto& x = path.camera[path.selected.t - 1];
+	if (!Continuous(x) || !Continuous(y))
+		return Fail("VCM merging endpoints must be continuous scattering surfaces.");
+	double cosine = 0, xLength2 = 0, yLength2 = 0;
+	for (int axis = 0; axis < 3; ++axis) {
+		const double nx = x.mIsect.mGeometryNormal[axis], ny = y.mIsect.mGeometryNormal[axis];
+		xLength2 += nx * nx;
+		yLength2 += ny * ny;
+	}
+	for (int axis = 0; axis < 3; ++axis)
+		cosine += (double(x.mIsect.mGeometryNormal[axis]) / std::sqrt(xLength2)) *
+			(double(y.mIsect.mGeometryNormal[axis]) / std::sqrt(yLength2));
+	if (cosine < 0.9)
+		return Fail("VCM merging endpoints must have compatible oriented geometric normals.");
+	double normalization;
+	if (!Normalization(path.radius, path.lightPathCount, &normalization)) return false;
+	real weight;
+	if (!ComputeMisWeight(scene, path, path.selected, &weight)) return false;
+	const Vec3 scattering = x.mIsect.mBsdf->Evaluate(x.mIsect.mOutDir, y.mIsect.mOutDir);
+	if (!Finite(scattering)) return Fail("VCM merging evaluated nonfinite camera scattering.");
+	for (int axis = 0; axis < 3; ++axis) {
+		// Throughputs already include sampling compensation. There is no x-y
+		// transport edge, second BSDF, cosine, or division by a full path PDF.
+		value[axis] = double(x.mThroughput[axis]) * scattering[axis] *
+			double(y.mThroughput[axis]) * double(weight) / normalization;
+		if (!std::isfinite(value[axis]))
+			return Fail("VCM merging evaluated a nonfinite normalized pair.");
+	}
+	return true;
+}
+
+}
+
+bool EvaluateMerging(const Scene& scene, const PathContext& path, Vec3* contribution) {
+	if (!contribution) return Fail("VCM merging output is null.");
+	*contribution = Vec3(0);
+	if (!ValidMode(path.mode) || path.selected.technique != Technique::Merging)
+		return Fail("VCM merging requires a valid mode and selected merging technique.");
+	if (path.mode == Mode::ConnectionOnly) return true;
+	if (!ValidLocalScene(scene)) return false;
+	double value[3];
+	return MergePair(scene, path, value) && StoreContribution(value, contribution);
+}
+
+bool GatherMerging(const Scene& scene, const PhotonMap& map,
+	const std::vector<std::vector<PathVertex>>& lightPaths,
+	const std::vector<PathVertex>& cameraPath, int cameraPrefixCount,
+	int maxDepth, Mode mode, Vec3* contribution) {
+	if (!contribution) return Fail("VCM merging gather output is null.");
+	*contribution = Vec3(0);
+	if (!ValidMode(mode) || maxDepth < 0) return Fail("VCM merging gather requires a valid mode and depth.");
+	if (mode == Mode::ConnectionOnly) return true;
+	if (!map.References(lightPaths))
+		return Fail("VCM merging gather requires a map built from the supplied immutable light-path batch.");
+	if (lightPaths.empty() || lightPaths.size() > uint64((std::numeric_limits<int64>::max)()))
+		return Fail("VCM merging gather requires a positive representable number of attempted light paths.");
+	const int64 count = static_cast<int64>(lightPaths.size());
+	double normalization;
+	if (!Normalization(map.Radius(), count, &normalization) || !ValidLocalScene(scene) ||
+		!ValidLocalPrefix(cameraPath, cameraPrefixCount, true)) return false;
+	const auto& x = cameraPath[cameraPrefixCount - 1];
+	if (x.mType == PathVertexType::Environment || x.mType == PathVertexType::Light) {
+		bool registered = false;
+		for (const auto& light : scene.GetLights()) registered |= light.get() == x.mLight;
+		if (!registered || (x.mType == PathVertexType::Environment && scene.GetEnvironmentLight() != x.mLight))
+			return Fail("VCM merging camera escape requires a registered endpoint.");
+	}
+	if (cameraPrefixCount == 1 || !Continuous(x)) return true;
+	std::vector<PhotonRecord> photons;
+	if (!map.Query(x.mIsect.mPos, x.mIsect.mGeometryNormal, photons)) return false;
+	double sum[3] = {};
+	for (const auto& photon : photons) {
+		if (photon.mLightPathIndex >= lightPaths.size() ||
+			photon.mVertexIndex >= lightPaths[photon.mLightPathIndex].size() ||
+			photon.mVertexIndex >= size_t((std::numeric_limits<int>::max)()))
+			return Fail("VCM merging photon record is outside supported path indices.");
+		const int s = static_cast<int>(photon.mVertexIndex) + 1;
+		if (int64(s) + cameraPrefixCount - 3 > maxDepth) continue;
+		const PathContext path(lightPaths[photon.mLightPathIndex], cameraPath,
+			{ Technique::Merging, s, cameraPrefixCount }, map.Radius(), count, mode);
+		double value[3];
+		if (!MergePair(scene, path, value)) return false;
+		for (int axis = 0; axis < 3; ++axis) {
+			sum[axis] += value[axis];
+			if (!std::isfinite(sum[axis])) return Fail("VCM merging gather sum is nonfinite.");
+		}
+	}
+	return StoreContribution(sum, contribution);
 }
 
 }

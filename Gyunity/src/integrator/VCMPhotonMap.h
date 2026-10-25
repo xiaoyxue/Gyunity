@@ -46,6 +46,11 @@ public:
 	bool IsBuilt() const { return mBuilt; }
 	size_t RecordCount() const { return mRecordCount; }
 	real Radius() const { return mRadius; }
+	// Identity, not a content comparison. The immutable-borrow contract still
+	// applies: mutating/replacing a generation in place is not supported.
+	bool References(const std::vector<std::vector<PathVertex>>& lightPaths) const {
+		return mBuilt && mLightPaths == &lightPaths;
+	}
 
 private:
 	HashGrid<PhotonRecord> mGrid;
