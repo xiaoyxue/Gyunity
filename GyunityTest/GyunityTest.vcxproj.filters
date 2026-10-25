@@ -52,6 +52,9 @@
     <ClCompile Include="tests\SceneRegistryTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\MisSceneTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\TransformTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
