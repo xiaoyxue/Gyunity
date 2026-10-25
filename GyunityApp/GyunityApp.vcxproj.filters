@@ -23,17 +23,11 @@
     <ClInclude Include="scenes\SceneBuilder.h">
       <Filter>scenes</Filter>
     </ClInclude>
-    <ClInclude Include="scenes\MisScenes.h">
-      <Filter>scenes</Filter>
-    </ClInclude>
     <ClInclude Include="scenes\SceneRegistry.h">
       <Filter>scenes</Filter>
     </ClInclude>
     <ClInclude Include="legacy\CornellBox.h">
       <Filter>legacy</Filter>
-    </ClInclude>
-    <ClInclude Include="scenes\BdptRoomScenes.h">
-      <Filter>scenes</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

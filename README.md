@@ -145,10 +145,8 @@ medium and preserves the original material-free front boundary; use
 ## Named scenes and rendering
 `GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
-`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, `mis-glossy`, `bdpt-room`,
-and `bdpt-room-glossy`. The sphere and triangle scenes use their large-room
-camera, `mis-glossy` uses an elevated overview camera, and both `bdpt-room`
-variants use a room camera. The others use the standard Cornell camera. Fog automatically
+`empty`, `diffuse`, `water`, and `fog`. The sphere and triangle scenes use their
+large-room camera; all others use the standard Cornell camera. Fog automatically
 uses volume path tracing; the other scenes use surface path tracing.
 
 ```powershell
@@ -166,34 +164,6 @@ lowercase `.png`, `.bmp`, or `.hdr`; output directories must already exist.
 Paths with spaces must be quoted. `--help` and `--list-scenes` are standalone
 commands. Invalid options, missing assets and failed image writes report an
 error and return a nonzero exit code; no image is silently substituted.
-
-### Procedural MIS scene
-`mis-glossy` is an asset-free, original scene inspired by the
-[Veach MIS diagnostic](https://mitsuba.readthedocs.io/en/stable/src/gallery.html#simple-scenes),
-not a copy of its geometry or a numerical reference for another renderer.
-Four tilted strips have roughness 0.025, 0.07, 0.18 and 0.4 from back to front.
-Four sphere lights, left to right, have radii 0.06, 0.12, 0.24 and 0.48.
-Their radiance is `1.5 / radius^2`, so all four have equal emitted power;
-small lights are intentionally brighter, not weaker.
-
-The strips face the default camera and emitter row to show the transition from
-narrow reflections to broad highlights. Geometry, normals, material order and
-light order are deterministic; no textures, meshes or environment map are loaded.
-Use depth 4 and 128 spp for a preview, and increase to 1024 spp when inspecting
-small-light noise. These are starting budgets, not convergence guarantees.
-
-```powershell
-.\x64\Release\GyunityApp.exe --scene mis-glossy --width 512 --height 384 --spp 128 --max-depth 4 --out "D:\Code\Graphics\Gyunity\Test\mis-glossy.png"
-```
-
-Run this asset-free scene from the worktree root. `--accel kd` selects the
-alternative accelerator. The CLI uses the existing PT light/BSDF MIS estimator;
-it does not expose light-only or BSDF-only modes. C++ callers can use
-`RenderScene(options, integrator)` with `BidirectionalPathTracing` instead.
-The new `MisScene.*` checks cover framing, roughness, equal light power,
-sample/PDF agreement and unoccluded light paths with both accelerators.
-`MisSceneRenders.*` additionally exercises PT and BDPT at 32x24, 16 spp when
-`GYUNITY_TEST_OUTPUT_DIRECTORY` points under the main checkout's `Test` folder.
 
 ## C++ integrator examples
 `GyunityApp\main.cpp` keeps five runnable mock examples. With no arguments,
@@ -248,48 +218,6 @@ $env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\scene_builde
 ..\x64\Debug\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
 ..\x64\Release\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
 ```
-
-## Procedural indirect-lighting room
-`bdpt-room` and `bdpt-room-glossy` are asset-free, original two-zone interiors
-inspired by the [Veach bidirectional diagnostics](https://mitsuba.readthedocs.io/en/stable/src/gallery.html#simple-scenes).
-They are not imports or exact reproductions of those scenes.
-Both contain a table with four legs, a three-level shelf, a pedestal, two
-spheres and an angled display panel. A thick partition separates the room from
-a bright side chamber. Its finite doorway spans `y = [0.1, 2.15]`,
-`z = [-0.8, 0.6]`, through `x = [-2.08, -1.92]`.
-
-A ceiling area light in the chamber emits radiance 45. A second, hanging baffle
-blocks direct illumination of the main room: light can bounce off the chamber
-floor and pass below the baffle and through the doorway. The elevated front
-camera sees the furnished room, not the emitter. The room is open only at the
-viewing side, with a black exterior and no environment map.
-
-The baseline is entirely diffuse. The glossy variant changes only the angled
-panel and tabletop sphere to GGX conductors (roughness 0.18 and 0.08);
-geometry, lights and camera are identical. It does not add participating media
-or mixed delta/continuous BSDFs, and is compatible with current surface BDPT.
-Both names use their own room camera rather than the Cornell camera.
-
-```powershell
-# From the worktree root; the output directory must already exist.
-.\x64\Release\GyunityApp.exe --scene bdpt-room --width 512 --height 384 --spp 256 --max-depth 8 --out "D:\Code\Graphics\Gyunity\Test\bdpt-room.png"
-.\x64\Release\GyunityApp.exe --scene bdpt-room-glossy --accel kd --width 512 --height 384 --spp 256 --max-depth 8 --out "D:\Code\Graphics\Gyunity\Test\bdpt-room-glossy.png"
-```
-
-These CLI commands use PT, not BDPT. For bidirectional rendering, use the
-existing `TestBidirectionalPathTracing("bdpt-room", output, 512, 384, 256, 8)`
-C++ example, or pass a `BidirectionalPathTracing` to `RenderScene`. The scene
-name describes the transport diagnostic, not an automatic integrator override.
-Start at depth 8 and 256 spp, then use 2048 spp or more for indirect-light
-comparisons. Report equal-time as well as sample budgets; no universal BDPT
-speedup or convergence threshold is asserted.
-
-`BdptRoomScene.*` checks both variants, material assignments, light orientation,
-camera visibility and a concrete nonzero diffuse transport path through the
-doorway. It also checks blocked paths through the frame and hanging baffle
-with BVH and kd-tree. Set `GYUNITY_TEST_OUTPUT_DIRECTORY` to an existing
-directory under the main checkout's `Test` to run `BdptRoomSceneRenders.*`:
-32x24, 32 spp, depth 6, both variants with PT/BDPT and both accelerators.
 
 ## Bidirectional probability interfaces
 BDPT uses deterministic probability queries without changing the existing PT/LT

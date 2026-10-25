@@ -1,6 +1,5 @@
 #include "stb/stb_image.h"
 #include "gtest/gtest.h"
-#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 
@@ -169,8 +168,7 @@ TEST_F(MainExampleRenders, BidirectionalAllSurfaceScenes) {
 		}
 		++count;
 	}
-	EXPECT_EQ(count, std::count_if(GetSceneRegistry().begin(), GetSceneRegistry().end(),
-		[](const SceneDescription& scene) { return !scene.usesVolume; }));
+	EXPECT_EQ(count, 10);
 }
 
 TEST_F(MainExampleRenders, FailedCheckedIntegratorDoesNotWriteImage) {

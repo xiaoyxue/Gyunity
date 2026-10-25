@@ -18,16 +18,14 @@ void ExpectVector(const Vec3& actual, const Vec3& expected) {
 
 TEST(SceneRegistry, NamesMapToAllBuilders) {
 	const std::pair<const char*, void (*)(SceneBuilder&)> expected[] = {
-		{ "bdpt-room", BdptRoomScenes::Diffuse }, { "bdpt-room-glossy", BdptRoomScenes::Glossy },
 		{ "mesh", CornellBoxScenes::GlassBunny }, { "slope", CornellBoxScenes::Slope },
 		{ "sphere", CornellBoxScenes::SphereBox }, { "env", CornellBoxScenes::Environment },
 		{ "triangle", CornellBoxScenes::TriangleBox }, { "textured", CornellBoxScenes::TexturedSpheres },
 		{ "empty", CornellBoxScenes::Empty }, { "diffuse", CornellBoxScenes::DiffuseBunny },
 		{ "water", CornellBoxScenes::Water }, { "fog", CornellBoxScenes::FogBunny },
-		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny },
-		{ "mis-glossy", MisScenes::Glossy }
+		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny }
 	};
-	ASSERT_EQ(GetSceneRegistry().size(), sizeof(expected) / sizeof(expected[0]));
+	ASSERT_EQ(GetSceneRegistry().size(), 11u);
 	std::set<std::string> names;
 	for (const auto& scene : GetSceneRegistry()) EXPECT_TRUE(names.insert(scene.name).second);
 	for (const auto& entry : expected) {
@@ -38,9 +36,7 @@ TEST(SceneRegistry, NamesMapToAllBuilders) {
 }
 
 TEST(SceneRegistry, CamerasMatchOriginalRegressionRays) {
-	for (const char* name : { "mesh", "slope", "sphere", "env", "triangle", "textured",
-		"empty", "diffuse", "water", "fog", "lucy-bunny" }) {
-		const auto& scene = FindScene(name);
+	for (const auto& scene : GetSceneRegistry()) {
 		SCOPED_TRACE(scene.name);
 		for (const auto& size : { std::pair<int, int>(512, 512), std::pair<int, int>(640, 360) }) {
 			auto film = std::make_shared<Film>(size.first, size.second);
