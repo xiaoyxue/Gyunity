@@ -941,3 +941,287 @@ TEST(VCMPath, EvaluatedNegativeAndNonfiniteScatteringDensitiesFail) {
 			EXPECT_EQ(weight, 0);
 	}
 }
+
+namespace {
+
+// Restricted research probe: every singular event here is a real mirror.
+// Sample both directions to verify the unit masses; do not reinterpret Pdf()==0.
+Edges MirrorReportEdges(const Scene& scene, const Vcm::PathContext& path) {
+	Edges e = ReportEdges(scene, path);
+	const int n = static_cast<int>(e.f.size());
+	std::vector<const PathVertex*> full;
+	for (int i = 0; i < path.selected.s; ++i) full.push_back(&path.light[i]);
+	for (int i = path.selected.t - 1; i >= 0; --i) full.push_back(&path.camera[i]);
+	e.delta.resize(n, false);
+	for (int i = 1; i + 1 < n; ++i) {
+		const auto& v = *full[i];
+		if (!v.mIsect.mBsdf->IsDelta()) continue;
+		e.delta[i] = true;
+		const Vec3 wo = (full[i - 1]->mIsect.mPos - v.mIsect.mPos).Norm();
+		const Vec3 wi = (full[i + 1]->mIsect.mPos - v.mIsect.mPos).Norm();
+		Vec3 sampledForward, sampledReverse;
+		real forwardMass, reverseMass;
+		EXPECT_NE(v.mIsect.mBsdf->Sample(wo, &sampledForward, &forwardMass, Vec3(0.5f)), Vec3(0));
+		EXPECT_NE(v.mIsect.mBsdf->Sample(wi, &sampledReverse, &reverseMass, Vec3(0.5f)), Vec3(0));
+		EXPECT_LT((sampledForward - wi).Length(), 1e-5);
+		EXPECT_LT((sampledReverse - wo).Length(), 1e-5);
+		EXPECT_EQ(forwardMass, 1);
+		EXPECT_EQ(reverseMass, 1);
+		EXPECT_EQ(v.mIsect.mBsdf->Pdf(wo, wi), 0);
+		EXPECT_EQ(v.mIsect.mBsdf->Pdf(wi, wo), 0);
+		e.f[i + 1] = forwardMass * e.gf[i + 1];
+		e.r[i - 1] = reverseMass * e.gr[i - 1];
+	}
+	return e;
+}
+
+void WriteSingularGateRow(const std::string& name, int s, double report, double direct, double legacy) {
+	static std::ofstream stream;
+	static bool initialized = false;
+	if (!initialized) {
+		initialized = true;
+		if (const char* output = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY")) {
+#ifdef _DEBUG
+			const std::string filename = std::string(output) + "\\vcm-singular-gate-debug.csv";
+#else
+			const std::string filename = std::string(output) + "\\vcm-singular-gate-release.csv";
+#endif
+			if (!*output) {
+				ADD_FAILURE() << "Requested singular-gate report directory is empty.";
+				return;
+			}
+			stream.open(filename);
+			if (!stream.is_open()) {
+				ADD_FAILURE() << "Cannot open requested singular-gate report: " << filename;
+				return;
+			}
+			stream << "case,s,report,direct,legacy_bdpt,abs_report_direct,abs_report_legacy\n" << std::setprecision(17);
+		}
+	}
+	if (stream.is_open()) {
+		stream << name << ',' << s << ',' << report << ',' << direct << ',' << legacy << ',' <<
+			std::abs(report - direct) << ',' << std::abs(report - legacy) << '\n';
+		stream.flush();
+		EXPECT_TRUE(stream.good()) << "Cannot write requested singular-gate CSV report.";
+	}
+}
+
+}
+
+TEST(VCMSingularGate, ExactMirrorExposesDifferentReducedMeasureConventions) {
+	Fixture fixture(5, true);
+	const Vec3 positions[] = { Vec3(-3, 0, 3), Vec3(-3, 0, 4), Vec3(0),
+		Vec3(6, 0, 8), Vec3(6, 0, 7) };
+	for (int i = 0; i < 5; ++i) {
+		auto& v = fixture.full[i];
+		v.mIsect.mPos = positions[i];
+		v.mIsect.mNormal = v.mIsect.mGeometryNormal = Vec3(0, 0, i == 0 || i == 2 ? 1.f : -1.f);
+		CoordinateSystem(v.mIsect.mNormal, &v.mIsect.mShadingDpDu, &v.mIsect.mShadingDpDv);
+		if (i == 2) {
+			v.mIsect.mBsdf = GYT_MEMORY_POOL_ALLOC(fixture.arena, BSDF)(v.mIsect);
+			v.mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, SpecularBSDF)(Vec3(1)));
+			v.mIsDelta = true;
+		}
+	}
+	fixture.Refresh();
+	// L-D-S-D-E. Distances about S are 5 and 10, both cosines 4/5.
+	// Continuous synthetic directional PDFs are 1/8; origin 1/2,
+	// emission 1/4, camera 1/2. Report products have common scale 1/500000.
+	Edges manual;
+	manual.f = { 1. / 2, 1. / 4, 1. / 250, 1. / 125, 1. / 8 };
+	manual.r = { 1. / 8, 4. / 125, 1. / 1000, 1. / 2, 1 };
+	manual.delta = { false, false, true, false, false };
+	const double connection[] = { 1. / 7, 4. / 7, 0, 0, 2. / 7, 0, 0, 0 };
+	const double combined[] = { 1. / 15, 4. / 15, 0, 0, 2. / 15, 4. / 15, 0, 4. / 15 };
+	const double merging[] = { 0, 0, 0, 0, 0, 1. / 2, 0, 1. / 2 };
+	const double legacyExpected[] = { 1. / 13, 4. / 13, 0, 0, 8. / 13 };
+	for (int selected : { 0, 1, 4 }) {
+		std::vector<PathVertex> light, eye;
+		fixture.Split(selected, false, light, eye);
+		const auto beforeLight = light, beforeEye = eye;
+		const Vcm::PathContext path(light, eye, { Technique::Connection, selected, 5 - selected },
+			std::sqrt(0.25 / Pi), 16, Mode::ConnectionOnly);
+		const Edges report = MirrorReportEdges(fixture.scene, path);
+		for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+			const bool vc = mode != Mode::MergingOnly, vm = mode != Mode::ConnectionOnly;
+			const double* expected = mode == Mode::Combined ? combined : vc ? connection : merging;
+			const auto direct = VcmReference::DirectWeights(manual, 0.25, 16, vc, vm);
+			int index = 0;
+			for (bool merge : { false, true }) {
+				for (int s = merge ? 2 : 0; s < 5; ++s, ++index) {
+					const double weight = VcmReference::Weight(report, merge, s, 0.25, 16, vc, vm);
+					Close(weight, expected[index]);
+					Close(direct[index], expected[index]);
+				}
+			}
+		}
+		real legacy;
+		ASSERT_TRUE(MisWeight(fixture.scene, light, eye, selected, 5 - selected, &legacy));
+		Close(legacy, legacyExpected[selected]);
+		const double reportWeight = VcmReference::Weight(report, false, selected, 0.25, 16, true, false);
+		const auto direct = VcmReference::DirectWeights(manual, 0.25, 16, true, false);
+		EXPECT_GT(std::abs(legacy - reportWeight), 0.05);
+		WriteSingularGateRow("exact-LDSDE", selected, reportWeight, direct[selected], legacy);
+		SamePaths(light, beforeLight);
+		SamePaths(eye, beforeEye);
+	}
+	RecordProperty("gate", "BLOCKED: report geometry and legacy zero-remapping disagree; production remains unchanged");
+}
+
+TEST(VCMSingularGate, ActualBuildersReproduceMirrorConventionConflict) {
+	class Samples : public StateSequence {
+	public:
+		explicit Samples(std::initializer_list<real> values) : values(values) {}
+		real Sample() override {
+			if (size_t(mCursor) >= values.size()) {
+				ADD_FAILURE() << "Singular gate exhausted its scripted samples.";
+				return std::numeric_limits<real>::quiet_NaN();
+			}
+			return values[mCursor++];
+		}
+		std::vector<real> values;
+	};
+	int positive = 0;
+	double maximumGap = 0, maximumOracleError = 0, maximumLegacyProductError = 0;
+	for (real separation : { 1.5f, 2.f, 3.f }) {
+		SCOPED_TRACE(separation);
+		Scene scene{};
+		MemoryPool lightArena, eyeArena;
+		const Vec3 positions[] = { Vec3(-3, 0, 3), Vec3(-3, 0, 4), Vec3(0),
+			Vec3(3 * separation, 0, 4 * separation) };
+		auto white = std::make_shared<ConstantTexture<Vec3>>(Vec3(1));
+		auto diffuse = std::make_shared<DiffuseMaterial>(white);
+		auto mirror = std::make_shared<MirrorMaterial>(white);
+		std::shared_ptr<AreaLight> emitter;
+		for (int i = 0; i < 4; ++i) {
+			const Vec3 center = positions[i];
+			auto triangle = std::make_shared<Triangle>(Transform(), Transform(),
+				center + Vec3(-0.25f, -0.25f, 0), center + Vec3(0.25f, -0.25f, 0),
+				center + Vec3(0, 0.5f, 0), Vec3(0, 0, i == 0 || i == 2 ? 1.f : -1.f));
+			if (i == 0) {
+				emitter = std::make_shared<AreaLight>(triangle, Vec3(1));
+				scene.AddLight(emitter);
+			}
+			const std::shared_ptr<Material> material = i == 2 ?
+				std::static_pointer_cast<Material>(mirror) : std::static_pointer_cast<Material>(diffuse);
+			scene.AddPrimitive(std::make_shared<Primitive>(triangle, material, i == 0 ? emitter : nullptr));
+		}
+		scene.SetAccelerator(std::make_shared<BruteForce>(scene.GetPrimitives()));
+		scene.Initialize();
+		const Vec3 cameraPosition = positions[3] - Vec3(0, 0, 1);
+		PinHoleCamera camera(std::make_shared<Film>(4, 4), cameraPosition, positions[3], Vec3(0, 1, 0), 70, 1);
+		Samples lightSamples({ 0.5f, 4.f / 9, 0.5f, 0.5f, 0.5f,
+			0.5f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f });
+		Samples eyeSamples({ 0.5f, 0.8f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f });
+		std::vector<PathVertex> light, eye;
+		ASSERT_EQ(GenerateLightPath(scene, lightSamples, lightArena, 4, light), 4);
+		ASSERT_EQ(GenerateCameraPath(scene, camera, eyeSamples, eyeArena,
+			Ray(cameraPosition, Vec3(0, 0, 1)), 5, eye), 5);
+		EXPECT_EQ(lightSamples.GetCursor(), 11);
+		EXPECT_EQ(eyeSamples.GetCursor(), 9);
+		for (int i = 0; i < 4; ++i) {
+			EXPECT_LT((light[i].mIsect.mPos - positions[i]).Length(), 1e-4);
+			EXPECT_LT((eye[4 - i].mIsect.mPos - positions[i]).Length(), 1e-4);
+		}
+		ASSERT_TRUE(light[2].mIsDelta);
+		ASSERT_TRUE(eye[2].mIsDelta);
+		EXPECT_FALSE(light[3].mIsDelta);
+		EXPECT_FALSE(eye[3].mIsDelta);
+		EXPECT_EQ(light[3].mPdfFwd, 0);
+		EXPECT_EQ(light[1].mPdfPrev, 0);
+		EXPECT_EQ(eye[3].mPdfFwd, 0);
+		EXPECT_EQ(eye[1].mPdfPrev, 0);
+		const auto beforeLight = light, beforeEye = eye;
+		double sumReport = 0, sumLegacy = 0;
+		for (int s : { 0, 1, 4 }) {
+			SCOPED_TRACE(s);
+			const Vcm::PathContext path(light, eye, { Technique::Connection, s, 5 - s },
+				0.2, 16, Mode::ConnectionOnly);
+			Vec3 primary;
+			Vec2 raster;
+			ASSERT_TRUE(EvaluateConnection(scene, camera, light, eye, s, 5 - s, &primary, &raster));
+			ASSERT_GT(primary.x, 0);
+			++positive;
+			const Edges report = MirrorReportEdges(scene, path);
+			const auto direct = VcmReference::DirectWeights(report, Pi * 0.04, 16, true, false);
+			const double oracle = VcmReference::Weight(report, false, s, Pi * 0.04, 16, true, false);
+			Close(oracle, direct[s]);
+			// Independently enumerate the LEGACY marker convention. This is a
+			// diagnostic comparator, NOT an expected VCM/report result.
+			Edges markers = report;
+			markers.f[3] = markers.r[1] = 1;
+			const auto markerWeights = VcmReference::DirectWeights(markers, Pi * 0.04, 16, true, false);
+			real legacy;
+			ASSERT_TRUE(MisWeight(scene, light, eye, s, 5 - s, &legacy));
+			Close(legacy, markerWeights[s]);
+			EXPECT_GT(std::abs(legacy - oracle), 0.005);
+			maximumGap = std::max(maximumGap, std::abs(legacy - oracle));
+			maximumOracleError = std::max(maximumOracleError, std::abs(oracle - direct[s]));
+			maximumLegacyProductError = std::max(maximumLegacyProductError, std::abs(legacy - markerWeights[s]));
+			WriteSingularGateRow("generated-LDSDE-" + std::to_string(separation), s, oracle, direct[s], legacy);
+			sumReport += oracle;
+			sumLegacy += legacy;
+			// The missing factor changes a ratio, not just an arbitrary absolute
+			// scale: (pVC4/pVC1)_legacy / (pVC4/pVC1)_report = gr[1]/gf[3].
+			const double ratioOfRatios = (markerWeights[4] / markerWeights[1]) / (direct[4] / direct[1]);
+			EXPECT_NEAR(ratioOfRatios, report.gr[1] / report.gf[3], 1e-12);
+			EXPECT_NEAR(ratioOfRatios, double(separation) * separation, 1e-4);
+		}
+		EXPECT_NEAR(sumReport, 1, 1e-6);
+		EXPECT_NEAR(sumLegacy, 1, 1e-6);
+		SamePaths(light, beforeLight);
+		SamePaths(eye, beforeEye);
+	}
+	EXPECT_EQ(positive, 9);
+	RecordProperty("generated_pairs", 3);
+	RecordProperty("positive_connections", positive);
+	RecordProperty("positive_depth", 3);
+	RecordProperty("positive_emitter_hits", 3);
+	RecordProperty("positive_origin_connections", 3);
+	RecordProperty("positive_camera_splats", 3);
+	for (const auto& metric : { std::make_pair("max_report_legacy_gap", maximumGap),
+		std::make_pair("max_report_direct_error", maximumOracleError),
+		std::make_pair("max_legacy_marker_product_error", maximumLegacyProductError) }) {
+		std::ostringstream value;
+		value << std::setprecision(17) << metric.second;
+		RecordProperty(metric.first, value.str());
+	}
+	RecordProperty("gate", "BLOCKED: both conventions normalize, but their strategy ratios differ");
+}
+
+TEST(VCMSingularGate, ActualDeltaSamplingMassesAndReverseTransportAreNotOrdinaryPdfs) {
+	Intersection isect;
+	isect.mNormal = isect.mGeometryNormal = Vec3(0, 0, 1);
+	CoordinateSystem(isect.mNormal, &isect.mShadingDpDu, &isect.mShadingDpDv);
+	for (bool totalInternalReflection : { false, true }) {
+		for (bool reflect : { false, true }) {
+			if (totalInternalReflection && !reflect) continue;
+			const Vec3 wo = totalInternalReflection ? Vec3(0.8f, 0, -0.6f) : Vec3(0.6f, 0, 0.8f);
+			const real fresnel = FrDielectric(wo.z, 1, 1.5f);
+			if (totalInternalReflection) EXPECT_EQ(fresnel, 1);
+			else { EXPECT_GT(fresnel, 0); EXPECT_LT(fresnel, 0.1f); }
+			for (int lobes : { 1, 2 }) {
+				for (TransportMode mode : { TransportMode::Radiance, TransportMode::Importance }) {
+					TransmissionBSDF first(Vec3(1), Vec3(1), mode), second(Vec3(1), Vec3(1), mode);
+					BSDF bsdf(isect);
+					bsdf.Add(&first);
+					if (lobes == 2) bsdf.Add(&second);
+					Vec3 wi, returned;
+					real mass, reverseMass;
+					const Vec3 random(0.75f, reflect ? 0.f : 0.99f, 0.5f);
+					const Vec3 value = bsdf.Sample(wo, &wi, &mass, random);
+					ASSERT_GT(mass, 0);
+					EXPECT_NEAR(mass, (reflect ? fresnel : 1 - fresnel) / lobes, 1e-7);
+					EXPECT_EQ(bsdf.Pdf(wo, wi), 0);
+					EXPECT_EQ(bsdf.Pdf(wi, wo), 0);
+					EXPECT_NE(bsdf.Sample(wi, &returned, &reverseMass, random), Vec3(0));
+					EXPECT_LT((returned - wo).Length(), 1e-6);
+					EXPECT_NEAR(reverseMass, mass, 1e-7);
+					const real etaSquared = mode == TransportMode::Radiance && !reflect ? 4.f / 9 : 1;
+					EXPECT_NEAR(value.x * std::abs(wi.z) / mass, lobes * etaSquared, 1e-6);
+				}
+			}
+		}
+	}
+	RecordProperty("scope", "oblique dielectric reflection/transmission, TIR, reciprocal events, both transport modes, one/two matching lobes");
+}

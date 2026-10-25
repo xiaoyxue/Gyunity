@@ -5,14 +5,28 @@
 #include <limits>
 #include <vector>
 
-// TEST ONLY. Implementing VCM, revision 2, sections 4.1/4.2.
+// TEST ONLY. Implementing VCM, revision 2, sections 4.1/4.2 and 5.4.
 // Inputs are independently evaluated vertex densities/conversion factors, never
 // production strategy scores. No production MIS/PDF or BDPT ratio-walk calls.
 namespace VcmReference {
 
 struct Edges {
 	std::vector<double> f, r, gf, gr;
+	// Pure-delta INTERIOR scattering vertices, not emitter/camera event flags.
+	// Delta arrival factors in f/r are branch mass times the report geometry.
+	std::vector<bool> delta;
 };
+
+inline bool Delta(const Edges& e, int i) {
+	return i > 0 && i + 1 < static_cast<int>(e.f.size()) && !e.delta.empty() && e.delta[i];
+}
+
+inline bool Feasible(const Edges& e, bool merging, int s) {
+	const int n = static_cast<int>(e.f.size());
+	if (merging) return s >= 2 && s < n && !Delta(e, s - 1);
+	return s >= 0 && s < n && !(n == 2 && s == 1) &&
+		(s == 0 || (!Delta(e, s - 1) && !Delta(e, s)));
+}
 
 struct State {
 	double dVCM = 0, dVC = 0, dVM = 0;
@@ -34,6 +48,12 @@ inline State Trace(const Edges& e, int count, bool eye, double eta, bool vc, boo
 		const double pdfRevDir = reverse(i - 2) / geometry(i - 2);
 		const double conversion = geometry(i - 1) / pdf(i);
 		const State previous = d;
+		if (Delta(e, eye ? n - i : i - 1)) {
+			d.dVCM = 0; // Eq. (53), remove the two adjacent VC cuts and the delta merge.
+			d.dVC = conversion * pdfRevDir * previous.dVC; // (54)
+			d.dVM = conversion * pdfRevDir * previous.dVM; // (55)
+			continue;
+		}
 		d.dVCM = 1 / pdf(i); // Eq. (34)
 		d.dVC = conversion * ((vm ? eta : 0) + previous.dVCM + pdfRevDir * previous.dVC); // (35)
 		d.dVM = conversion * (1 + (vc ? previous.dVCM / eta : 0) + pdfRevDir * previous.dVM); // (36)
@@ -45,6 +65,7 @@ inline double Weight(const Edges& e, bool merging, int s, double area, double co
 	const int n = static_cast<int>(e.f.size());
 	const int t = n - s + (merging ? 1 : 0);
 	if ((merging && !vm) || (!merging && !vc)) return 0;
+	if (!Feasible(e, merging, s)) return 0;
 	if (n == 2) return !merging && s == 0 ? 1 : 0;
 	const double eta = count * area;
 	const State light = Trace(e, s, false, eta, vc, vm, count);
@@ -97,7 +118,7 @@ inline std::vector<double> DirectWeights(const Edges& e, double area, double cou
 	for (int kind = 0; kind < 2; ++kind) {
 		for (int s = kind == 0 ? 0 : 2; s < n; ++s) {
 			Product p;
-			if ((kind == 0 && (!vc || (n == 2 && s == 1))) || (kind == 1 && !vm)) p.Multiply(0);
+			if ((kind == 0 && !vc) || (kind == 1 && !vm) || !Feasible(e, kind == 1, s)) p.Multiply(0);
 			for (int i = 0; i < s; ++i) p.Multiply(e.f[i]);
 			for (int i = s - kind; i < n; ++i) p.Multiply(e.r[i]);
 			if (kind == 1) { p.Multiply(area); p.Multiply(count); }

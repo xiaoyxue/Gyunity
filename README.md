@@ -490,6 +490,46 @@ record coverage and original-versus-reconstructed direction differences.
 Reporting is optional when the output variable is unset; when configured,
 failure to open or flush the requested CSV fails the test with a diagnostic.
 
+##### Milestone 3 research gate: singular measure conventions
+
+**Milestone 3 is blocked, not implemented.** `VCMSingularGate.*` preserves a
+reproducible conflict between legacy BDPT's delta-marker remapping and the
+report's Section 5.4, Eqs. (51)-(55). Production APIs, builders, throughputs,
+sampling policy, and rejection of unsupported VCM paths are unchanged.
+
+For an interior mirror at index `i`, the report sets the directional mass to
+one, **not the converted arrival factor**: the reduced factors are
+`f[i+1]=g_forward[i+1]` and `r[i-1]=g_reverse[i-1]`. Adjacent connections and
+merging at the mirror are masked out. Legacy BDPT instead remaps both
+delta-generated zero arrival markers to one. A common multiplicative scale
+cannot reconcile these conventions when their geometric factors differ.
+
+The exact `L-D-S-D-E` fixture uses positions `(-3,0,3), (-3,0,4), (0,0,0),
+(6,0,8), (6,0,7)`, a mirror normal `(0,0,1)`, and adjoining distances 5 and 10.
+Both mirror angles have cosine `4/5`. With the fixture's rational continuous
+densities, feasible VC splits `s=0,1,4` have report weights **`(1,4,2)/7`**,
+but legacy weights **`(1,4,8)/13`**. The report recurrence agrees with separate
+direct products and hand-computed expectations, also in combined and
+merging-only modes. Both VC weight sets normalize; that alone is not agreement.
+
+Three real `GenerateLightPath`/`GenerateCameraPath` pairs with ordinary diffuse
+surfaces, a mirror, an area emitter, and a pinhole camera reproduce the conflict
+on nine positive emitter-hit/origin-connection/camera-splat constructions.
+Changing the two mirror-edge distance ratio to `1.5, 2, 3` changes the
+legacy/report ratio-of-ratios to `2.25, 4, 9`. These are depth-three probes,
+not full singular VCM coverage. Separate BSDF probes cover oblique dielectric
+reflection/refraction, TIR, reversed sampling, radiance/importance transport,
+and one/two matching lobes without treating ordinary `Pdf()==0` as a mass.
+
+Run `GyunityTest.exe --gtest_filter="VCMSingularGate.*:VCMPath.*"` from
+`GyunityApp`. The configured output directory receives
+`vcm-singular-gate-debug.csv` / `vcm-singular-gate-release.csv`; XML properties
+explicitly report **BLOCKED**. Passing these tests means the conflict was
+reproduced, not that milestone 3 passed. The parent implementation decision is
+whether VCM may follow the report while standalone BDPT retains different
+singular weights, or whether a separately reviewed BDPT convention change is
+required. No fallback, speculative BDPT repair, or renderer is introduced here.
+
 `TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
 width, height, spp, depth and accelerator. It covers all nine original surface
 scenes plus `lucy-bunny`, rejects `fog`, and does not change the default no-argument
