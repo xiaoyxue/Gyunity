@@ -158,6 +158,89 @@
       "title": "Camera",
       "type": "object"
     },
+    "Checkerboard": {
+      "additionalProperties": false,
+      "properties": {
+        "color0": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Color0",
+          "type": "array"
+        },
+        "color1": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Color1",
+          "type": "array"
+        },
+        "scale": {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Scale",
+          "type": "array"
+        },
+        "type": {
+          "const": "checkerboard",
+          "default": "checkerboard",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "color0",
+        "color1"
+      ],
+      "title": "Checkerboard",
+      "type": "object"
+    },
     "Conductor": {
       "additionalProperties": false,
       "properties": {
@@ -360,30 +443,36 @@
       "additionalProperties": false,
       "properties": {
         "reflectance": {
-          "maxItems": 3,
-          "minItems": 3,
-          "prefixItems": [
+          "anyOf": [
             {
-              "maximum": 1,
-              "minimum": 0,
-              "type": "number"
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
             },
             {
-              "maximum": 1,
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "maximum": 1,
-              "minimum": 0,
-              "type": "number"
+              "$ref": "#/$defs/Checkerboard"
             }
           ],
-          "title": "Reflectance",
-          "type": "array"
+          "title": "Reflectance"
         },
         "two_sided": {
-          "const": true,
           "default": true,
           "title": "Two Sided",
           "type": "boolean"
@@ -399,6 +488,66 @@
         "reflectance"
       ],
       "title": "Diffuse",
+      "type": "object"
+    },
+    "Environment": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "minLength": 1,
+          "title": "File",
+          "type": "string"
+        },
+        "id": {
+          "default": "environment",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "scale": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Scale",
+          "type": "number"
+        },
+        "to_world": {
+          "default": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "To World",
+          "type": "array"
+        },
+        "type": {
+          "const": "environment",
+          "default": "environment",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "title": "Environment",
       "type": "object"
     },
     "JsonValue": {},
@@ -666,7 +815,8 @@
           "default": "box",
           "enum": [
             "box",
-            "tent"
+            "tent",
+            "gaussian"
           ],
           "title": "Filter",
           "type": "string"
@@ -830,6 +980,14 @@
   "properties": {
     "camera": {
       "$ref": "#/$defs/Camera"
+    },
+    "lights": {
+      "items": {
+        "$ref": "#/$defs/Environment"
+      },
+      "maxItems": 1,
+      "title": "Lights",
+      "type": "array"
     },
     "materials": {
       "additionalProperties": {

@@ -53,9 +53,10 @@ inline const std::array<SceneDescription, 14>& GetSceneRegistry() {
 	return scenes;
 }
 
-inline const SceneDescription& FindScene(const std::string& name) {
+inline const SceneDescription* FindScene(const std::string& name) {
 	for (const auto& scene : GetSceneRegistry()) {
-		if (name == scene.name) return scene;
+		if (name == scene.name) return &scene;
 	}
-	throw std::invalid_argument("Unknown scene '" + name + "'. Use --list-scenes.");
+	GetDefaultLogger()->Error("Unknown scene '" + name + "'. Use --list-scenes.", false);
+	return nullptr;
 }

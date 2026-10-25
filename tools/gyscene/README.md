@@ -21,9 +21,9 @@ retains the original CC0 license, XML and all referenced OBJ files unchanged.
 Supplied reference images are not copied into production assets and must not
 be presented as renderer output.
 
-## Three Python entry points
+## Python entry points
 
-All three paths construct the same `gyscene.Scene` and serialize our native
+All entry points construct the same `gyscene.Scene` and serialize our native
 JSON. Python code is in the repository, not hidden in a renderer executable:
 
 | Purpose | Runnable example | Reusable module |
@@ -31,6 +31,7 @@ JSON. Python code is in the repository, not hidden in a renderer executable:
 | Author a custom scene in Python | `examples\native_demo.py` | `gyscene.model` |
 | Parse original Mitsuba XML/OBJ packages | `examples\import_mitsuba.py` | `gyscene.mitsuba` |
 | Parse the supported PBRT v4 surface subset | `examples\import_pbrt.py` | `gyscene.pbrt` |
+| Import original material-preview geometry with an explicit supported BSDF | `examples\import_matpreview.py` | `gyscene.matpreview` |
 
 ```powershell
 uv run --project tools\gyscene --locked python tools\gyscene\examples\native_demo.py --out "D:\Code\Graphics\Gyunity\Test\custom-scene.json"
@@ -86,10 +87,31 @@ metadata. Unsupported spectra are rejected, not guessed.
 gallery dataset. Generated OBJ files are data-format conversions of the
 actual source triangles, not guessed replacement geometry.
 
+## Local material-preview profiles
+
+The original `matpreview.zip` uses serialized geometry, an EXR environment,
+checkerboard reflectance and Gaussian filtering. Its plastic exterior is
+not silently mapped to another material. Select an explicit supported profile:
+
+```powershell
+uv run --project tools\gyscene --locked --extra mitsuba python tools\gyscene\examples\import_matpreview.py D:\Code\mitsuba3-scene\matpreview.zip --profile diffuse --max-depth 8 --output-root "D:\Code\Graphics\Gyunity\Test\material-preview"
+```
+
+`glass` and `copper` are also available. A custom script may pass its own
+native material to `import_preview`. The real geometry/camera/UVs/normals and
+EXR bytes remain unchanged apart from converting serialized mesh arrays to
+world-space OBJ. The optional Mitsuba package only decodes source data; it is
+not used for Gyunity rendering.
+
+The archive has no license file, so raw/derived preview assets remain local
+and are not redistributed by this repository. Supplied reference renders are
+not copied as generated output. See `resources\scenes\matpreview\README.md`
+for rendering commands, provenance and limitations.
+
 ## Native version 1
 
 JSON uses `schema_version: 1`, `name`, `render`, `camera`, named `materials`,
-ordered `shapes`, and non-rendering `metadata`. Unknown fields, invalid numbers,
+ordered `shapes`, optional environment `lights`, and non-rendering `metadata`. Unknown fields, invalid numbers,
 unresolved material references, duplicate IDs and missing mesh files fail.
 Author scripts export a `Scene` named `scene`; `build` executes trusted Python.
 
@@ -104,15 +126,21 @@ separator accepted by Python.
 
 Colors/radiance are linear RGB. Conductors store raw `alpha` (X, Y), complex
 IOR and explicit `ggx` or `beckmann` distribution: no roughness remapping.
-Version 1 diffuse and conductor materials are two-sided; dielectric IORs and
-reflection/transmission are explicit. Area emission is attached to a shape
-independently of its material. Environment lights, volume data, textures,
-single-sided opaque materials and arbitrary external plugins are not yet in
-this intentionally bounded contract.
+Diffuse materials can be one- or two-sided and accept constant RGB or a native
+`Checkerboard` reflectance. Conductors currently require two-sided behavior;
+dielectric IORs and reflection/transmission are explicit. Area emission is
+attached to a shape independently of its material. One `Environment` light
+may reference a linear RGB HDR/EXR map, positive scale and orthonormal
+direction-only transform. Native longitude zero points +X; the Mitsuba adapter
+converts its -Z convention by a matrix, without resampling the image.
+Checkerboard periods have four alternating quadrants per unit UV square,
+with explicit UV scale. Volumes, arbitrary image material textures and other
+external plugins remain outside this bounded version.
 
 Render settings use native PT/BDPT scattering-depth budgets, resolution,
-sample count, seed, BVH/kd and box/tent filtering. Source output format/depth
-are retained in metadata; native PNG/HDR output is selected by the renderer.
+sample count, seed, BVH/kd and box/tent/Gaussian filtering. Native Gaussian
+filtering uses standard deviation 0.5 and radius 2. Source output format/depth
+are retained in metadata; native PNG/HDR/EXR output is selected by the renderer.
 Cross-renderer depth accounting, filtering of camera splats, sampling and
 BDPT geometric-normal shading can still differ; importing data does not
 promise pixel-identical reference renders.

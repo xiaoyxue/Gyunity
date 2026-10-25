@@ -1,3 +1,3 @@
-from .model import Box, Camera, Conductor, Dielectric, Diffuse, Mesh, Quad, RenderSettings, Scene, Sphere
+from .model import Box, Camera, Checkerboard, Conductor, Dielectric, Diffuse, Environment, Mesh, Quad, RenderSettings, Scene, Sphere
 
-__all__ = ["Box", "Camera", "Conductor", "Dielectric", "Diffuse", "Mesh", "Quad", "RenderSettings", "Scene", "Sphere"]
+__all__ = ["Box", "Camera", "Checkerboard", "Conductor", "Dielectric", "Diffuse", "Environment", "Mesh", "Quad", "RenderSettings", "Scene", "Sphere"]

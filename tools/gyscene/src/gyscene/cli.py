@@ -9,6 +9,7 @@ from xml.etree.ElementTree import ParseError
 from .model import Scene
 from .mitsuba import ARCHIVES, import_archive, import_xml
 from .pbrt import import_file as import_pbrt
+from .matpreview import PROFILES, import_preview, profile_material, source_data
 
 
 def main() -> int:
@@ -36,6 +37,11 @@ def main() -> int:
     pbrt.add_argument("--name")
     pbrt.add_argument("--rgb-radiance-scale", type=float, required=True,
                       help="Explicit native RGB unit scale after photometric normalization (not PBRT spectral calibration)")
+    preview = commands.add_parser("import-matpreview", help="Locally import original matpreview geometry with an explicit supported material")
+    preview.add_argument("archive", type=Path)
+    preview.add_argument("--output-root", type=Path, required=True)
+    preview.add_argument("--profile", choices=PROFILES, required=True)
+    preview.add_argument("--max-depth", type=int, required=True)
     args = parser.parse_args()
     try:
         if args.command == "build":
@@ -55,8 +61,12 @@ def main() -> int:
             print(import_archive(args.archive_dir / (args.scene + ".zip"), args.output_root))
         elif args.command == "import-mitsuba-file":
             print(import_xml(args.scene, args.output_root, args.name, max_depth=args.max_depth))
-        else:
+        elif args.command == "import-pbrt":
             print(import_pbrt(args.scene, args.output_root, args.name, rgb_radiance_scale=args.rgb_radiance_scale))
+        else:
+            root, _ = source_data(args.archive)
+            print(import_preview(args.archive, args.output_root, profile_name=args.profile,
+                                 exterior=profile_material(args.profile, root), max_depth=args.max_depth))
     except (OSError, ValueError, KeyError, BadZipFile, ParseError) as error:
         print(f"gyscene: {error}", file=sys.stderr)
         return 1

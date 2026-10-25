@@ -70,6 +70,9 @@
     <ClCompile Include="tests\NativeSceneTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\MaterialPreviewTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\VeachMisSceneTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>

@@ -48,6 +48,7 @@
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
     <ClCompile Include="..\GyunityApp\NativeScene.cpp" />
     <ClCompile Include="tests\NativeSceneTest.cpp" />
+    <ClCompile Include="tests\MaterialPreviewTest.cpp" />
     <ClCompile Include="tests\VeachMisSceneTest.cpp" />
     <ClCompile Include="tests\VeachBidirSceneTest.cpp" />
     <ClCompile Include="test.cpp" />
@@ -69,6 +70,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
   </ItemDefinitionGroup>
+  <Import Project="..\external\openexr.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

@@ -4,10 +4,21 @@
 
 namespace {
 
-SceneRenderOptions Parse(std::initializer_list<const char*> arguments) {
+bool ParseInto(std::initializer_list<const char*> arguments, SceneRenderOptions& output) {
 	std::vector<const char*> argv = { "GyunityApp" };
 	argv.insert(argv.end(), arguments.begin(), arguments.end());
-	return ParseSceneCommandLine(static_cast<int>(argv.size()), argv.data());
+	return ParseSceneCommandLine(static_cast<int>(argv.size()), argv.data(), output);
+}
+
+SceneRenderOptions Parse(std::initializer_list<const char*> arguments) {
+	SceneRenderOptions output;
+	EXPECT_TRUE(ParseInto(arguments, output));
+	return output;
+}
+
+bool Parses(std::initializer_list<const char*> arguments) {
+	SceneRenderOptions output;
+	return ParseInto(arguments, output);
 }
 
 void ExpectVector(const Vec3& actual, const Vec3& expected) {
@@ -30,10 +41,12 @@ TEST(SceneRegistry, NamesMapToAllBuilders) {
 	std::set<std::string> names;
 	for (const auto& scene : GetSceneRegistry()) EXPECT_TRUE(names.insert(scene.name).second);
 	for (const auto& entry : expected) {
-		EXPECT_EQ(FindScene(entry.first).build, entry.second);
-		EXPECT_EQ(FindScene(entry.first).usesVolume, std::string(entry.first) == "fog");
+		const auto* scene = FindScene(entry.first);
+		ASSERT_NE(scene, nullptr);
+		EXPECT_EQ(scene->build, entry.second);
+		EXPECT_EQ(scene->usesVolume, std::string(entry.first) == "fog");
 	}
-	EXPECT_THROW(FindScene("not-a-scene"), std::invalid_argument);
+	EXPECT_EQ(FindScene("not-a-scene"), nullptr);
 }
 
 TEST(SceneRegistry, CamerasMatchOriginalRegressionRays) {
@@ -78,7 +91,7 @@ TEST(SceneCommandLine, InformationalCommandsDoNotRequireSceneOrOutput) {
 TEST(SceneCommandLine, RenderDefaultsMatchRegressionSettings) {
 	const auto options = Parse({ "--scene", "mesh", "--out", "image.png" });
 	EXPECT_EQ(options.command, SceneCommand::Render);
-	EXPECT_EQ(options.scene, &FindScene("mesh"));
+	EXPECT_EQ(options.scene, FindScene("mesh"));
 	EXPECT_EQ(options.accelerator, SceneAccelerator::Bvh);
 	EXPECT_EQ(options.width, 512);
 	EXPECT_EQ(options.height, 512);
@@ -90,7 +103,7 @@ TEST(SceneCommandLine, RenderDefaultsMatchRegressionSettings) {
 TEST(SceneCommandLine, OverridesAreParsedIndependentlyOfOrder) {
 	const auto options = Parse({ "--out", "folder with spaces\\image.hdr", "--height", "360",
 		"--spp", "2", "--max-depth", "4", "--accel", "kd", "--width", "640", "--scene", "fog" });
-	EXPECT_EQ(options.scene, &FindScene("fog"));
+	EXPECT_EQ(options.scene, FindScene("fog"));
 	EXPECT_EQ(options.width, 640);
 	EXPECT_EQ(options.height, 360);
 	EXPECT_EQ(options.spp, 2);
@@ -100,16 +113,16 @@ TEST(SceneCommandLine, OverridesAreParsedIndependentlyOfOrder) {
 }
 
 TEST(SceneCommandLine, RejectsMissingUnknownAndDuplicateOptions) {
-	EXPECT_THROW(Parse({ "--scene" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--scene", "--out", "image.png" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--out", "image.png" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--scene", "mesh" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--scene", "missing", "--out", "image.png" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--scene", "mesh", "--out", "image.png", "--accel", "other" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--scene", "mesh", "--out", "image.png", "--unknown", "1" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--scene", "mesh", "--scene", "fog", "--out", "image.png" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--scene", "mesh", "--out", "" }), std::invalid_argument);
-	EXPECT_THROW(Parse({ "--help", "--scene", "mesh" }), std::invalid_argument);
+	EXPECT_FALSE(Parses({ "--scene" }));
+	EXPECT_FALSE(Parses({ "--scene", "--out", "image.png" }));
+	EXPECT_FALSE(Parses({ "--out", "image.png" }));
+	EXPECT_FALSE(Parses({ "--scene", "mesh" }));
+	EXPECT_FALSE(Parses({ "--scene", "missing", "--out", "image.png" }));
+	EXPECT_FALSE(Parses({ "--scene", "mesh", "--out", "image.png", "--accel", "other" }));
+	EXPECT_FALSE(Parses({ "--scene", "mesh", "--out", "image.png", "--unknown", "1" }));
+	EXPECT_FALSE(Parses({ "--scene", "mesh", "--scene", "fog", "--out", "image.png" }));
+	EXPECT_FALSE(Parses({ "--scene", "mesh", "--out", "" }));
+	EXPECT_FALSE(Parses({ "--help", "--scene", "mesh" }));
 }
 
 TEST(SceneCommandLine, RejectsInvalidNumbersAndPixelOverflow) {
@@ -117,19 +130,19 @@ TEST(SceneCommandLine, RejectsInvalidNumbersAndPixelOverflow) {
 		for (const auto* value : { "0", "-1", "+1", "1.5", "12junk", " 5", "2147483648" }) {
 			SCOPED_TRACE(option);
 			SCOPED_TRACE(value);
-			EXPECT_THROW(Parse({ "--scene", "empty", "--out", "image.png", option, value }), std::invalid_argument);
+			EXPECT_FALSE(Parses({ "--scene", "empty", "--out", "image.png", option, value }));
 		}
 	}
-	EXPECT_THROW(Parse({ "--scene", "empty", "--out", "image.png",
-		"--width", "2147483647", "--height", "2" }), std::invalid_argument);
+	EXPECT_FALSE(Parses({ "--scene", "empty", "--out", "image.png",
+		"--width", "2147483647", "--height", "2" }));
 }
 
 TEST(SceneCommandLine, OnlySupportedOutputFormatsAreAccepted) {
 	for (const auto* file : { "a", "image.jpg", "image.PNG", "image.png.bak" }) {
-		EXPECT_THROW(Parse({ "--scene", "empty", "--out", file }), std::invalid_argument);
+		EXPECT_FALSE(Parses({ "--scene", "empty", "--out", file }));
 	}
-	for (const auto* file : { "image.png", "image.bmp", "image.hdr" }) {
-		EXPECT_NO_THROW(Parse({ "--scene", "empty", "--out", file }));
+	for (const auto* file : { "image.png", "image.bmp", "image.hdr", "image.exr" }) {
+		EXPECT_TRUE(Parses({ "--scene", "empty", "--out", file }));
 	}
 }
 

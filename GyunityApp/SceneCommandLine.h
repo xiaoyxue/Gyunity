@@ -19,6 +19,6 @@ struct SceneRenderOptions {
 	std::shared_ptr<NativeScene> nativeScene;
 };
 
-SceneRenderOptions ParseSceneCommandLine(int argc, const char* const* argv);
+bool ParseSceneCommandLine(int argc, const char* const* argv, SceneRenderOptions& output);
 bool RenderScene(const SceneRenderOptions& options, Gyunity::Integrator& integrator);
 int RunSceneCommandLine(int argc, const char* const* argv);

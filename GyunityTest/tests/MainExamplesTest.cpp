@@ -46,7 +46,8 @@ TEST(MainExamples, ExplicitCommandsStillUseTheSceneCli) {
 TEST(MainExamples, DefaultOutputUsesTheMainCheckoutTestDirectory) {
 	for (const auto* filename : { "CornellBoxPtEnvmap.bmp", "CornellBoxSppmTest.bmp",
 		"CornellBoxLT.bmp", "MediaTestFogEquiAngular.bmp", "CornellBoxBdpt.bmp" }) {
-		const auto output = ExampleOutputPath(filename);
+		std::string output;
+		ASSERT_TRUE(ExampleOutputPath(filename, output));
 		const auto suffix = std::string("\\Test\\") + filename;
 		ASSERT_GE(output.size(), suffix.size());
 		EXPECT_EQ(output.substr(output.size() - suffix.size()), suffix);
@@ -66,16 +67,16 @@ TEST(MainExamples, SharedRendererRejectsInvalidSetup) {
 		void Render(const Scene&, const Camera&) override { called = true; }
 	} integrator;
 	SceneRenderOptions options;
-	EXPECT_THROW(RenderScene(options, integrator), std::invalid_argument);
-	options.scene = &FindScene("empty");
-	EXPECT_THROW(RenderScene(options, integrator), std::invalid_argument);
+	EXPECT_FALSE(RenderScene(options, integrator));
+	options.scene = FindScene("empty");
+	EXPECT_FALSE(RenderScene(options, integrator));
 	options.output = "unused.png";
 	options.width = 0;
-	EXPECT_THROW(RenderScene(options, integrator), std::invalid_argument);
+	EXPECT_FALSE(RenderScene(options, integrator));
 	options.width = -1;
-	EXPECT_THROW(RenderScene(options, integrator), std::invalid_argument);
+	EXPECT_FALSE(RenderScene(options, integrator));
 	options.width = 2147483647;
-	EXPECT_THROW(RenderScene(options, integrator), std::invalid_argument);
+	EXPECT_FALSE(RenderScene(options, integrator));
 	EXPECT_FALSE(integrator.called);
 }
 
@@ -113,31 +114,30 @@ protected:
 
 TEST_F(MainExampleRenders, PathTracing) {
 	const auto output = Output("path-tracing.hdr");
-	ASSERT_NO_THROW(TestPathTracing(output, 32, 24, 4));
+	ASSERT_TRUE(TestPathTracing(output, 32, 24, 4));
 	ExpectImage(output);
 }
 
 TEST_F(MainExampleRenders, Sppm) {
 	const auto output = Output("sppm.hdr");
-	ASSERT_NO_THROW(TestSPPM(output, 32, 24, 2, 4096));
+	ASSERT_TRUE(TestSPPM(output, 32, 24, 2, 4096));
 	ExpectImage(output);
 }
 
 TEST_F(MainExampleRenders, LightTracing) {
 	const auto output = Output("light-tracing.hdr");
-	ASSERT_NO_THROW(TestLightTracing(output, 32, 24, 8));
+	ASSERT_TRUE(TestLightTracing(output, 32, 24, 8));
 	ExpectImage(output);
 }
 
 TEST_F(MainExampleRenders, VolumePathTracing) {
 	const auto output = Output("volume-path-tracing.hdr");
-	ASSERT_NO_THROW(TestVolPathTracing(output, 32, 24, 4));
+	ASSERT_TRUE(TestVolPathTracing(output, 32, 24, 4));
 	ExpectImage(output);
 }
 
 TEST_F(MainExampleRenders, ImageWriteErrorsPropagate) {
-	EXPECT_THROW(TestLightTracing(Output("nonexistent-main-example-subdirectory\\failed.png"), 8, 8, 1),
-		std::runtime_error);
+	EXPECT_FALSE(TestLightTracing(Output("nonexistent-main-example-subdirectory\\failed.png"), 8, 8, 1));
 }
 
 TEST(MainExamples, BidirectionalExampleRejectsVolumeAndUnknownScenes) {
@@ -180,7 +180,7 @@ TEST_F(MainExampleRenders, FailedCheckedIntegratorDoesNotWriteImage) {
 		bool RenderChecked(const Scene&, const Camera&) override { return false; }
 	} integrator;
 	SceneRenderOptions options;
-	options.scene = &FindScene("empty");
+	options.scene = FindScene("empty");
 	options.width = options.height = 4;
 	options.output = Output("must-not-write-failed-render.hdr");
 	EXPECT_FALSE(RenderScene(options, integrator));

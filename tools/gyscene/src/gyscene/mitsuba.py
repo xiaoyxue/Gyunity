@@ -183,10 +183,8 @@ def parse_scene(xml: bytes, name: str, *, max_depth: int | None = None) -> Scene
             attributes(node, {"type"})
         kind = node.attrib["type"]
         if kind == "diffuse":
-            if not two_sided:
-                raise ValueError("Version 1 requires two-sided diffuse materials")
             p = parameters(node, {"reflectance": "rgb"})
-            material = Diffuse(reflectance=rgb(p["reflectance"]))
+            material = Diffuse(reflectance=rgb(p["reflectance"]), two_sided=two_sided)
         elif kind == "roughconductor":
             if not two_sided:
                 raise ValueError("Version 1 requires two-sided conductors")

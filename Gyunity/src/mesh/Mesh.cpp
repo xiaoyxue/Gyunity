@@ -5,6 +5,10 @@
 GYT_NAMESPACE_BEGIN
 
 void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices, bool faceNormals) {
+	if (!TryLoadFromFile(inputfile, reverseVertices, faceNormals)) std::exit(EXIT_FAILURE);
+}
+
+bool Mesh::TryLoadFromFile(const std::string& inputfile, bool reverseVertices, bool faceNormals) {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
@@ -21,7 +25,8 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices, bool faceNo
 		std::cerr << err << std::endl;
 	}
 	if (!ret) {
-		exit(1);
+		GetDefaultLogger()->Error("Cannot load mesh '" + inputfile + "': " + err, false);
+		return false;
 	}
 	// Loop over shapes
 	for (size_t s = 0; s < shapes.size(); s++) {
@@ -81,6 +86,7 @@ void Mesh::LoadFromFile(std::string inputfile, bool reverseVertices, bool faceNo
 			indexOffset += fv;
 		}
 	}
+	return true;
 }
 
 void Mesh::SetMaterial(const std::shared_ptr<Material> material) {

@@ -11,8 +11,9 @@ class Intersection;
 class EnvironmentLight : public Light
 {
 public:
-	EnvironmentLight(const std::string& filename, real rotate, real scale = 1.f) : mRotation(rotate) {
-		mEnvMap.reset(new EnvironmentMap(filename, rotate, scale));
+	EnvironmentLight(const std::string& filename, real rotate, real scale = 1.f,
+		const Transform& directionToWorld = Transform(), bool wrapLongitude = false) : mRotation(rotate) {
+		mEnvMap.reset(new EnvironmentMap(filename, rotate, scale, directionToWorld, wrapLongitude));
 	}
 
 	void Initialize(const Scene& scene);
@@ -29,6 +30,7 @@ public:
 	Vec3 Power() const override;
 	bool IsEnvironmentLight() const override { return true; }
 	real GetRotation() const { return mRotation; }
+	bool IsValid() const { return mEnvMap && mEnvMap->IsValid(); }
 
 private:
 	std::unique_ptr<EnvironmentMap> mEnvMap;

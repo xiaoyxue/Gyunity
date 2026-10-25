@@ -4,17 +4,24 @@
 #include "texture/ImageTexture.h"
 #include "visual/Sampling.h"
 #include "system/Threading.h"
+#include "math/Transform.h"
 
 GYT_NAMESPACE_BEGIN
 
 class EnvironmentMap 
 {
 public:
-	EnvironmentMap(const std::string &filename, real rotate, float scale = 1.f) {
-		this->mScale = scale;
-		LoadImage(filename, rotate, scale);
+	EnvironmentMap(const std::string &filename, real rotate, float scale = 1.f,
+		const Transform& directionToWorld = Transform(), bool wrapLongitude = false)
+		: mDirectionToWorld(directionToWorld), mWorldToDirection(Inverse(directionToWorld)), mScale(scale) {
+		for (int row = 0; row < 3; ++row)
+			for (int col = 0; col < 3; ++col)
+				mTransformDirections = mTransformDirections || directionToWorld.GetMatrix()(row, col) != (row == col ? 1 : 0);
+		if (!LoadImage(filename, rotate, scale, wrapLongitude)) return;
 		mDistribution.reset(ConvertImageToPdf(mImage.get()));
 	}
+
+	bool IsValid() const { return mImage && mImage->IsValid() && mDistribution; }
 
 	Vec3 Sample(Vec3* dir, real* pdfDir, const Vec2& u) const {
 		real uv[2];
@@ -25,13 +32,14 @@ public:
 			*pdfDir = 0;
 		else
 			*pdfDir = pdf / (2 * PI * PI * sinTheta);
-		*dir = LatLongToDir(uv[0], uv[1]);
+		const Vec3 local = LatLongToDir(uv[0], uv[1]);
+		*dir = mTransformDirections ? mDirectionToWorld.TransformVector(local).Norm() : local;
 
 		return LookupRadiance(uv[0], uv[1]);
 	}
 
 	Vec3 Lookup(const Vec3& dir, real* pdfDir = nullptr) const {
-		Vec3 normDir = dir.Norm();
+		Vec3 normDir = mTransformDirections ? mWorldToDirection.TransformVector(dir).Norm() : dir.Norm();
 		Vec2 uv = DirToLatLong(normDir);
 		Vec3 radiance = LookupRadiance(uv[0], uv[1]);
 
@@ -54,7 +62,7 @@ public:
 	}
 
 	real PdfDir(const Vec3& dir) const {
-		Vec3 normDir = dir.Norm();
+		Vec3 normDir = mTransformDirections ? mWorldToDirection.TransformVector(dir).Norm() : dir.Norm();
 		Vec2 uv = DirToLatLong(normDir);
 		real sinTheta = SinTheta(uv[1]);
 		if (sinTheta == 0)
@@ -67,12 +75,25 @@ public:
 		return mImage->Sample(Vec2(u, 1 - v)) * mScale;
 	}
 private:
+	Transform mDirectionToWorld, mWorldToDirection;
+	bool mTransformDirections = false;
 
-	void LoadImage(const std::string& filename, real rotate, real scale) {
+	bool LoadImage(const std::string& filename, real rotate, real scale, bool wrapLongitude) {
 
-		ImageTexture<Vec3>* imageTexture = new ImageTexture<Vec3>(filename);
+		ImageTexture<Vec3>* imageTexture = new ImageTexture<Vec3>(filename,
+			wrapLongitude ? WrapMode::REPEAT_U : WrapMode::CLAMP);
 		mImage.reset(imageTexture);
-		
+		if (!mImage->IsValid()) return false;
+		for (int y = 0; y < mImage->Height(); ++y) {
+			for (int x = 0; x < mImage->Width(); ++x) {
+				const Vec3 value = mImage->ElementAt(x, y);
+				if (value.x < 0 || value.y < 0 || value.z < 0) {
+					GetDefaultLogger()->Error("Environment maps require nonnegative RGB radiance: " + filename, false);
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	Distribution2D* ConvertImageToPdf(const ImageTexture<Vec3>* pImage) const {
@@ -106,7 +127,7 @@ private:
 		//real phi = (dir.x != 0 || dir.y != 0) ? std::atan2f(dir.y, dir.x) : 0;
 		//real theta = std::acos(dir.z);
 		real phi = (dir.x != 0 || dir.z != 0) ? std::atan2f(dir.z, dir.x) : 0;
-		real theta = std::acos(dir.y);
+		real theta = std::acos(Clamp(dir.y, real(-1), real(1)));
 
 		phi = (phi < 0) ? (phi + 2 * PI) : phi;
 
