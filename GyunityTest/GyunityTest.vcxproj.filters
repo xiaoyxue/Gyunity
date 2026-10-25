@@ -58,6 +58,9 @@
     <ClCompile Include="tests\VectorTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\ArrayTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp">
       <Filter>GyunityApp</Filter>
     </ClCompile>

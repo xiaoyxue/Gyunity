@@ -55,6 +55,7 @@
     <ClCompile Include="tests\TransformTest.cpp" />
     <ClCompile Include="tests\BoundaryTransmittanceTest.cpp" />
     <ClCompile Include="tests\VectorTest.cpp" />
+    <ClCompile Include="tests\ArrayTest.cpp" />
     <ClCompile Include="tests\LightTracingEmissionTest.cpp" />
     <ClCompile Include="tests\LightProbabilityTest.cpp" />
     <ClCompile Include="tests\BDPTPathTest.cpp" />
