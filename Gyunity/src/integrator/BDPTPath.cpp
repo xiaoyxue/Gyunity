@@ -73,6 +73,8 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 		vertex.mLight = isect.mPrimitive->GetLight();
 		vertex.mThroughput = throughput;
 		if (!ConvertDensity(pdfFwd, path.back(), vertex, &vertex.mPdfFwd)) return -1;
+		// Rounded endpoints can lose continuous area support; delta zeros remain valid markers.
+		if (vertex.mPdfFwd == 0 && !path.back().mIsDelta) break;
 		path.push_back(vertex);
 		if (static_cast<int>(path.size()) == maxVertices) break;
 
