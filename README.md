@@ -311,6 +311,16 @@ sources, mirror chains and environment strategies. Analytical constant-environme
 diffuse, mirror, glass and mixed point-light checks supplement the 16x16 smoke
 renders. Environment rotation remains an existing unsupported map feature; use
 zero rotation rather than treating PT agreement as a rotation reference.
+BDPT checks the requested environment rotation and reports a nonzero value as
+unsupported before rendering; the existing PT/environment implementation is
+unchanged.
+
+`BDPTAcceptanceTest.cpp` directly exercises all four supported strategy families,
+isolates camera splats with primary rays that miss all geometry, checks splat
+normalization at multiple sample counts, expands auxiliary environment launch
+bounds without changing geometry, and checks latitude/longitude signs using a
+directional HDR marker map. Generated fixtures and images use
+`GYUNITY_TEST_OUTPUT_DIRECTORY` under the main checkout's `Test` directory.
 
 `TestBidirectionalPathTracing` in `main.cpp` accepts the scene name, output path,
 width, height, spp, depth and accelerator. It covers all nine original surface

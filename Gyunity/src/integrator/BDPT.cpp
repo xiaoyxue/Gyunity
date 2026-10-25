@@ -2,6 +2,7 @@
 #include "TiledIntegrator.h"
 #include "system/ProgressReporter.h"
 #include "light/PointLight.h"
+#include "light/EnvLight.h"
 #include <atomic>
 #include <cmath>
 #include <limits>
@@ -319,7 +320,13 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 		if (!light->IsAreaLight() && !light->IsEnvironmentLight() && !dynamic_cast<const PointLight*>(light.get())) {
 			return Fail("BDPT supports area lights, point lights and an environment light.");
 		}
-		if (light->IsEnvironmentLight()) ++environments;
+		if (light->IsEnvironmentLight()) {
+			++environments;
+			const auto* environment = dynamic_cast<const EnvironmentLight*>(light.get());
+			if (environment && environment->GetRotation() != 0) {
+				return Fail("BDPT currently supports environment maps with zero rotation only.");
+			}
+		}
 		for (size_t j = 0; j < i; ++j) {
 			if (scene.GetLights()[j] == light) return Fail("BDPT requires each light to be registered once.");
 		}
