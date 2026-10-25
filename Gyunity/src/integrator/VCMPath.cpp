@@ -223,7 +223,7 @@ bool Feasible(const PathContext& path, const Strategy& strategy) {
 bool Density(const Scene& scene, const PathContext& path, int i, bool forward, real* pdf) {
 	const int n = VertexCount(path), s = path.selected.s;
 	const int source = i + (forward ? -1 : 1);
-	if (source > 0 && source + 1 < n && Delta(Vertex(path, source, true))) {
+	if (source > 0 && source < n - 1 && Delta(Vertex(path, source, true))) {
 		const bool lightOwned = source < s;
 		const int index = lightOwned ? source : n - 1 - source;
 		if (index + 1 >= (lightOwned ? s : path.selected.t)) {

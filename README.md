@@ -541,9 +541,10 @@ An environment origin instead uses light selection times map directional PDF.
 Its first surface arrival uses the projected launch-disk density, without
 helper-distance falloff; reverse arrivals at infinity remain directional.
 The shared checked emission APIs validate initialized bounds, and emitted rays
-travel opposite the map direction. Origin `mPdfPos`, `mPdfDir`,
+travel opposite the map direction. Sampled light-origin `mPdfPos`, `mPdfDir`,
 `mLightSelectionPdf`, and `mPdfFwd` are checked against point/environment
-endpoint metadata. Camera escape records use `mDirection`, not `mIsect.mOutDir`.
+endpoint metadata. Camera escapes instead query the origin probability and
+use `mDirection`, not `mIsect.mOutDir`; their unused emission fields may be zero.
 Changing the launch disk changes photon arrival frequency (and some weights),
 not the reciprocal emitted-throughput/arrival-density normalization.
 
