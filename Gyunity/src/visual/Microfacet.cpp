@@ -321,7 +321,6 @@ Vec3 GGXDistribution::SampleWh(const Vec3& wo, const Vec2& u) const {
 			real sinTheta = std::sqrt(std::max(real(0), 1 - cosTheta * cosTheta));
 			wh = SphericalDirection(sinTheta, cosTheta, phi);
 		}
-		if (!SameHemisphere(wo, wh)) wh = -wh;
 		return wh;
 	}
 	else {
@@ -339,7 +338,8 @@ Vec3 GGXDistribution::SampleWh(const Vec3& wo, const Vec2& u) const {
 //https://hal.archives-ouvertes.fr/hal-01509746
 Vec3 GGXDistribution::SampleGGXVNDF(const Vec3& v_, const Vec2& u) const {
 	//stretch view
-	Vec3 v = Vec3(mAlphax * v_.x, mAlphay * v_.y, v_.z).Norm();
+	const Vec3 view = v_.z < 0 ? -v_ : v_;
+	Vec3 v = Vec3(mAlphax * view.x, mAlphay * view.y, view.z).Norm();
 
 	//orthonormal basis
 	Vec3 T1 = (v.z < 0.9999) ? Cross(v, Vec3(0, 0, 1)).Norm() : Vec3(1, 0, 0);

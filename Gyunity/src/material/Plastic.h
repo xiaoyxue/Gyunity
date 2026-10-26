@@ -18,7 +18,7 @@ public:
 
 		Vec3 Kd = mKd->Sample(*isect);
 		isect->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Kd));
-		Fresnel* fresnel = GYT_MEMORY_POOL_ALLOC(arena, FresnelDielectric)(1.5f, 1.f);
+		Fresnel* fresnel = GYT_MEMORY_POOL_ALLOC(arena, FresnelDielectric)(1.f, 1.5f);
 		MicrofacetDistribution* distribution =
 			GYT_MEMORY_POOL_ALLOC(arena, GGXDistribution)(alpha, alpha, true);
 		Vec3 Ks = mKs->Sample(*isect);

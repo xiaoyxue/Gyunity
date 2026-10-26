@@ -53,6 +53,16 @@ namespace BSDFCoordinate {
 			(wb.x * wb.x + wb.y * wb.y)),
 			-1, 1);
 	}
+
+	GYT_FORCE_INLINE bool TransmissionHalfVector(const Vec3& wo, const Vec3& wi, real eta, Vec3& wh) {
+		if (wo.z == 0 || wi.z == 0 || SameHemisphere(wo, wi)) return false;
+		wh = wo + wi * eta;
+		if (!(wh.Length2() > 0)) return false;
+		wh = wh.Norm();
+		if (wh.z < 0) wh = -wh;
+		// Refraction must agree with both microfacet and macrosurface orientation.
+		return Dot(wo, wh) * wo.z > 0 && Dot(wi, wh) * wi.z > 0;
+	}
 }
 
 enum ScatterEventType
@@ -403,8 +413,8 @@ public:
 		if (cosThetaI == 0 || cosThetaO == 0) return Vec3();
 
 		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-		Vec3 wh = (wo + wi * eta).Norm();
-		if (wh.z < 0) wh = -wh;
+		Vec3 wh;
+		if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return Vec3();
 
 		Vec3 F = mFresnel.Evaluate(Dot(wo, wh));
 
@@ -437,9 +447,8 @@ public:
 		if (SameHemisphere(wo, wi)) return 0;
 
 		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-		Vec3 wh = -((wo + wi * eta).Norm());
-
-		wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
+		Vec3 wh;
+		if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return 0;
 		// Compute change of variables _dwh\_dwi_ for microfacet transmission
 		real sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);
 		real dwhDwi = std::abs((eta * eta * Dot(wi, wh)) / (sqrtDenom * sqrtDenom));
@@ -497,8 +506,7 @@ public:
 			if (cosThetaI == 0 || cosThetaO == 0) return Vec3();
 
 			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-			Vec3 wh = (-(wo + wi * eta).Norm());
-			wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
+			if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return Vec3();
 
 			real F = mFresnel.EvaluateScalar(Dot(wo, wh));
 			real D = mDistribution->D(wh);
@@ -517,7 +525,7 @@ public:
 
 	real Pdf(const Vec3& wo, const Vec3& wi) const override 
 	{
-
+		if (wo.z == 0 || wi.z == 0) return 0;
 		bool reflect = BSDFCoordinate::CosTheta(wo) * BSDFCoordinate::CosTheta(wi) > 0;
 		real pdf = 0;
 		Vec3 wh;
@@ -528,7 +536,7 @@ public:
 		}
 		else {
 			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-			wh = -((wo + wi * eta).Norm());
+			if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return 0;
 
 			// Compute change of variables _dwh\_dwi_ for microfacet transmission
 			real sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);
