@@ -127,6 +127,48 @@ TEST_F(FiniteBDPT, DirectConnectionIncludesGeometryAndItsOwnMisWeight) {
 	EXPECT_NEAR(contribution.x, (8.f / (25 * PI)) * weight, 1e-6f);
 }
 
+TEST_F(FiniteBDPT, PrimaryConnectionsReceiveMisExactlyOnce) {
+	for (SurfaceNormalMode mode : { SurfaceNormalMode::Geometric, SurfaceNormalMode::Shading }) {
+		for (auto& vertex : full) vertex.mNormalMode = mode;
+		for (int s = 0; s < 3; ++s) {
+			std::vector<PathVertex> lightPath, cameraPath;
+			Split(s, &lightPath, &cameraPath);
+			Vec3 primary, weighted;
+			Vec2 primaryRaster, weightedRaster;
+			real weight;
+			ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, s, 3 - s, &primary, &primaryRaster));
+			ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, s, 3 - s, &weight));
+			ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, s, 3 - s, &weighted, &weightedRaster));
+			EXPECT_GT(primary.x, 0);
+			EXPECT_EQ(weighted, primary * weight);
+			EXPECT_EQ(primaryRaster, weightedRaster);
+		}
+	}
+}
+
+TEST_F(FiniteBDPT, PrimaryConnectionDoesNotDependOnMisSnapshots) {
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(1, &lightPath, &cameraPath);
+	for (auto& vertex : lightPath) vertex.mPdfFwd = 0;
+	for (auto& vertex : cameraPath) vertex.mPdfFwd = 0;
+	Vec3 primary, weighted(99);
+	Vec2 raster;
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &primary, &raster));
+	EXPECT_NEAR(primary.x, 8.f / (25 * PI), 1e-6f);
+	EXPECT_FALSE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &weighted, &raster));
+	EXPECT_EQ(weighted, Vec3(0));
+}
+
+TEST_F(FiniteBDPT, PrimaryConnectionRejectsMixedNormalPolicies) {
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(1, &lightPath, &cameraPath);
+	lightPath.back().mNormalMode = SurfaceNormalMode::Shading;
+	Vec3 primary(99);
+	Vec2 raster;
+	EXPECT_FALSE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &primary, &raster));
+	EXPECT_EQ(primary, Vec3(0));
+}
+
 TEST_F(FiniteBDPT, GeometryUsesInverseSquareAndNormalizedDirections) {
 	PathVertex first, second;
 	first.mIsect.mNormal = first.mIsect.mGeometryNormal = Vec3(0, 0, 1);
@@ -148,6 +190,8 @@ TEST_F(FiniteBDPT, BlockedConnectionContributesZero) {
 	Split(1, &lightPath, &cameraPath);
 	Vec3 contribution;
 	Vec2 raster;
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
+	EXPECT_EQ(contribution, Vec3(0));
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
 }

@@ -143,6 +143,35 @@ TEST(SceneCommandLine, VeachBidirDefaultsToBdptButAllowsAnExplicitPathOverride) 
 	EXPECT_EQ(file.render.integrator, "bdpt");
 }
 
+TEST(SceneCommandLine, ShadingNormalsRemainAnExplicitBdptOption) {
+	const auto defaults = Parse({ "--scene", "empty", "--integrator", "bdpt", "--out", "unused.exr" });
+	EXPECT_FALSE(defaults.render.bdptShadingNormals);
+	const auto shading = Parse({ "--scene", "empty", "--integrator", "bdpt",
+		"--bdpt-normals", "shading", "--out", "unused.exr" });
+	EXPECT_TRUE(shading.render.bdptShadingNormals);
+	const auto geometric = Parse({ "--scene", "empty", "--integrator", "bdpt",
+		"--bdpt-normals", "geometric", "--out", "unused.exr" });
+	EXPECT_FALSE(geometric.render.bdptShadingNormals);
+	EXPECT_FALSE(Parses({ "--scene", "empty", "--integrator", "path",
+		"--bdpt-normals", "shading", "--out", "unused.png" }));
+}
+
+TEST(SceneCommandLine, ExistingDisplayOperatorsKeepTheirNamesAndSettings) {
+	for (const auto& entry : {
+		std::make_pair("none", Gyunity::ToneMapOperator::None),
+		std::make_pair("reinhard", Gyunity::ToneMapOperator::Reinhard),
+		std::make_pair("aces", Gyunity::ToneMapOperator::AcesFilmic) }) {
+		const auto converted = Parse({ "--convert", "unused.exr", "--tonemap", entry.first,
+			"--max-luminance", "4", "--tonemap-scale", "2", "--out", "unused.png" });
+		EXPECT_EQ(converted.command, SceneCommand::Convert);
+		EXPECT_EQ(converted.render.toneMap.op, entry.second);
+		EXPECT_EQ(converted.render.toneMap.maxLuminance, 4);
+		EXPECT_EQ(converted.render.toneMap.scale, 2);
+	}
+	EXPECT_FALSE(Parses({ "--convert", "unused.exr", "--tonemap", "filmic", "--out", "unused.png" }));
+	EXPECT_FALSE(Parses({ "--scene", "empty", "--tonemap", "aces", "--out", "unused.exr" }));
+}
+
 TEST(SceneCommandLine, SppmBudgetsAreSeparateAndOrderIndependent) {
 	const auto options = Parse({"--iterations", "2", "--photons-per-stage", "512",
 		"--scene", "empty", "--integrator", "sppm", "--out", "unused.png"}).render;

@@ -1,6 +1,5 @@
 #include "BDPTPath.h"
 #include <cmath>
-#include <limits>
 
 GYT_NAMESPACE_BEGIN
 
@@ -31,96 +30,6 @@ bool ValidRay(const Ray& ray) {
 	if (ray.mMedium) return Fail("Surface BDPT does not support participating media.");
 	return true;
 }
-
-double Dot64(const Vec3& a, const Vec3& b) {
-	return double(a.x) * double(b.x) + double(a.y) * double(b.y) + double(a.z) * double(b.z);
-}
-
-bool UnitDirection(const Vec3& v) {
-	const double length2 = Dot64(v, v);
-	return std::isfinite(length2) && std::abs(length2 - 1.0) <= 1e-4;
-}
-
-bool SameStrictSide(double a, double b) {
-	return (a > 0 && b > 0) || (a < 0 && b < 0);
-}
-
-// Normalizes in double precision; fails for zero or nonfinite input.
-bool Normalized(const Vec3& v, Vec3* unit) {
-	const double length2 = Dot64(v, v);
-	if (!std::isfinite(length2) || length2 <= 0) return false;
-	const double inverse = 1.0 / std::sqrt(length2);
-	*unit = Vec3(real(v.x * inverse), real(v.y * inverse), real(v.z * inverse));
-	return Finite(*unit);
-}
-
-}
-
-namespace Bidirectional {
-
-bool ShadingSupport(const Intersection& isect, const Vec3& w) {
-	return SameStrictSide(Dot64(w, isect.mNormal), Dot64(w, isect.mGeometryNormal));
-}
-
-bool ScatteringCosine(const Intersection& isect, const Vec3& wo, const Vec3& wi, TransportMode mode, double* value) {
-	*value = 0;
-	const Vec3& ns = isect.mNormal;
-	const Vec3& ng = isect.mGeometryNormal;
-	if (!UnitDirection(ns) || !UnitDirection(ng) || !UnitDirection(wo) || !UnitDirection(wi) || Dot64(ns, ng) <= 0) {
-		return Fail("BDPT requires prepared, consistently oriented unit normals and directions.");
-	}
-	if (mode != TransportMode::Radiance && mode != TransportMode::Importance) {
-		return Fail("BDPT received an invalid transport mode.");
-	}
-	const double woNs = Dot64(wo, ns), woNg = Dot64(wo, ng);
-	const double wiNs = Dot64(wi, ns), wiNg = Dot64(wi, ng);
-	// The support test precedes any cancellation, so excluded tangent directions stay zero.
-	if (!SameStrictSide(woNs, woNg) || !SameStrictSide(wiNs, wiNg)) return true;
-	if (mode == TransportMode::Radiance) *value = std::abs(wiNs);
-	else *value = std::abs(woNs) * std::abs(wiNg) / std::abs(woNg);
-	if (!std::isfinite(*value)) {
-		*value = 0;
-		return Fail("BDPT scattering cosine is not finite.");
-	}
-	return true;
-}
-
-bool PrepareSurfaceFrame(Intersection* isect, SurfaceNormalMode mode) {
-	if (mode == SurfaceNormalMode::Geometric) {
-		// The initial BDPT model: geometric-normal shading only.
-		isect->mNormal = isect->mGeometryNormal.Norm();
-		CoordinateSystem(isect->mNormal, &isect->mShadingDpDu, &isect->mShadingDpDv);
-		return true;
-	}
-	if (mode != SurfaceNormalMode::Shading) return Fail("BDPT received an invalid surface normal mode.");
-	Vec3 ns, ng;
-	if (!Normalized(isect->mNormal, &ns) || !Normalized(isect->mGeometryNormal, &ng)) {
-		return Fail("BDPT surface has an invalid shading or geometric normal.");
-	}
-	// Shapes orient the geometric normal toward the shading normal; anything else is malformed.
-	if (Dot64(ns, ng) <= 0) return Fail("BDPT shading normal is not on the geometric normal's side.");
-	// Tangent from the parametric derivative, independent of the incident ray. Valid normals
-	// with a degenerate parameterization use the deterministic CoordinateSystem basis.
-	Vec3 tangent;
-	const double dpduLength2 = Dot64(isect->mDpDu, isect->mDpDu);
-	const Vec3 projected = isect->mDpDu - ns * real(Dot64(ns, isect->mDpDu));
-	if (!std::isfinite(dpduLength2) || dpduLength2 <= 0 || !(Dot64(projected, projected) > 1e-12 * dpduLength2) ||
-		!Normalized(projected, &tangent)) {
-		Vec3 unused;
-		CoordinateSystem(ns, &tangent, &unused);
-	}
-	Vec3 bitangent;
-	if (!Normalized(Cross(ns, tangent), &bitangent)) return Fail("BDPT could not build a shading frame.");
-	isect->mNormal = ns;
-	isect->mGeometryNormal = ng;
-	isect->mShadingDpDu = tangent;
-	isect->mShadingDpDv = bitangent;
-	return true;
-}
-
-}
-
-namespace {
 
 int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, Vec3 throughput,
 	real pdfFwd, int maxVertices, TransportMode mode, SurfaceNormalMode normalMode, std::vector<PathVertex>& path) {
@@ -187,29 +96,9 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 			Fail("BDPT BSDF sampling returned an invalid direction.");
 			return -1;
 		}
-		if (normalMode == SurfaceNormalMode::Geometric) {
-			throughput *= f * std::abs(Dot(isect.mNormal, wi)) / pdf;
-		}
-		else {
-			// K already holds |wi.ns| and the importance adjoint correction; apply it once.
-			double cosine;
-			if (!Bidirectional::ScatteringCosine(isect, wo, wi, mode, &cosine)) return -1;
-			if (cosine == 0) break; // Rejected sample: terminate without retrying.
-			Vec3 next;
-			for (int channel = 0; channel < 3; ++channel) {
-				const double value = double(throughput[channel]) * double(f[channel]) * cosine / double(pdf);
-				if (!std::isfinite(value) || std::abs(value) > double((std::numeric_limits<real>::max)())) {
-					Fail("BDPT path throughput is not representable.");
-					return -1;
-				}
-				next[channel] = static_cast<real>(value);
-			}
-			throughput = next;
-		}
-		if (!Finite(throughput)) {
-			Fail("BDPT path throughput is not finite.");
-			return -1;
-		}
+		const auto scatter = Bidirectional::ScatterThroughput(current, mode, wo, wi, f, pdf, &throughput);
+		if (scatter == Bidirectional::ScatterStatus::Invalid) return -1;
+		if (scatter == Bidirectional::ScatterStatus::Null) break;
 		current.mIsDelta = isect.mBsdf->IsDelta();
 		pdfFwd = current.mIsDelta ? 0 : pdf;
 		// Evaluate with the saved incoming direction, before replacing the ray.
@@ -308,7 +197,7 @@ int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena
 	endpoint.mType = light->IsEnvironmentLight() ? PathVertexType::Environment : PathVertexType::Light;
 	endpoint.mNormalMode = normalMode;
 	// Emission is tied to the oriented geometric surface; shapes populate it when sampled.
-	if (light->IsAreaLight() && !UnitDirection(endpoint.mIsect.mGeometryNormal)) {
+	if (light->IsAreaLight() && !Bidirectional::UnitDirection(endpoint.mIsect.mGeometryNormal)) {
 		Fail("BDPT area-light sample has no valid geometric normal.");
 		return -1;
 	}

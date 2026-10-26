@@ -7,6 +7,9 @@ GYT_NAMESPACE_BEGIN
 bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	const std::vector<PathVertex>& cameraPath, int s, int t, real* weight);
 bool GeometryTerm(const PathVertex& first, const PathVertex& second, real* value);
+// Includes sampling compensation and visibility, but not MIS.
+bool EvaluateConnection(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster);
 bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
 	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster);
 

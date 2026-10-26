@@ -87,7 +87,8 @@ LDR outputs accept PBRT `imgtool` tone mapping with 8-bit sRGB encoding, and
 ..\x64\Release\GyunityApp.exe --convert "$TestRoot\veach-bidir.exr" --tonemap reinhard --max-luminance 4 --out "$TestRoot\veach-bidir-reinhard.png"
 ```
 
-`aces` is pbrt-v4's `--acesfilmic` (Narkowicz fit per channel, no implicit exposure);
+`aces` selects **ACES Filmic**, pbrt-v4's `--acesfilmic` (Narkowicz fit per channel,
+no implicit exposure); the CLI name remains `aces`, not `filmic`.
 `reinhard` is pbrt-v3's `--tonemap` with `--max-luminance` as the white luminance.
 `--tonemap-scale` multiplies values first, like pbrt's `--scale`.
 

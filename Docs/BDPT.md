@@ -1,5 +1,26 @@
 # Bidirectional rendering
 
+## Reading the implementation
+
+| File | Responsibility |
+|---|---|
+| `BDPT.cpp` | Scene validation, tiled rendering, subpath generation, `(s,t)` enumeration and film accumulation |
+| `BDPTPath.cpp` | Camera/light origins, surface walks, forward/reverse densities and geometric area conversion |
+| `BDPTScattering.h/.cpp` | Normal/frame preparation, shading support, adjoint cosine and checked throughput updates |
+| `BDPTConnection.cpp` | Four explicit connection cases, visibility, probability queries and the existing balance MIS |
+
+`EvaluateConnection` returns the primary estimate with its sampling compensation
+and visibility, but without MIS. `ConnectPaths` applies `MisWeight` once. The four
+cases remain explicit: camera-hit emission (`s=0`), connection to the camera
+(`t=1`), connection to a sampled emitter (`s=1`), and two surface endpoints.
+Their endpoint PDFs are not interchangeable, so they do not use a universal
+vertex-evaluation formula.
+
+`Trace` keeps vertex insertion, random draws and forward/reverse density writes
+visible. `ScatterThroughput` distinguishes a valid continuation, a null event
+and a logged error. Geometric float arithmetic and shading-mode double products
+retain their existing order; the refactor does not change the transport model.
+
 ## Bidirectional probability interfaces
 BDPT uses deterministic probability queries without changing the existing PT/LT
 sampling conventions.
@@ -170,5 +191,5 @@ the #148 contract instead of replacing interpolated normals:
 Shading-normal transport is an approximate model: strongly tilted normals can still
 show shadow-terminator artifacts or high variance near grazing angles; they are not
 clamped. `BDPTShadingNormalTest.cpp` covers the analytic factors, support, frames,
-density separation, one-time correction on both subpaths, emitter sidedness and the
-PBRT tone-mapping operators.
+density separation, one-time correction on both subpaths and emitter sidedness.
+The independent display-operator checks live in `ToneMapTest.cpp`.
