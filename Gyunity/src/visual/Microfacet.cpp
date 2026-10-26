@@ -308,27 +308,17 @@ Vec3 GGXDistribution::SampleWh(const Vec3& wo, const Vec2& u) const {
 			wh = SphericalDirection(sinTheta, cosTheta, phi);
 		}
 		else {
-			real tanPhi = mAlphay / mAlphax * std::tan(2 * PI * u[1]);
-			real phi;
-			if (u[1] >= 0 && u[1] <= 0.25) {
-				phi = std::atan(tanPhi);
-			}
-			else if (u[1] > 0.25 && u[1] < 0.75) {
-				phi = std::atan(tanPhi) + PI;
-			}
-			else {
-				phi = std::atan(tanPhi) + 2 * PI;
-			}
+			real azimuth = 2 * PI * u[1];
+			real phi = std::atan2(mAlphay * std::sin(azimuth), mAlphax * std::cos(azimuth));
 			real cosPhi = std::cos(phi);
 			real cos2Phi = cosPhi * cosPhi;
 			real sinPhi = std::sin(phi);
 			real sin2Phi = sinPhi * sinPhi;
 			real alphax2 = mAlphax * mAlphax;
 			real alphay2 = mAlphay * mAlphay;
-			real tanTheta = u[0] / ((1 - u[0]) * (cos2Phi / alphax2 + sin2Phi / alphay2));
-			real theta = std::atan(tanTheta);
-			real cosTheta = std::cos(theta);
-			real sinTheta = std::cos(theta);
+			real tan2Theta = u[0] / ((1 - u[0]) * (cos2Phi / alphax2 + sin2Phi / alphay2));
+			real cosTheta = 1.f / std::sqrt(1 + tan2Theta);
+			real sinTheta = std::sqrt(std::max(real(0), 1 - cosTheta * cosTheta));
 			wh = SphericalDirection(sinTheta, cosTheta, phi);
 		}
 		if (!SameHemisphere(wo, wh)) wh = -wh;
@@ -405,6 +395,8 @@ real GGXDistribution::SmithG1(const Vec3& v, const Vec3& m) const {
 }
 
 real GGXDistribution::Pdf(const Vec3& wo, const Vec3& wh) const {
+	if (!mSampleVisibleArea)
+		return MicrofacetDistribution::Pdf(wo, wh);
 	if (BSDFCoordinate::CosTheta(wo) == 0)
 		return 0.0f;
 	return SmithG1(wo, wh) * std::abs(Dot(wo, wh)) * D(wh) / std::abs(BSDFCoordinate::CosTheta(wo));

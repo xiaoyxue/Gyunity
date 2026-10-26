@@ -35,3 +35,16 @@ through the actual application, and compares PNG file hashes against
 must use the same image writer, cameras and default render settings. It writes
 logs, images and `comparisons.csv` only to the supplied output directory (use
 `Test` at the main repository root), and fails if any render or comparison fails.
+
+## Scattering and emissive-surface consistency
+
+GGX full-NDF and visible-normal sampling use their corresponding PDFs; full-NDF
+anisotropic samples are unit half-vectors. Reflection PDFs reject opposite-side,
+tangent and degenerate direction pairs. `BSDF::Evaluate`, `Sample` and `Pdf`
+honor the same lobe flags. The existing Smith masking model is unchanged.
+
+PT accumulates emitted radiance and reflected direct lighting independently:
+an emitting diffuse surface still reflects illumination, including after a
+specular bounce and on its nonemitting back side. These contracts are covered
+by `TestMicrofacetDistribution.*`, `TestBsdfSample.*` and
+`PathTracingEmission.*` in `GyunityTest`.
