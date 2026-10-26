@@ -76,17 +76,18 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 				const Light* emitter = isect.mPrimitive->GetLight();
 				L += throughput * emitter->Emission(isect, isect.mOutDir);
 			}
-			if (!bsdf->IsDelta()) {
+			if (bsdf->HasNonDeltaLobes()) {
 				L += throughput * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand, true);
 
 			}
 
 			Vec3 wi;
 			real pdf;
-			Vec3 f = bsdf->Sample(-ray.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()));
+			ScatterEventType sampledType = ScatterEventType(0);
+			Vec3 f = bsdf->Sample(-ray.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()), BSDF_ALL, &sampledType);
 			if (f == Vec3() || pdf == 0) break;
 			Vec3 estimation = f * std::abs(Dot(isect.mNormal, wi)) / pdf;
-			specularBounce = bsdf->IsDelta();
+			specularBounce = SurfaceEventClassifier::IsDelta(sampledType);
 
 			throughput = throughput * estimation;
 			ray = isect.SpawnRay(wi);

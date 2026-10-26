@@ -19,7 +19,10 @@ namespace {
 
 class PathSamples : public StateSequence {
 public:
-	real Sample() override { ++mCursor; return 0.5f; }
+	explicit PathSamples(real value = 0.5f) : mValue(value) {}
+	real Sample() override { ++mCursor; return mValue; }
+private:
+	real mValue;
 };
 
 std::shared_ptr<Material> Diffuse() {
@@ -278,18 +281,33 @@ TEST(BDPTPath, ZeroPdfKeepsReachedVertexWithoutExtending) {
 	EXPECT_EQ(record.pdfCalls, 0);
 }
 
-TEST(BDPTPath, RejectsMixedDeltaAndMediumBoundaries) {
+TEST(BDPTPath, MixedLobesStoreTheSampledEventRatherThanMaterialDeltaState) {
 	SamplingRecord record;
 	auto scene = std::make_shared<Scene>();
 	scene->AddPrimitive(std::make_shared<Primitive>(Plane(0, 1),
 		std::make_shared<RecordedMaterial>(&record, false, true)));
 	Initialize(scene);
 	auto camera = MakeCamera();
+	const Ray ray(Vec3(0, 0, 1), Vec3(0, 0, -1));
+	for (real value : { 0.25f, 0.75f }) {
+		PathSamples samples(value);
+		MemoryPool arena;
+		std::vector<PathVertex> path;
+		ASSERT_EQ(GenerateCameraPath(*scene, *camera, samples, arena, ray, 3, SurfaceNormalMode::Geometric, path), 2);
+		EXPECT_FALSE(path[1].mIsect.mBsdf->IsDelta());
+		EXPECT_TRUE(path[1].mIsect.mBsdf->HasNonDeltaLobes());
+		EXPECT_EQ(path[1].mIsDelta, value > 0.5f);
+		if (value > 0.5f) EXPECT_EQ(path[0].mPdfPrev, 0);
+		else EXPECT_GT(path[0].mPdfPrev, 0);
+	}
+}
+
+TEST(BDPTPath, RejectsMediumBoundaries) {
+	auto camera = MakeCamera();
 	PathSamples samples;
 	MemoryPool arena;
 	std::vector<PathVertex> path;
 	const Ray ray(Vec3(0, 0, 1), Vec3(0, 0, -1));
-	EXPECT_EQ(GenerateCameraPath(*scene, *camera, samples, arena, ray, 3, SurfaceNormalMode::Geometric, path), -1);
 	HomogeneousMedium fog(Vec3(0), Vec3(1), 0);
 	auto boundaryScene = std::make_shared<Scene>();
 	boundaryScene->AddPrimitive(std::make_shared<Primitive>(Plane(0, 1), nullptr, nullptr, MediumInterface(&fog, nullptr)));

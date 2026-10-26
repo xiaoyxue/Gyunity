@@ -28,14 +28,19 @@ name still imports just that example.
 | `rough-glass` | Native GGX dielectric, roughness (0.1, 0.1), interior IOR 1.9 |
 | `copper-beckmann` | Copper with Beckmann distribution, raw alpha (0.1, 0.1) |
 | `copper-anisotropic` | GGX copper, raw alpha (0.05, 0.25) |
-| `plastic` | Native diffuse-plus-GGX plastic, source green diffuse color, roughness 0.1 |
+| `plastic` | Smooth layered plastic, source green diffuse, interior IOR 1.9, exterior air 1.000277 |
 
 These cover all six existing surface material families. The three copper
 variants share eta (0.200438, 0.924033, 1.10221) and k
-(3.91295, 2.45285, 2.14219). Rough glass/plastic use native artist-roughness
-mapping, not raw alpha. Native plastic retains its own fixed Fresnel parameters;
-it is **not** the original Mitsuba plastic model. Every exterior change remains
-an explicit override in metadata.
+(3.91295, 2.45285, 2.14219). Rough glass uses native artist-roughness mapping,
+not raw alpha. Plastic now matches Mitsuba's smooth coating model, including
+Fresnel attenuation and internal diffuse compensation (`nonlinear=false`).
+It is not roughplastic or a low-alpha GGX approximation.
+
+Legacy roughness-based Plastic JSON is rejected. Regenerate the package in a
+fresh output location, retaining previous files for comparison; the importer
+does not overwrite different existing content. Every exterior choice remains
+explicit in metadata.
 
 A custom Python script can pass any supported native material to
 `import_preview`, or a material dictionary to `import_previews` for a shared

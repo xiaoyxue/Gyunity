@@ -135,7 +135,9 @@ Matpreview's batch import decodes the original geometry once and prepares
 
 The original Matpreview archive has no license file, so its raw/derived assets
 remain local and ignored by Git. All exterior materials are explicit native
-overrides; native plastic is not the source Mitsuba plastic model. The PBRT
+overrides; native plastic now uses the source's smooth layered model. Old
+roughness-based Plastic JSON must be regenerated in a fresh output location.
+The PBRT
 adapter supports a bounded static RGB subset and requires an explicit RGB
 radiance scale, not a claim of spectral equivalence.
 

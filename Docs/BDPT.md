@@ -62,8 +62,9 @@ Both builders take an explicit `SurfaceNormalMode`, which must be the same for t
 two subpaths of a render. `Geometric` builds shading frames from geometric normals
 (the initial BDPT model). `Shading` keeps interpolated normals; see
 [Smooth shading normals](#smooth-shading-normals).
-Media, null-material boundaries and mixed delta/continuous BSDFs are rejected.
-Pure mirror/glass events remain supported. A zero-contribution sample stops
+Media and null-material boundaries are rejected. Mixed delta/continuous BSDFs
+record the component actually sampled; their continuous components remain
+connectible. Pure mirror/glass events remain supported. A zero-contribution sample stops
 extension without losing the surface vertex already reached.
 If conversion of a non-delta edge to area density yields zero, the walk stops
 before appending that vertex and retains its valid prefix. This covers rounded
@@ -91,7 +92,7 @@ shading normals for both subpaths.
 `RenderChecked(scene, camera)` returns success/failure explicitly; the shared
 `RenderScene` checks this result before saving the film. Other integrators retain
 their existing behavior through the default checked-render adapter.
-Media, mixed delta/continuous BSDFs and multiple environment maps are explicitly
+Media and multiple environment maps are explicitly
 unsupported. Environment emission requires finite nonempty scene bounds.
 
 The renderer generates both subpaths, evaluates supported connections at

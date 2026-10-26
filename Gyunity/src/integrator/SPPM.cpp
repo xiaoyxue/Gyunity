@@ -66,8 +66,17 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			mDirectillum[pixel] += importance * emitter->Emission(isect, isect.mOutDir);
 		}
 
-		if (bsdf->IsDelta()) {
-			Vec3 f = bsdf->Sample(-1 * r.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()));
+		ScatterEventType event = ScatterEventType(0);
+		real eventProbability = 0;
+		const Vec3 f = bsdf->Sample(-r.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()),
+			BSDF_ALL, &event, &eventProbability);
+		if (!std::isfinite(eventProbability) || eventProbability < 0 || eventProbability > 1) {
+			GetDefaultLogger()->Error("SPPM received an invalid BSDF event probability.", false);
+			return;
+		}
+		if (eventProbability == 0) return;
+
+		if (SurfaceEventClassifier::IsDelta(event)) {
 			if (f == Vec3() || pdf == 0) return;
 			importance = f * std::abs(wi.Dot(isect.mNormal)) * importance / pdf;
 			//r.o = isect.hit + wi * rayeps + wi.Dot(isect.n) * nEps * isect.n;
@@ -79,10 +88,10 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 		else if (mTraceGlossyRay && bsdf->MatchScatterType(ScatterEventType::BSDF_GLOSSY) && i < mMaxDepth - 1) {
 			//Trace the ray, when bsdf is glossy
 			//But this is not standard photon mapping
-			Vec3 Ld = importance * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
+			Vec3 Ld = (importance / eventProbability) *
+				DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
 			mDirectillum[pixel] = mDirectillum[pixel] + Ld;
 
-			Vec3 f = bsdf->Sample(-1 * r.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()));
 			if (f == Vec3() || pdf == 0) return;
 			importance = f * std::abs(wi.Dot(isect.mNormal)) * importance / pdf;
 			r = isect.SpawnRay(wi);
@@ -91,12 +100,12 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 		else {
 			HPoint& hp = mHitPoints[pixel];
 			hp.used = true;
-			hp.importance = importance;
+			// Selection is stochastic for a mixed material; compensate only the continuous branch.
+			hp.importance = importance / eventProbability;
 			hp.pos = isect.mPos;
 			hp.nrm = isect.mAbsNormal;
 			hp.pix = pixel;
-			hp.outDir = -1 * r.mDir;
-			mHitPoints[pixel] = hp;
+			hp.outDir = -r.mDir;
 			Vec3 Ld = hp.importance * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
 			mDirectillum[hp.pix] = mDirectillum[hp.pix] + Ld;
 			return;
@@ -218,25 +227,27 @@ void SPPM::Render(const Scene& scene, const Camera &camera) {
 			
 		mHashGrid.ClearHashGrid();
 		real maxRadius2 = 0.0;
+		int visiblePoints = 0;
 		for (int i = 0; i < (int)mHitPoints.size(); ++i) {
 			HPoint& hp = mHitPoints[i];
 			if (hp.used) {
+				++visiblePoints;
 				maxRadius2 = std::max(maxRadius2, mRadius2[i]);
 				mHashGrid.AddPoint(std::move(std::pair<Vec3, HPoint*>(hp.pos, &hp)), std::sqrt(mRadius2[i]));
 			}
 		}
-		mHashGrid.BuildHashGrid(std::sqrt(maxRadius2) + EPS);
-
-		//Trace photon
-		ParallelFor((int64)0, mPhotonsPerRenderStage, [&](int64 j) {
-			MemoryPool& arena = memoryArenas[ThreadIndex()];
-			Ray ray;
-			Vec3 photonFlux;
-			RandomStateSequence rand(mSampler, iter * mPhotonsPerRenderStage + j);
-			GeneratePhoton(scene, &ray, &photonFlux, rand(), Vec2(rand(), rand()), Vec2(rand(), rand()));
-			TracePhoton(scene, rand, ray, photonFlux, arena);
-			arena.Reset();
-		});
+		if (visiblePoints > 0) {
+			mHashGrid.BuildHashGrid(std::sqrt(maxRadius2) + EPS);
+			ParallelFor((int64)0, mPhotonsPerRenderStage, [&](int64 j) {
+				MemoryPool& arena = memoryArenas[ThreadIndex()];
+				Ray ray;
+				Vec3 photonFlux;
+				RandomStateSequence rand(mSampler, iter * mPhotonsPerRenderStage + j);
+				GeneratePhoton(scene, &ray, &photonFlux, rand(), Vec2(rand(), rand()), Vec2(rand(), rand()));
+				TracePhoton(scene, rand, ray, photonFlux, arena);
+				arena.Reset();
+			});
+		}
 
 		//Update flux, radius, photonNums if batchShrink
 		if (mBatchShrink) {

@@ -182,8 +182,9 @@ TEST_F(NativeSceneFiles, AddedMaterialsReuseTheExistingBsdfImplementations) {
 		{Json{{"type","rough_dielectric"},{"roughness",{0.1,0.3}},{"eta_inside",1.9},
 			{"reflection",{0.8,0.7,0.6}},{"transmission",{0.6,0.7,0.8}}},
 			SceneBuilder::RoughDielectric(Vec3(0.8f,0.7f,0.6f), Vec3(0.6f,0.7f,0.8f), 0.1f, 0.3f, 1.9f)},
-		{Json{{"type","plastic"},{"diffuse",{0.2,0.7,0.3}},{"specular",{0.8,0.8,0.8}},{"roughness",0.2}},
-			SceneBuilder::Plastic(Vec3(0.2f,0.7f,0.3f), Vec3(0.8f), 0.2f)}
+		{Json{{"type","plastic"},{"diffuse",{0.2,0.7,0.3}},{"specular",{0.8,0.8,0.8}},
+			{"eta_outside",1.000277},{"eta_inside",1.9},{"nonlinear",false}},
+			SceneBuilder::Plastic(Vec3(0.2f,0.7f,0.3f), Vec3(0.8f), 1.000277f, 1.9f, false)}
 	};
 	for (const auto& entry : cases) {
 		Json data = original;
@@ -209,6 +210,29 @@ TEST_F(NativeSceneFiles, AddedMaterialsReuseTheExistingBsdfImplementations) {
 				EXPECT_EQ(hit.mBsdf->Pdf(wo, wi), reference.mBsdf->Pdf(wo, wi));
 			}
 		}
+	}
+}
+
+TEST_F(NativeSceneFiles, SmoothPlasticDefaultsAndLegacyMigrationAreChecked) {
+	std::ifstream source(SceneBuilder::Resource("scenes\\native-demo\\scene.json"));
+	const Json original = Json::parse(source, nullptr, false);
+	ASSERT_FALSE(original.is_discarded());
+	const Json valid = {{"type","plastic"},{"diffuse",{0.24,0.771,0.361}},{"eta_inside",1.9}};
+	int index = 0;
+	for (const Json& material : {
+		valid,
+		Json{{"type","plastic"},{"diffuse",{0.24,0.771,0.361}},{"roughness",0.1}},
+		Json{{"type","plastic"},{"diffuse",{0.24,0.771,0.361}},{"eta_outside",0}},
+		Json{{"type","plastic"},{"diffuse",{0.24,0.771,0.361}},{"eta_inside",4}},
+		Json{{"type","plastic"},{"diffuse",{0.24,0.771,0.361}},{"nonlinear","false"}} }) {
+		Json data = original;
+		data["materials"]["white"] = material;
+		const auto file = directory + "\\plastic-migration-" + std::to_string(index) + ".json";
+		{ std::ofstream output(file); output << data.dump(); }
+		const auto scene = LoadNativeScene(file);
+		if (index == 0) EXPECT_NE(scene, nullptr);
+		else EXPECT_EQ(scene, nullptr);
+		++index;
 	}
 }
 

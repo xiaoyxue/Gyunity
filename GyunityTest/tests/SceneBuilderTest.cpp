@@ -275,7 +275,9 @@ TEST(SceneBuilder, MaterialsMatchDirectConstruction) {
 	ExpectMaterialEqual(*SceneBuilder::Mirror(kr), MirrorMaterial(krTexture));
 	ExpectMaterialEqual(*SceneBuilder::Glass(kr, kt), GlassMaterial(krTexture, ktTexture));
 	ExpectMaterialEqual(*SceneBuilder::Glass(kr, kt, 1.1f, 1.33f), GlassMaterial(krTexture, ktTexture, 1.1f, 1.33f));
-	ExpectMaterialEqual(*SceneBuilder::Plastic(kr, kt, 0.06f), PlasticMaterial(krTexture, ktTexture, roughnessX));
+	auto plastic = PlasticMaterial::Create(krTexture, ktTexture, 1.000277f, 1.9f, false);
+	ASSERT_NE(plastic, nullptr);
+	ExpectMaterialEqual(*SceneBuilder::Plastic(kr, kt, 1.000277f, 1.9f, false), *plastic);
 	ExpectMaterialEqual(*SceneBuilder::RoughConductor(kr, 0.06f, 0.02f, eta, k),
 		RoughnessMaterial(krTexture, roughnessX, roughnessY,
 			std::make_shared<ConstantTexture<Vec3>>(eta), std::make_shared<ConstantTexture<Vec3>>(k)));

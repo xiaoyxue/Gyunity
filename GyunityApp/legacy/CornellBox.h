@@ -1283,8 +1283,7 @@ public:
 
 		std::shared_ptr<Texture<Vec3>> kd = std::shared_ptr<Texture<Vec3>>(new ConstantTexture<Vec3>(Vec3(0.75, 0.55, 0.75)));
 		std::shared_ptr<Texture<Vec3>> ks = std::shared_ptr<Texture<Vec3>>(new ConstantTexture<Vec3>(Vec3(0.05, 0.05, 0.05)));
-		std::shared_ptr<Texture<real>> roughness = std::shared_ptr<Texture<real>>(new ConstantTexture<real>(0.1));
-		std::shared_ptr<Material> plasticMaterial = std::shared_ptr<Material>(new PlasticMaterial(kd, ks, roughness));
+		std::shared_ptr<Material> plasticMaterial = PlasticMaterial::Create(kd, ks, 1.f, 1.5f, false);
 
 		std::shared_ptr<Texture<Vec3>> kr = std::shared_ptr<Texture<Vec3>>(new ConstantTexture<Vec3>(Vec3(1.0, 1.0, 1.0)));
 		std::shared_ptr<Texture<Vec3>> kt = std::shared_ptr<Texture<Vec3>>(new ConstantTexture<Vec3>(Vec3(1.0, 1.0, 1.0)));
