@@ -61,6 +61,11 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 		Vec3 wi;
 		real pdf;
 
+		if ((i == 0 || specularBounce) && isect.mPrimitive->IsLight()) {
+			const Light* emitter = isect.mPrimitive->GetLight();
+			mDirectillum[pixel] += importance * emitter->Emission(isect, isect.mOutDir);
+		}
+
 		if (bsdf->IsDelta()) {
 			Vec3 f = bsdf->Sample(-1 * r.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()));
 			if (f == Vec3() || pdf == 0) return;
@@ -92,16 +97,8 @@ void SPPM::TraceEyePath(const Scene& scene, StateSequence& rand, const Ray& ray,
 			hp.pix = pixel;
 			hp.outDir = -1 * r.mDir;
 			mHitPoints[pixel] = hp;
-			if ((i == 0 || specularBounce) && isect.mPrimitive->IsLight()) {
-				const Light* emitter = isect.mPrimitive->GetLight();
-				mDirectillum[hp.pix] = mDirectillum[hp.pix] + importance * emitter->Emission(isect, isect.mOutDir);
-				
-			}
-			else {
-				Vec3 Ld = hp.importance * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
-				mDirectillum[hp.pix] = mDirectillum[hp.pix] + Ld;
-
-			}
+			Vec3 Ld = hp.importance * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
+			mDirectillum[hp.pix] = mDirectillum[hp.pix] + Ld;
 			return;
 		}
 	}
