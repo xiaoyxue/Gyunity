@@ -93,4 +93,172 @@ TEST(TestBsdfSample, SingleLobeSampleMatchesPdf) {
 	EXPECT_NEAR(sampled.mean, 0.5, 1e-3);
 }
 
+TEST(TestMicrofacetDistribution, FullAnisotropicNormalsMatchIndependentSlopeSampling) {
+	GGXDistribution distribution(0.1f, 0.4f, false);
+	const double pi = std::acos(-1.0);
+	for (real u : { 0.f, 0.1f, 0.5f, 0.9f, ONE_MINUS_EPSILON }) {
+		for (real v : { 0.f, 0.125f, 0.25f, 0.375f, 0.5f, 0.625f, 0.75f, 0.875f, ONE_MINUS_EPSILON }) {
+			SCOPED_TRACE(testing::Message() << "u=" << u << " v=" << v);
+			const Vec3 wh = distribution.SampleWh(Vec3(0, 0, 1), Vec2(u, v));
+			ASSERT_TRUE(std::isfinite(wh.x) && std::isfinite(wh.y) && std::isfinite(wh.z));
+			ASSERT_NEAR(wh.Length2(), 1, 2e-6f);
+			const double radius = std::sqrt(double(u) / (1 - double(u)));
+			const double x = double(0.1f) * radius * std::cos(2 * pi * v);
+			const double y = double(0.4f) * radius * std::sin(2 * pi * v);
+			const double length = std::sqrt(x * x + y * y + 1);
+			EXPECT_NEAR(wh.x, x / length, 3e-6);
+			EXPECT_NEAR(wh.y, y / length, 3e-6);
+			EXPECT_NEAR(wh.z, 1 / length, 3e-6);
+		}
+	}
+}
+
+TEST(TestMicrofacetDistribution, FullAndVisibleSamplersStayNormalized) {
+	for (bool visible : { false, true }) {
+		for (real alphaY : { 0.25f, 0.4f }) {
+			GGXDistribution distribution(0.25f, alphaY, visible);
+			for (const Vec3& wo : { Vec3(0, 0, 1), Vec3(0.6f, 0, 0.8f) }) {
+				for (int i = 0; i < 32; ++i) {
+					for (int j = 0; j < 32; ++j) {
+						const Vec3 wh = distribution.SampleWh(wo, Vec2((i + 0.5f) / 32, (j + 0.5f) / 32));
+						ASSERT_TRUE(std::isfinite(wh.x) && std::isfinite(wh.y) && std::isfinite(wh.z));
+						ASSERT_NEAR(wh.Length2(), 1, 2e-6f);
+						EXPECT_GT(wh.z, 0);
+					}
+				}
+			}
+		}
+	}
+}
+
+TEST(TestMicrofacetDistribution, FullNormalPdfUsesTheSelectedSamplingMode) {
+	for (real alphaY : { 0.25f, 0.4f }) {
+		GGXDistribution full(0.25f, alphaY, false);
+		GGXDistribution visible(0.25f, alphaY, true);
+		const Vec3 wh(0.6f, 0, 0.8f);
+		const real expectedFull = full.D(wh) * wh.z;
+		for (const Vec3& wo : { Vec3(0, 0, 1), wh }) {
+			EXPECT_NEAR(full.Pdf(wo, wh), expectedFull, expectedFull * 2e-6f);
+			const real expectedVisible = visible.D(wh) * visible.SmithG1(wo, wh) *
+				std::abs(Dot(wo, wh)) / std::abs(wo.z);
+			EXPECT_NEAR(visible.Pdf(wo, wh), expectedVisible, expectedVisible * 2e-6f);
+		}
+	}
+}
+
+TEST(TestMicrofacetDistribution, VisiblePdfRetainsBackfacetRejection) {
+	GGXDistribution distribution(0.25f, true);
+	EXPECT_EQ(distribution.Pdf(Vec3(0.8f, 0, 0.6f), Vec3(-0.8f, 0, 0.6f)), 0);
+	EXPECT_EQ(distribution.Pdf(Vec3(1, 0, 0), Vec3(0, 0, 1)), 0);
+}
+
+TEST(TestMicrofacetDistribution, NormalPdfsIntegrateToOne) {
+	const int polarSteps = 2048, azimuthSteps = 128;
+	const double pi = std::acos(-1.0);
+	const Vec3 wo(0.6f, 0, 0.8f);
+	for (const Vec2& alpha : { Vec2(0.25f, 0.25f), Vec2(0.1f, 0.4f) }) {
+		for (bool visible : { false, true }) {
+			GGXDistribution distribution(alpha.x, alpha.y, visible);
+			double sum = 0;
+			for (int i = 0; i < polarSteps; ++i) {
+				const double z = (i + 0.5) / polarSteps;
+				const double radius = std::sqrt(1 - z * z);
+				for (int j = 0; j < azimuthSteps; ++j) {
+					const double phi = 2 * pi * (j + 0.5) / azimuthSteps;
+					const Vec3 wh(real(radius * std::cos(phi)), real(radius * std::sin(phi)), real(z));
+					sum += distribution.Pdf(wo, wh);
+				}
+			}
+			EXPECT_NEAR(sum * 2 * pi / (polarSteps * azimuthSteps), 1, 2e-3)
+				<< "alpha=" << alpha << " visible=" << visible;
+		}
+	}
+}
+
+TEST(TestBsdfSample, ReflectionPdfRejectsUnsupportedAndDegenerateDirections) {
+	Intersection isect;
+	isect.mNormal = isect.mGeometryNormal = Vec3(0, 0, 1);
+	isect.mShadingDpDu = Vec3(1, 0, 0);
+	isect.mShadingDpDv = Vec3(0, 1, 0);
+	for (bool visible : { false, true }) {
+		MicrofacetReflectionBSDF reflection(new GGXDistribution(0.25f, visible),
+			new FresnelDielectric(1.f, 1.5f), Vec3(1));
+		BSDF bsdf(isect);
+		bsdf.Add(&reflection);
+		for (real side : { -1.f, 1.f }) {
+			const Vec3 wo(0, 0, side);
+			for (const Vec3& wi : { Vec3(0.6f, 0, -0.8f * side), -wo, Vec3(1, 0, 0) }) {
+				EXPECT_EQ(reflection.Pdf(wo, wi), 0);
+				EXPECT_EQ(reflection.Pdf(wi, wo), 0);
+				EXPECT_EQ(bsdf.Pdf(wo, wi), 0);
+				EXPECT_EQ(bsdf.Pdf(wi, wo), 0);
+				EXPECT_EQ(bsdf.Evaluate(wo, wi), Vec3(0));
+			}
+		}
+	}
+}
+
+TEST(TestBsdfSample, ReflectionSampleAndPdfAgreeOnBothSurfaceSides) {
+	for (bool visible : { false, true }) {
+		MicrofacetReflectionBSDF reflection(new GGXDistribution(0.1f, 0.4f, visible),
+			new FresnelDielectric(1.f, 1.5f), Vec3(1));
+		for (real side : { -1.f, 1.f }) {
+			const Vec3 wo = Vec3(0.3f, 0.2f, 0.9f * side).Norm();
+			Vec3 wi;
+			real pdf = 0;
+			const Vec3 f = reflection.Sample(wo, &wi, &pdf, Vec3(0.5f, 0.125f, 0));
+			ASSERT_GT(pdf, 0);
+			ASSERT_GT(f.x, 0);
+			EXPECT_NEAR(wi.Length2(), 1, 2e-6f);
+			EXPECT_GT(wo.z * wi.z, 0);
+			EXPECT_NEAR(reflection.Pdf(wo, wi), pdf, pdf * 5e-5f);
+			EXPECT_EQ(reflection.Evaluate(wo, wi), f);
+		}
+	}
+}
+
+TEST(TestBsdfSample, FullAnisotropicReflectionMatchesUniformIntegral) {
+	Intersection isect;
+	isect.mNormal = isect.mGeometryNormal = Vec3(0, 0, 1);
+	isect.mShadingDpDu = Vec3(1, 0, 0);
+	isect.mShadingDpDv = Vec3(0, 1, 0);
+	BSDF bsdf(isect);
+	MicrofacetReflectionBSDF reflection(new GGXDistribution(0.1f, 0.4f, false),
+		new FresnelDielectric(1.f, 1.5f), Vec3(1));
+	bsdf.Add(&reflection);
+	const Vec3 wo = Vec3(0.3f, 0.2f, 0.9f).Norm();
+	std::mt19937 rng(123);
+	const Estimate sampled = AlbedoBySampling(bsdf, wo, 1 << 19, rng);
+	const Estimate uniform = AlbedoByUniformSampling(bsdf, wo, 1 << 19, rng);
+	const double tolerance = 5 * std::sqrt(sampled.stdError * sampled.stdError +
+		uniform.stdError * uniform.stdError);
+	EXPECT_NEAR(sampled.mean, uniform.mean, tolerance);
+}
+
+TEST(TestBsdfSample, EvaluateHonorsTheSameLobeFlagsAsSamplingAndPdf) {
+	Intersection isect;
+	isect.mNormal = isect.mGeometryNormal = Vec3(0, 0, 1);
+	isect.mShadingDpDu = Vec3(1, 0, 0);
+	isect.mShadingDpDv = Vec3(0, 1, 0);
+	BSDF bsdf(isect);
+	DiffuseBSDF diffuse(Vec3(0.5f));
+	MicrofacetReflectionBSDF glossy(new GGXDistribution(0.25f, true),
+		new FresnelDielectric(1.f, 1.5f), Vec3(1));
+	bsdf.Add(&diffuse);
+	bsdf.Add(&glossy);
+	const Vec3 wo(0, 0, 1), wi(0.6f, 0, 0.8f);
+	const auto diffuseFlags = ScatterEventType(BSDF_REFLECTION | BSDF_DIFFUSE);
+	const auto glossyFlags = ScatterEventType(BSDF_REFLECTION | BSDF_GLOSSY);
+	const auto excludedFlags = ScatterEventType(BSDF_TRANSMISSION | BSDF_DIFFUSE);
+	EXPECT_EQ(bsdf.Evaluate(wo, wi, diffuseFlags), diffuse.Evaluate(wo, wi));
+	EXPECT_EQ(bsdf.Evaluate(wo, wi, glossyFlags), glossy.Evaluate(wo, wi));
+	EXPECT_EQ(bsdf.Evaluate(wo, wi), diffuse.Evaluate(wo, wi) + glossy.Evaluate(wo, wi));
+	EXPECT_EQ(bsdf.Evaluate(wo, wi, excludedFlags), Vec3(0));
+	EXPECT_EQ(bsdf.Pdf(wo, wi, excludedFlags), 0);
+	Vec3 sampledWi;
+	real pdf = -1;
+	EXPECT_EQ(bsdf.Sample(wo, &sampledWi, &pdf, Vec3(0.5f), excludedFlags), Vec3(0));
+	EXPECT_EQ(pdf, 0);
+}
+
 GYT_NAMESPACE_END

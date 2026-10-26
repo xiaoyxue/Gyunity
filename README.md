@@ -219,6 +219,19 @@ $env:GYUNITY_TEST_OUTPUT_DIRECTORY = "D:\Code\Graphics\Gyunity\Test\scene_builde
 ..\x64\Release\GyunityTest.exe --gtest_filter="MainExamples.*:MainExampleRenders.*"
 ```
 
+## Scattering and emissive-surface consistency
+
+GGX full-NDF and visible-normal sampling use their corresponding PDFs; full-NDF
+anisotropic samples are unit half-vectors. Reflection PDFs reject opposite-side,
+tangent and degenerate direction pairs. `BSDF::Evaluate`, `Sample` and `Pdf`
+honor the same lobe flags. The existing Smith masking model is unchanged.
+
+PT accumulates emitted radiance and reflected direct lighting independently:
+an emitting diffuse surface still reflects illumination, including after a
+specular bounce and on its nonemitting back side. These contracts are covered
+by `TestMicrofacetDistribution.*`, `TestBsdfSample.*` and
+`PathTracingEmission.*` in `GyunityTest`.
+
 ## Bidirectional probability interfaces
 BDPT uses deterministic probability queries without changing the existing PT/LT
 sampling conventions.
