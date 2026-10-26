@@ -1,5 +1,8 @@
 #include "gtest/gtest.h"
 #include "bsdf/BSDF.h"
+#include "material/Plastic.h"
+#include "material/RoughDielectric.h"
+#include "texture/ConstantTexture.h"
 #include "visual/Intersection.h"
 #include "visual/Microfacet.h"
 #include <cmath>
@@ -13,6 +16,34 @@ struct Estimate {
 	double mean;
 	double stdError;
 };
+
+void ExpectCanonicalNormalSamples(bool visible) {
+	for (const Vec2& alpha : { Vec2(0.25f, 0.25f), Vec2(0.1f, 0.4f) }) {
+		GGXDistribution distribution(alpha.x, alpha.y, visible);
+		for (const Vec3& front : { Vec3(0, 0, 1), Vec3(0.6f, 0, 0.8f) }) {
+			for (int i = 0; i < 16; ++i) {
+				for (int j = 0; j < 16; ++j) {
+					const Vec2 sample((i + 0.5f) / 16, (j + 0.5f) / 16);
+					const Vec3 expected = distribution.SampleWh(front, sample);
+					const Vec3 actual = distribution.SampleWh(-front, sample);
+					ASSERT_TRUE(std::isfinite(actual.x) && std::isfinite(actual.y) && std::isfinite(actual.z));
+					ASSERT_NEAR(actual.Length2(), 1, 2e-6f);
+					ASSERT_GT(actual.z, 0);
+					EXPECT_EQ(actual, expected);
+					EXPECT_GT(distribution.Pdf(-front, actual), 0);
+					EXPECT_NEAR(distribution.Pdf(-front, actual), distribution.Pdf(front, expected), 1e-6f);
+				}
+			}
+		}
+	}
+}
+
+double ExteriorFresnel(double cosine, double eta) {
+	const double transmittedCosine = std::sqrt(1 - (1 - cosine * cosine) / (eta * eta));
+	const double parallel = (eta * cosine - transmittedCosine) / (eta * cosine + transmittedCosine);
+	const double perpendicular = (cosine - eta * transmittedCosine) / (cosine + eta * transmittedCosine);
+	return (parallel * parallel + perpendicular * perpendicular) / 2;
+}
 
 // Monte Carlo estimate of the albedo (red channel) of `bsdf` for direction `wo`,
 // importance sampled with BSDF::Sample: f * cos / pdf.
@@ -129,6 +160,14 @@ TEST(TestMicrofacetDistribution, FullAndVisibleSamplersStayNormalized) {
 			}
 		}
 	}
+}
+
+TEST(TestMicrofacetDistribution, FullNormalSamplesUseCanonicalHemisphereOnBothSides) {
+	ExpectCanonicalNormalSamples(false);
+}
+
+TEST(TestMicrofacetDistribution, VisibleNormalSamplesUseCanonicalHemisphereOnBothSides) {
+	ExpectCanonicalNormalSamples(true);
 }
 
 TEST(TestMicrofacetDistribution, FullNormalPdfUsesTheSelectedSamplingMode) {
@@ -259,6 +298,113 @@ TEST(TestBsdfSample, EvaluateHonorsTheSameLobeFlagsAsSamplingAndPdf) {
 	real pdf = -1;
 	EXPECT_EQ(bsdf.Sample(wo, &sampledWi, &pdf, Vec3(0.5f), excludedFlags), Vec3(0));
 	EXPECT_EQ(pdf, 0);
+}
+
+TEST(TestBsdfSample, TransmissionRejectsDirectionsOnTheSameSideOfTheMicrofacet) {
+	const Vec3 wo(0.6f, 0, 0.8f), wi(0.96f, 0, -0.28f);
+	const Vec3 wh = (wo + 1.9f * wi).Norm();
+	ASSERT_GT(Dot(wo, wh) * Dot(wi, wh), 0);
+	for (bool visible : { false, true }) {
+		MicrofacetTransmissionBSDF transmission(new GGXDistribution(0.46176004f, visible),
+			Vec3(1), 1.f, 1.9f, TransportMode::Radiance);
+		RoughDielectricBSDF rough(new GGXDistribution(0.46176004f, visible),
+			Vec3(1), Vec3(1), 1.f, 1.9f, TransportMode::Radiance);
+		for (const BxDF* bxdf : { static_cast<const BxDF*>(&transmission), static_cast<const BxDF*>(&rough) }) {
+			for (real side : { -1.f, 1.f }) {
+				EXPECT_EQ(bxdf->Evaluate(side * wo, side * wi), Vec3(0));
+				EXPECT_EQ(bxdf->Pdf(side * wo, side * wi), 0);
+				EXPECT_EQ(bxdf->Evaluate(side * wi, side * wo), Vec3(0));
+				EXPECT_EQ(bxdf->Pdf(side * wi, side * wo), 0);
+			}
+		}
+	}
+}
+
+TEST(TestBsdfSample, TransmissionContinuousQueriesRejectTangentAndZeroHalfVectors) {
+	for (real eta : { 1.f, 1.9f }) {
+		MicrofacetTransmissionBSDF transmission(new GGXDistribution(0.25f, true),
+			Vec3(1), 1.f, eta, TransportMode::Radiance);
+		RoughDielectricBSDF rough(new GGXDistribution(0.25f, true),
+			Vec3(1), Vec3(1), 1.f, eta, TransportMode::Radiance);
+		for (const BxDF* bxdf : { static_cast<const BxDF*>(&transmission), static_cast<const BxDF*>(&rough) }) {
+			for (const Vec3& wo : { Vec3(0, 0, 1), Vec3(1, 0, 0) }) {
+				const Vec3 wi = eta == 1.f ? -wo : Vec3(0, 1, 0);
+				EXPECT_EQ(bxdf->Evaluate(wo, wi), Vec3(0));
+				EXPECT_EQ(bxdf->Pdf(wo, wi), 0);
+			}
+		}
+	}
+}
+
+TEST(TestBsdfSample, TransmissionRejectsOpposedMicroAndMacroOrientation) {
+	const Vec3 wo(0.6f, 0, 0.8f), wi(-0.96f, 0, -0.28f);
+	const Vec3 wh = (wo + 1.9f * wi).Norm();
+	ASSERT_LT(Dot(wo, wh) * Dot(wi, wh), 0);
+	ASSERT_LT(Dot(wo, wh) * wo.z, 0);
+	ASSERT_LT(Dot(wi, wh) * wi.z, 0);
+	for (bool visible : { false, true }) {
+		MicrofacetTransmissionBSDF transmission(new GGXDistribution(0.46176004f, visible),
+			Vec3(1), 1.f, 1.9f, TransportMode::Radiance);
+		RoughDielectricBSDF rough(new GGXDistribution(0.46176004f, visible),
+			Vec3(1), Vec3(1), 1.f, 1.9f, TransportMode::Radiance);
+		for (const BxDF* bxdf : { static_cast<const BxDF*>(&transmission), static_cast<const BxDF*>(&rough) }) {
+			EXPECT_EQ(bxdf->Evaluate(wo, wi), Vec3(0));
+			EXPECT_EQ(bxdf->Pdf(wo, wi), 0);
+			EXPECT_EQ(bxdf->Evaluate(wi, wo), Vec3(0));
+			EXPECT_EQ(bxdf->Pdf(wi, wo), 0);
+		}
+	}
+}
+
+TEST(TestBsdfSample, PlasticUsesExteriorAirToCoatingFresnel) {
+	const auto color = std::make_shared<ConstantTexture<Vec3>>(Vec3(1));
+	const auto roughness = std::make_shared<ConstantTexture<real>>(0.1f);
+	PlasticMaterial material(color, color, roughness);
+	Intersection hit;
+	hit.mNormal = hit.mGeometryNormal = Vec3(0, 0, 1);
+	hit.mShadingDpDu = Vec3(1, 0, 0);
+	hit.mShadingDpDv = Vec3(0, 1, 0);
+	MemoryPool arena;
+	material.ComputeScatteringFunction(&hit, arena);
+	ASSERT_NE(hit.mBsdf, nullptr);
+	GGXDistribution distribution(GGXDistribution::RoughnessToAlpha(0.1f), true);
+	for (real cosine : { 1.f, 0.8f, 0.6f, 0.5f }) {
+		const real sine = std::sqrt(1 - cosine * cosine);
+		const Vec3 wo(sine, 0, cosine), wi(-sine, 0, cosine), wh(0, 0, 1);
+		const auto flags = ScatterEventType(BSDF_REFLECTION | BSDF_GLOSSY);
+		const real value = hit.mBsdf->Evaluate(wo, wi, flags).x;
+		const double measuredFresnel = value * (4 * cosine * cosine) /
+			(distribution.D(wh) * distribution.G(wo, wi, wh));
+		EXPECT_NEAR(measuredFresnel, ExteriorFresnel(cosine, 1.5), 2e-6);
+	}
+}
+
+TEST(TestBsdfSample, RoughGlassUsesExteriorAirToGlassFresnel) {
+	const auto color = std::make_shared<ConstantTexture<Vec3>>(Vec3(1));
+	const auto roughness = std::make_shared<ConstantTexture<real>>(0.1f);
+	const auto index = std::make_shared<ConstantTexture<real>>(1.9f);
+	RoughDielectricMaterial material(color, color, roughness, roughness, index);
+	Intersection hit;
+	hit.mNormal = hit.mGeometryNormal = Vec3(0, 0, 1);
+	hit.mShadingDpDu = Vec3(1, 0, 0);
+	hit.mShadingDpDv = Vec3(0, 1, 0);
+	MemoryPool arena;
+	material.ComputeScatteringFunction(&hit, arena);
+	ASSERT_NE(hit.mBsdf, nullptr);
+	GGXDistribution distribution(GGXDistribution::RoughnessToAlpha(0.1f), true);
+	for (real cosine : { 1.f, 0.8f, 0.6f, 0.5f }) {
+		const real sine = std::sqrt(1 - cosine * cosine);
+		const Vec3 wo(sine, 0, cosine), wi(-sine, 0, cosine), wh(0, 0, 1);
+		const real value = hit.mBsdf->Evaluate(wo, wi).x;
+		const double measuredFresnel = value * (4 * cosine * cosine) /
+			(distribution.D(wh) * distribution.G(wo, wi, wh));
+		EXPECT_NEAR(measuredFresnel, ExteriorFresnel(cosine, double(1.9f)), 2e-6);
+	}
+	const Vec3 wo(0.6f, 0, 0.8f);
+	for (const Vec3& wi : { Vec3(0.96f, 0, -0.28f), Vec3(-0.96f, 0, -0.28f) }) {
+		EXPECT_EQ(hit.mBsdf->Evaluate(wo, wi), Vec3(0));
+		EXPECT_EQ(hit.mBsdf->Pdf(wo, wi), 0);
+	}
 }
 
 GYT_NAMESPACE_END

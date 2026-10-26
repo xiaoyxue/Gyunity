@@ -16,6 +16,7 @@ public:
 	virtual real G(const Vec3& wo, const Vec3& wi, const Vec3 &wh) const {
 		return 1 / (1 + Lambda(wo) + Lambda(wi));
 	}
+	// Microfacet normals stay in the canonical +z hemisphere for either view side.
 	virtual Vec3 SampleWh(const Vec3& wo, const Vec2& u) const = 0;
 	virtual real Pdf(const Vec3& wo, const Vec3& wh) const;
 

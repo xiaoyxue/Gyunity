@@ -7,6 +7,22 @@ anisotropic samples are unit half-vectors. Reflection PDFs reject opposite-side,
 tangent and degenerate direction pairs. `BSDF::Evaluate`, `Sample` and `Pdf`
 honor the same lobe flags. The existing Smith masking model is unchanged.
 
+Microfacet normal samples use the canonical positive-z hemisphere for either
+view side, consistently with native `D` and `Pdf`. Rough transmission evaluation
+and PDFs require both directions to agree with the reconstructed microfacet and
+macrosurface orientation; opposite macrohemispheres alone are insufficient.
+Tangent and zero-half-vector continuous queries return zero rather than NaN.
+Plastic uses exterior-to-coating Fresnel IORs `(1, 1.5)`; rough glass retains its
+existing exterior-to-interior IOR order. These contracts have actual-material
+and component regressions in `TestBsdfSample.*`.
+
+The native GGX model retains separable Smith masking, as in Mitsuba, rather than
+PBRT-v3's height-correlated masking. The PBRT-style artist-roughness mapping is
+also unchanged: roughness `0.1` maps to alpha approximately `0.462`, not raw alpha
+`0.1`. These model/parameter differences must be matched explicitly in reference
+comparisons. A native diffuse-plus-GGX plastic preview is not Mitsuba's smooth
+layered plastic.
+
 PT, VPT and the SPPM eye pass accumulate emitted radiance and reflected direct
 lighting independently, including after a specular bounce and on an emitter's
 nonemitting back side. VPT estimates direct surface lighting only at non-delta
