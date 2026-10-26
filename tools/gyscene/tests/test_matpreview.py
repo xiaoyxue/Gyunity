@@ -9,9 +9,39 @@ from unittest.mock import patch
 from pydantic import ValidationError
 from gyscene import Camera, Checkerboard, Diffuse, Environment, Mirror, Plastic, RoughDielectric, Scene, Sphere
 from gyscene.matpreview import PROFILES, import_presets, import_preview, import_previews, profile_material, source_data
+from gyscene.mitsuba import parse_scene
 
 
 class PreviewModelTests(unittest.TestCase):
+    def test_standalone_mitsuba_plastic_keeps_coating_parameters(self):
+        xml = b"""<scene version="3.0.0">
+          <integrator type="path"><integer name="max_depth" value="4"/></integrator>
+          <sensor type="perspective">
+            <float name="fov" value="45"/>
+            <transform name="to_world"><matrix value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/></transform>
+            <sampler type="independent"><integer name="sample_count" value="8"/></sampler>
+            <film type="hdrfilm"><integer name="width" value="8"/><integer name="height" value="8"/>
+              <rfilter type="box"/></film>
+          </sensor>
+          <bsdf type="plastic" id="coating">
+            <rgb name="diffuse_reflectance" value=".24 .771 .361"/>
+            <float name="int_ior" value="1.9"/><boolean name="nonlinear" value="true"/>
+          </bsdf>
+          <shape type="rectangle" id="emitter">
+            <ref id="coating"/>
+            <emitter type="area"><rgb name="radiance" value="1 1 1"/></emitter>
+          </shape>
+        </scene>"""
+        material = parse_scene(xml, "plastic").materials["coating"]
+        self.assertIsInstance(material, Plastic)
+        self.assertEqual(material.diffuse, (0.24, 0.771, 0.361))
+        self.assertEqual(material.specular, (1., 1., 1.))
+        self.assertEqual(material.eta_inside, 1.9)
+        self.assertEqual(material.eta_outside, 1.000277)
+        self.assertTrue(material.nonlinear)
+        with self.assertRaises(ValueError):
+            parse_scene(xml.replace(b'value="true"', b'value="invalid"'), "invalid-plastic")
+
     def test_supported_materials_and_environment_are_explicit_native_types(self):
         checker = Checkerboard(color0=(0.4, 0.4, 0.4), color1=(0.2, 0.2, 0.2), scale=(8., 8.))
         self.assertFalse(Diffuse(reflectance=checker, two_sided=False).two_sided)
@@ -25,7 +55,7 @@ class PreviewModelTests(unittest.TestCase):
         materials = {
             "mirror": Mirror(reflection=(0.8, 0.7, 0.6)),
             "rough-glass": RoughDielectric(roughness=(0.1, 0.3), eta_inside=1.9),
-            "plastic": Plastic(diffuse=(0.2, 0.7, 0.3), specular=(0.5, 0.5, 0.5), roughness=0.2),
+            "plastic": Plastic(diffuse=(0.2, 0.7, 0.3), specular=(0.5, 0.5, 0.5), eta_inside=1.9),
         }
         scene = Scene(name="materials", camera=Camera.look_at((0., 0., 3.), (0., 0., 0.)), materials=materials)
         scene.add(Sphere(id="emitter", material="mirror", emission=(1., 1., 1.)))
@@ -35,6 +65,12 @@ class PreviewModelTests(unittest.TestCase):
                 RoughDielectric(roughness=(value, 0.1))
             with self.assertRaises(ValidationError):
                 Plastic(diffuse=(0.2, 0.2, 0.2), roughness=value)
+        for value in (0., -1., float("inf"), float("nan"), 4.):
+            with self.assertRaises(ValidationError):
+                Plastic(diffuse=(0.2, 0.2, 0.2), eta_inside=value)
+        self.assertEqual(Plastic(diffuse=(0., 0., 0.)).eta_outside, 1.000277)
+        self.assertFalse(Plastic(diffuse=(0.2, 0.2, 0.2)).nonlinear)
+        self.assertTrue(Plastic(diffuse=(0.2, 0.2, 0.2), nonlinear=True).nonlinear)
         for material in (
             {"type": "mirror", "reflection": [2., 1., 1.]},
             {"type": "rough_dielectric", "roughness": [0.1, 0.1], "eta_outside": 1.3},
@@ -97,6 +133,9 @@ class MatpreviewTests(unittest.TestCase):
             self.assertEqual(profile_material("copper-beckmann", root).distribution, "beckmann")
             self.assertNotEqual(*profile_material("copper-anisotropic", root).alpha)
             self.assertEqual(profile_material("glass", root).eta_inside, 1.9)
+            self.assertEqual(profile_material("plastic", root).eta_inside, 1.9)
+            self.assertEqual(profile_material("plastic", root).eta_outside, 1.000277)
+            self.assertFalse(profile_material("plastic", root).nonlinear)
             self.assertEqual(profile_material("diffuse", root).reflectance, (0.240, 0.771, 0.361))
             batch_diffuse = paths[0].read_bytes()
             path = import_preview(archive_file, Path(directory), profile_name="diffuse",

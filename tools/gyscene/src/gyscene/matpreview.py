@@ -67,7 +67,9 @@ def profile_material(profile: str, root):
         return RoughDielectric(roughness=(0.1, 0.1),
                                eta_inside=float(source.find("float[@name='int_ior']").attrib["value"]))
     if profile == "plastic":
-        return Plastic(diffuse=rgb(source.find("rgb[@name='diffuse_reflectance']")), roughness=0.1)
+        return Plastic(diffuse=rgb(source.find("rgb[@name='diffuse_reflectance']")),
+                       eta_inside=float(source.find("float[@name='int_ior']").attrib["value"]),
+                       eta_outside=1.000277, nonlinear=False)
     raise ValueError(f"Unsupported material profile: {profile}")
 
 
@@ -210,6 +212,10 @@ def import_previews(archive_file: Path, output_root: Path, *, profiles: dict[str
         for identifier in overrides:
             variant.materials[identifier] = exterior
             variant.metadata["material_overrides"][identifier]["replacement"] = exterior.model_dump(mode="json")
+        if isinstance(exterior, Plastic):
+            variant.metadata["note"] = (
+                "Original geometry, camera, checkerboard and EXR are retained. "
+                "Exterior uses native smooth layered Plastic; explicit coating parameters are recorded.")
         output = destination / (variant.name + ".json")
         variant.write_json(output)
         outputs.append(output)

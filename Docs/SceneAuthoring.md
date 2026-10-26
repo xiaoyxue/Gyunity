@@ -66,7 +66,8 @@ validation and I/O errors still use explicit statuses.
 Material-preview support uses the original local `matpreview.zip`, with nine
 explicit profiles covering all six existing native material families, including
 mirror, rough glass and native plastic. These replace the source exterior
-explicitly; native plastic is not Mitsuba plastic. The Python importer preserves real geometry, camera, checkerboard
+explicitly; native plastic uses Mitsuba-style smooth layering and source IORs.
+The Python importer preserves real geometry, camera, checkerboard
 and EXR lighting; no approximate replacement mesh is created.
 See [the local import recipe](../resources/scenes/matpreview/README.md).
 The archive does not include a license, so its raw/derived assets remain

@@ -6,6 +6,7 @@
 #include "visual/Intersection.h"
 #include "visual/Microfacet.h"
 #include <cmath>
+#include <limits>
 #include <random>
 
 GYT_NAMESPACE_BEGIN
@@ -358,24 +359,29 @@ TEST(TestBsdfSample, TransmissionRejectsOpposedMicroAndMacroOrientation) {
 
 TEST(TestBsdfSample, PlasticUsesExteriorAirToCoatingFresnel) {
 	const auto color = std::make_shared<ConstantTexture<Vec3>>(Vec3(1));
-	const auto roughness = std::make_shared<ConstantTexture<real>>(0.1f);
-	PlasticMaterial material(color, color, roughness);
+	const auto material = PlasticMaterial::Create(color, color, 1.000277f, 1.5f, false);
+	ASSERT_NE(material, nullptr);
 	Intersection hit;
 	hit.mNormal = hit.mGeometryNormal = Vec3(0, 0, 1);
 	hit.mShadingDpDu = Vec3(1, 0, 0);
 	hit.mShadingDpDv = Vec3(0, 1, 0);
 	MemoryPool arena;
-	material.ComputeScatteringFunction(&hit, arena);
+	material->ComputeScatteringFunction(&hit, arena);
 	ASSERT_NE(hit.mBsdf, nullptr);
-	GGXDistribution distribution(GGXDistribution::RoughnessToAlpha(0.1f), true);
 	for (real cosine : { 1.f, 0.8f, 0.6f, 0.5f }) {
 		const real sine = std::sqrt(1 - cosine * cosine);
-		const Vec3 wo(sine, 0, cosine), wi(-sine, 0, cosine), wh(0, 0, 1);
-		const auto flags = ScatterEventType(BSDF_REFLECTION | BSDF_GLOSSY);
-		const real value = hit.mBsdf->Evaluate(wo, wi, flags).x;
-		const double measuredFresnel = value * (4 * cosine * cosine) /
-			(distribution.D(wh) * distribution.G(wo, wi, wh));
-		EXPECT_NEAR(measuredFresnel, ExteriorFresnel(cosine, 1.5), 2e-6);
+		const Vec3 wo(sine, 0, cosine);
+		const auto flags = ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR);
+		Vec3 wi;
+		real pdf;
+		ScatterEventType sampledType;
+		const Vec3 value = hit.mBsdf->Sample(wo, &wi, &pdf, Vec3(0.5f), flags, &sampledType);
+		EXPECT_EQ(wi, Vec3(-sine, 0, cosine));
+		EXPECT_EQ(pdf, 1);
+		EXPECT_EQ(sampledType, flags);
+		EXPECT_NEAR(value.x * cosine, ExteriorFresnel(cosine, 1.5 / 1.000277), 2e-6);
+		EXPECT_EQ(hit.mBsdf->Evaluate(wo, wi, flags), Vec3(0));
+		EXPECT_EQ(hit.mBsdf->Pdf(wo, wi, flags), 0);
 	}
 }
 
@@ -404,6 +410,349 @@ TEST(TestBsdfSample, RoughGlassUsesExteriorAirToGlassFresnel) {
 	for (const Vec3& wi : { Vec3(0.96f, 0, -0.28f), Vec3(-0.96f, 0, -0.28f) }) {
 		EXPECT_EQ(hit.mBsdf->Evaluate(wo, wi), Vec3(0));
 		EXPECT_EQ(hit.mBsdf->Pdf(wo, wi), 0);
+	}
+}
+
+namespace {
+
+Intersection MixturePoint() {
+	Intersection hit;
+	hit.mNormal = hit.mGeometryNormal = Vec3(0, 0, 1);
+	hit.mShadingDpDu = Vec3(1, 0, 0);
+	hit.mShadingDpDv = Vec3(0, 1, 0);
+	return hit;
+}
+
+class WeightedDiffuse : public DiffuseBSDF {
+public:
+	explicit WeightedDiffuse(real weight) : DiffuseBSDF(Vec3(0.5f)), mWeight(weight) {}
+	real SamplingWeight(const Vec3&) const override { return mWeight; }
+private:
+	real mWeight;
+};
+
+class UniformReflection : public BxDF {
+public:
+	UniformReflection() : BxDF(ScatterEventType(BSDF_REFLECTION | BSDF_GLOSSY)) {}
+	real Pdf(const Vec3& wo, const Vec3& wi) const override {
+		return SameHemisphere(wo, wi) ? INV_PI / 2 : 0;
+	}
+	Vec3 Evaluate(const Vec3&, const Vec3&) const override { return Vec3(0.25f); }
+	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& random) const override {
+		*wi = UniformSampleHemisphere(Vec2(random.x, random.y));
+		if (wo.z < 0) wi->z = -wi->z;
+		*pdf = Pdf(wo, *wi);
+		return Evaluate(wo, *wi);
+	}
+};
+
+class RejectingDiffuse : public WeightedDiffuse {
+public:
+	RejectingDiffuse() : WeightedDiffuse(3) {}
+	Vec3 Sample(const Vec3&, Vec3* wi, real* pdf, const Vec3&) const override {
+		*wi = Vec3(0);
+		*pdf = 0;
+		return Vec3(0);
+	}
+};
+
+class MalformedSample : public DiffuseBSDF {
+public:
+	explicit MalformedSample(int field) : DiffuseBSDF(Vec3(1)), mField(field) {}
+	Vec3 Sample(const Vec3&, Vec3* wi, real* pdf, const Vec3&) const override {
+		*wi = Vec3(0, 0, 1);
+		*pdf = mField == 0 ? std::numeric_limits<real>::quiet_NaN() : 1;
+		if (mField == 1) wi->x = std::numeric_limits<real>::quiet_NaN();
+		return mField == 2 ? Vec3(std::numeric_limits<real>::quiet_NaN()) :
+			mField == 3 ? Vec3(-1) : Vec3(1);
+	}
+private:
+	int mField;
+};
+
+}
+
+TEST(TestBsdfSample, EventClassifierPreservesFlagsAndStrictLobeMatching) {
+	for (int bits = 0; bits <= BSDF_ALL; ++bits) {
+		const auto event = ScatterEventType(bits);
+		EXPECT_EQ(SurfaceEventClassifier::IsDelta(event), (bits & BSDF_SPECULAR) != 0);
+		EXPECT_EQ(SurfaceEventClassifier::IsDiffuse(event), (bits & BSDF_DIFFUSE) != 0);
+		EXPECT_EQ(SurfaceEventClassifier::IsGlossy(event), (bits & BSDF_GLOSSY) != 0);
+		EXPECT_EQ(SurfaceEventClassifier::IsReflection(event), (bits & BSDF_REFLECTION) != 0);
+		EXPECT_EQ(SurfaceEventClassifier::IsTransmission(event), (bits & BSDF_TRANSMISSION) != 0);
+	}
+	const auto nonDelta = SurfaceEventClassifier::NonDeltaFlags();
+	EXPECT_EQ(nonDelta, ScatterEventType(BSDF_REFLECTION | BSDF_TRANSMISSION | BSDF_DIFFUSE | BSDF_GLOSSY));
+	DiffuseBSDF diffuse(Vec3(1));
+	SpecularBSDF mirror;
+	EXPECT_FALSE(diffuse.IsDelta());
+	EXPECT_TRUE(mirror.IsDelta());
+	EXPECT_TRUE(diffuse.MatchesTypes(nonDelta));
+	EXPECT_FALSE(mirror.MatchesTypes(nonDelta));
+	EXPECT_FALSE(diffuse.MatchesTypes(BSDF_DIFFUSE));
+	EXPECT_FALSE(mirror.MatchesTypes(BSDF_SPECULAR));
+	EXPECT_TRUE(mirror.MatchesTypes(ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR)));
+}
+
+TEST(TestBsdfSample, WeightedMixtureSeparatesDeltaMassAndContinuousDensity) {
+	const Intersection hit = MixturePoint();
+	BSDF bsdf(hit);
+	SpecularBSDF mirror;
+	WeightedDiffuse diffuse(3);
+	bsdf.Add(&mirror);
+	bsdf.Add(&diffuse);
+	const Vec3 wo(0, 0, 1);
+	const auto deltaFlags = ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR);
+	const auto diffuseFlags = ScatterEventType(BSDF_REFLECTION | BSDF_DIFFUSE);
+	EXPECT_FALSE(bsdf.IsDelta());
+	EXPECT_TRUE(bsdf.HasMixedDeltaLobes());
+	EXPECT_TRUE(bsdf.HasNonDeltaLobes());
+	real deltaProbability = 0;
+	int deltaCount = 0;
+	for (int i = 0; i < 64; ++i) {
+		const real u = (i + 0.5f) / 64;
+		Vec3 wi;
+		real pdf, eventProbability;
+		ScatterEventType type;
+		const Vec3 f = bsdf.Sample(wo, &wi, &pdf, Vec3(u, 0.25f, 0), BSDF_ALL, &type, &eventProbability);
+		if (SurfaceEventClassifier::IsDelta(type)) {
+			++deltaCount;
+			deltaProbability = eventProbability;
+			EXPECT_EQ(eventProbability, 0.25f);
+			EXPECT_EQ(type, deltaFlags);
+			EXPECT_EQ(pdf, 0.25f);
+			EXPECT_EQ(f, Vec3(1));
+			EXPECT_NE(pdf, bsdf.Pdf(wo, wi));
+		} else {
+			EXPECT_EQ(eventProbability, 0.75f);
+			EXPECT_EQ(type, diffuseFlags);
+			Vec3 expectedWi;
+			real expectedPdf;
+			diffuse.Sample(wo, &expectedWi, &expectedPdf, Vec3((u - 0.25f) / 0.75f, 0.25f, 0));
+			EXPECT_NEAR((wi - expectedWi).Length(), 0, 1e-6f);
+			EXPECT_NEAR(pdf, 0.75f * expectedPdf, 1e-7f);
+			EXPECT_NEAR(pdf, bsdf.Pdf(wo, wi), 1e-7f);
+			EXPECT_EQ(f, bsdf.Evaluate(wo, wi));
+		}
+	}
+	EXPECT_EQ(deltaCount, 16);
+	double integratedPdf = 0;
+	for (int i = 0; i < 128; ++i) {
+		const real z = (i + 0.5f) / 128;
+		integratedPdf += bsdf.Pdf(wo, Vec3(std::sqrt(1 - z * z), 0, z)) * 2 * PI / 128;
+	}
+	EXPECT_NEAR(integratedPdf + deltaProbability, 1, 1e-6);
+	Vec3 wi;
+	real pdf, eventProbability;
+	ScatterEventType type;
+	bsdf.Sample(wo, &wi, &pdf, Vec3(0.75f), deltaFlags, &type, &eventProbability);
+	EXPECT_EQ(pdf, 1);
+	EXPECT_EQ(eventProbability, 1);
+	EXPECT_EQ(type, deltaFlags);
+	bsdf.Sample(wo, &wi, &pdf, Vec3(0.75f), diffuseFlags, &type, &eventProbability);
+	EXPECT_EQ(eventProbability, 1);
+	EXPECT_EQ(type, diffuseFlags);
+	EXPECT_NEAR(pdf, diffuse.Pdf(wo, wi), 1e-7f);
+}
+
+TEST(TestBsdfSample, LegacyLobesKeepUniformSelectionAndRemapping) {
+	const Intersection hit = MixturePoint();
+	BSDF bsdf(hit);
+	SpecularBSDF mirror;
+	DiffuseBSDF diffuse(Vec3(0.5f));
+	bsdf.Add(&mirror);
+	bsdf.Add(&diffuse);
+	const Vec3 wo(0, 0, 1);
+	const auto deltaFlags = ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR);
+	EXPECT_EQ(mirror.SamplingWeight(wo), 1);
+	EXPECT_EQ(diffuse.SamplingWeight(wo), 1);
+	Vec3 wi, expectedWi;
+	real pdf, expectedPdf, eventProbability;
+	ScatterEventType type;
+	bsdf.Sample(wo, &wi, &pdf, Vec3(0.25f), BSDF_ALL, &type, &eventProbability);
+	EXPECT_EQ(eventProbability, 0.5f);
+	EXPECT_EQ(type, deltaFlags);
+	EXPECT_EQ(pdf, 0.5f);
+	bsdf.Sample(wo, &wi, &pdf, Vec3(0.75f, 0.25f, 0), BSDF_ALL, &type, &eventProbability);
+	EXPECT_EQ(eventProbability, 0.5f);
+	diffuse.Sample(wo, &expectedWi, &expectedPdf, Vec3(0.5f, 0.25f, 0));
+	EXPECT_EQ(wi, expectedWi);
+	EXPECT_EQ(pdf, expectedPdf / 2);
+}
+
+TEST(TestBsdfSample, WeightedContinuousMixtureUsesEveryEnabledDensity) {
+	const Intersection hit = MixturePoint();
+	BSDF bsdf(hit);
+	UniformReflection glossy;
+	WeightedDiffuse diffuse(3);
+	bsdf.Add(&glossy);
+	bsdf.Add(&diffuse);
+	const Vec3 wo(0, 0, 1);
+	const auto glossyFlags = ScatterEventType(BSDF_REFLECTION | BSDF_GLOSSY);
+	for (real u : { 0.125f, 0.625f }) {
+		Vec3 wi;
+		real pdf, eventProbability;
+		ScatterEventType type;
+		const Vec3 f = bsdf.Sample(wo, &wi, &pdf, Vec3(u, 0.25f, 0), BSDF_ALL, &type, &eventProbability);
+		EXPECT_EQ(eventProbability, 1);
+		EXPECT_EQ(type, u < 0.25f ? glossyFlags : ScatterEventType(BSDF_REFLECTION | BSDF_DIFFUSE));
+		const real expectedPdf = 0.25f * INV_PI / 2 + 0.75f * wi.z * INV_PI;
+		EXPECT_NEAR(pdf, expectedPdf, 1e-7f);
+		EXPECT_NEAR(bsdf.Pdf(wo, wi), expectedPdf, 1e-7f);
+		EXPECT_EQ(f, bsdf.Evaluate(wo, wi));
+		EXPECT_EQ(f, glossy.Evaluate(wo, wi) + diffuse.Evaluate(wo, wi));
+	}
+	Vec3 wi;
+	real pdf;
+	ScatterEventType type;
+	const Vec3 f = bsdf.Sample(wo, &wi, &pdf, Vec3(0.5f), glossyFlags, &type);
+	EXPECT_EQ(type, glossyFlags);
+	EXPECT_EQ(pdf, INV_PI / 2);
+	EXPECT_EQ(f, glossy.Evaluate(wo, wi));
+}
+
+TEST(TestBsdfSample, PureDeltaClassificationAndActualTransmissionEvent) {
+	const Intersection hit = MixturePoint();
+	BSDF bsdf(hit);
+	EXPECT_FALSE(bsdf.IsDelta());
+	EXPECT_FALSE(bsdf.HasNonDeltaLobes());
+	EXPECT_FALSE(bsdf.HasMixedDeltaLobes());
+	SpecularBSDF mirror;
+	TransmissionBSDF glass;
+	bsdf.Add(&mirror);
+	bsdf.Add(&glass);
+	EXPECT_TRUE(bsdf.IsDelta());
+	EXPECT_FALSE(bsdf.HasNonDeltaLobes());
+	EXPECT_FALSE(bsdf.HasMixedDeltaLobes());
+	for (real branch : { 0.f, 0.9f }) {
+		Vec3 wi;
+		real pdf, eventProbability;
+		ScatterEventType type;
+		bsdf.Sample(Vec3(0, 0, 1), &wi, &pdf, Vec3(0.75f, branch, 0), BSDF_ALL, &type, &eventProbability);
+		EXPECT_EQ(eventProbability, 1);
+		EXPECT_EQ(type, ScatterEventType(BSDF_SPECULAR | (branch == 0 ? BSDF_REFLECTION : BSDF_TRANSMISSION)));
+		EXPECT_NEAR(pdf, 0.5f * (branch == 0 ? 0.04f : 0.96f), 1e-7f);
+	}
+}
+
+TEST(TestBsdfSample, MeasureGroupProbabilitySurvivesLobeRejection) {
+	const Intersection hit = MixturePoint();
+	BSDF bsdf(hit);
+	SpecularBSDF firstMirror, secondMirror;
+	UniformReflection glossy;
+	RejectingDiffuse diffuse;
+	bsdf.Add(&firstMirror);
+	bsdf.Add(&secondMirror);
+	bsdf.Add(&glossy);
+	bsdf.Add(&diffuse);
+	const Vec3 wo(0, 0, 1);
+	for (real u : { 0.1f, 0.25f, 0.4f, 0.75f }) {
+		Vec3 wi(7);
+		real pdf = 7, eventProbability = 7;
+		ScatterEventType type = BSDF_ALL;
+		const Vec3 f = bsdf.Sample(wo, &wi, &pdf, Vec3(u, 0.5f, 0), BSDF_ALL, &type, &eventProbability);
+		if (u < 1.f / 3) {
+			EXPECT_EQ(type, ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR));
+			EXPECT_NEAR(eventProbability, 2.f / 6, 1e-7f);
+			EXPECT_NEAR(pdf, 1.f / 6, 1e-7f);
+		} else {
+			EXPECT_NEAR(eventProbability, 4.f / 6, 1e-7f);
+			if (u > 0.5f) {
+				EXPECT_EQ(type, ScatterEventType(BSDF_REFLECTION | BSDF_DIFFUSE));
+				EXPECT_EQ(f, Vec3(0));
+				EXPECT_EQ(wi, Vec3(0));
+				EXPECT_EQ(pdf, 0);
+			} else {
+				EXPECT_EQ(type, ScatterEventType(BSDF_REFLECTION | BSDF_GLOSSY));
+				EXPECT_GT(pdf, 0);
+			}
+		}
+	}
+	Vec3 wi;
+	real pdf, eventProbability;
+	const auto flags = ScatterEventType(BSDF_REFLECTION | BSDF_DIFFUSE | BSDF_SPECULAR);
+	EXPECT_EQ(bsdf.Sample(wo, &wi, &pdf, Vec3(0.8f), flags, nullptr, &eventProbability), Vec3(0));
+	EXPECT_EQ(pdf, 0);
+	EXPECT_NEAR(eventProbability, 3.f / 5, 1e-7f);
+}
+
+TEST(TestBsdfSample, ZeroWeightsAbsorbAndInvalidWeightsRemainErrors) {
+	const Intersection hit = MixturePoint();
+	const Vec3 wo(0, 0, 1);
+	for (real weight : { real(0), real(-1), std::numeric_limits<real>::infinity(),
+		std::numeric_limits<real>::quiet_NaN() }) {
+		BSDF bsdf(hit);
+		WeightedDiffuse diffuse(weight);
+		bsdf.Add(&diffuse);
+		Vec3 wi(7);
+		real pdf = 7, eventProbability = 7;
+		ScatterEventType type = BSDF_ALL;
+		EXPECT_EQ(bsdf.Sample(wo, &wi, &pdf, Vec3(0.5f), BSDF_ALL, &type, &eventProbability), Vec3(0));
+		EXPECT_EQ(wi, Vec3(0));
+		EXPECT_EQ(type, ScatterEventType(0));
+		if (weight == 0) {
+			EXPECT_EQ(pdf, 0);
+			EXPECT_EQ(bsdf.Pdf(wo, wo), 0);
+			EXPECT_EQ(eventProbability, 0);
+		} else {
+			EXPECT_TRUE(std::isnan(pdf));
+			EXPECT_TRUE(std::isnan(bsdf.Pdf(wo, wo)));
+			EXPECT_TRUE(std::isnan(eventProbability));
+		}
+		// Filtering excludes invalid weights rather than poisoning unrelated components.
+		EXPECT_EQ(bsdf.Pdf(wo, wo, ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR)), 0);
+	}
+}
+
+TEST(TestBsdfSample, MalformedLobeSamplesAreNotHiddenByAggregateEvaluation) {
+	const Intersection hit = MixturePoint();
+	for (int field = 0; field < 4; ++field) {
+		BSDF bsdf(hit);
+		MalformedSample malformed(field);
+		bsdf.Add(&malformed);
+		Vec3 wi;
+		real pdf;
+		const Vec3 f = bsdf.Sample(Vec3(0, 0, 1), &wi, &pdf, Vec3(0.5f));
+		if (field == 0) EXPECT_TRUE(std::isnan(pdf));
+		if (field == 1) EXPECT_TRUE(std::isnan(wi.x));
+		if (field == 2) EXPECT_TRUE(std::isnan(f.x));
+		if (field == 3) EXPECT_EQ(f, Vec3(-1));
+	}
+}
+
+TEST(TestBsdfSample, ContinuousSampleUsesAggregateGeometricNormalSupport) {
+	Intersection hit = MixturePoint();
+	hit.mNormal = Vec3(0.8f, 0, 0.6f);
+	hit.mShadingDpDu = Vec3(0.6f, 0, -0.8f);
+	BSDF bsdf(hit);
+	DiffuseBSDF diffuse(Vec3(0.5f));
+	SpecularBSDF mirror;
+	bsdf.Add(&diffuse);
+	const Vec3 wo(0, 0, 1);
+	for (bool mixed : { false, true }) {
+		if (mixed) bsdf.Add(&mirror);
+		int rejected = 0, accepted = 0;
+		for (int i = 0; i < 16; ++i) {
+			for (int j = 0; j < 16; ++j) {
+				Vec3 wi;
+				real pdf;
+				ScatterEventType type;
+				const Vec3 sample((i + 0.5f) / 16 * (mixed ? 0.5f : 1.f), (j + 0.5f) / 16, 0);
+				const Vec3 f = bsdf.Sample(wo, &wi, &pdf, sample, BSDF_ALL, &type);
+				EXPECT_GT(pdf, 0);
+				EXPECT_EQ(type, ScatterEventType(BSDF_REFLECTION | BSDF_DIFFUSE));
+				EXPECT_EQ(f, bsdf.Evaluate(wo, wi));
+				if (wi.z < 0) {
+					++rejected;
+					EXPECT_EQ(f, Vec3(0));
+				} else {
+					++accepted;
+					EXPECT_GT(f.x, 0);
+				}
+			}
+		}
+		EXPECT_GT(rejected, 0);
+		EXPECT_GT(accepted, 0);
 	}
 }
 

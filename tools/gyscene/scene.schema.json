@@ -711,11 +711,22 @@
           "title": "Diffuse",
           "type": "array"
         },
-        "roughness": {
+        "eta_inside": {
+          "default": 1.49,
           "exclusiveMinimum": 0,
-          "maximum": 1,
-          "title": "Roughness",
+          "title": "Eta Inside",
           "type": "number"
+        },
+        "eta_outside": {
+          "default": 1.000277,
+          "exclusiveMinimum": 0,
+          "title": "Eta Outside",
+          "type": "number"
+        },
+        "nonlinear": {
+          "default": false,
+          "title": "Nonlinear",
+          "type": "boolean"
         },
         "specular": {
           "default": [
@@ -753,8 +764,7 @@
         }
       },
       "required": [
-        "diffuse",
-        "roughness"
+        "diffuse"
       ],
       "title": "Plastic",
       "type": "object"

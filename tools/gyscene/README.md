@@ -129,16 +129,22 @@ import_previews(
     test_root / "custom-previews",
     profiles={
         "custom-mirror": Mirror(reflection=(0.9, 0.9, 0.9)),
-        "custom-plastic": Plastic(diffuse=(0.2, 0.7, 0.3), roughness=0.2),
+        "custom-plastic": Plastic(diffuse=(0.2, 0.7, 0.3), eta_inside=1.9, eta_outside=1.000277),
         "custom-rough-glass": RoughDielectric(roughness=(0.1, 0.3), eta_inside=1.5),
     },
     max_depth=8,
 )
 ```
 
-The native plastic profile uses Gyunity's existing diffuse-plus-GGX material
-with its fixed IOR, **not** the original Mitsuba plastic BSDF. Adding native
-material types does not expand the supported Mitsuba/PBRT adapter vocabulary.
+The native plastic profile uses Mitsuba-style smooth layering, with source
+interior IOR 1.9, default air IOR 1.000277, and `nonlinear=false`. It is not
+Mitsuba `roughplastic` or PBRT-v3's additive Lambert-plus-GGX model. The bounded
+standalone Mitsuba adapter accepts smooth `plastic` with numeric/color parameters.
+Other adapter limits are unchanged.
+
+The old roughness-based Plastic has been removed. `roughness` is rejected,
+not ignored or reinterpreted; regenerate old Plastic JSON in a fresh output
+directory. Existing files with different content are not overwritten.
 The real geometry/camera/UVs/normals and
 EXR bytes remain unchanged apart from converting serialized mesh arrays to
 world-space OBJ. The optional Mitsuba package only decodes source data; it is
@@ -171,12 +177,13 @@ Diffuse materials can be one- or two-sided and accept constant RGB or a native
 `Checkerboard` reflectance. Conductors currently require two-sided behavior;
 smooth dielectric IORs and reflection/transmission are explicit.
 `Mirror` exposes ideal specular reflection. `RoughDielectric` exposes the
-existing GGX model with exterior IOR fixed at 1; `Plastic` exposes the existing
-diffuse-plus-GGX model with its fixed 1.5/1 Fresnel parameters. Their
-`roughness` values lie in (0,1] and use the renderer's existing
-`GGXDistribution::RoughnessToAlpha` mapping, unlike conductors' raw `alpha`.
-Rough dielectric has two roughness axes, plastic one. Neither accepts a
-distribution or unsupported IOR override. All six material types share the
+existing GGX model with exterior IOR fixed at 1. Its two roughness axes lie in
+(0,1] and use `GGXDistribution::RoughnessToAlpha`, unlike conductors' raw alpha.
+`Plastic` has a smooth delta-reflection layer and coated diffuse reflection,
+with `eta_inside` (default 1.49), `eta_outside` (default air, 1.000277), and
+`nonlinear` (default false). It has no roughness parameter. IORs must be positive
+and keep the internal diffuse-Fresnel fit in [0,1); unsupported extreme ratios
+are errors, not clamped coatings. All six material types share the
 same Python/schema/C++ validation path. Area emission is
 attached to a shape independently of its material. One `Environment` light
 may reference a linear RGB HDR/EXR map, positive scale and orthonormal

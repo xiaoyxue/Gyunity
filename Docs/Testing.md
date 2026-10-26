@@ -12,7 +12,7 @@ view side, consistently with native `D` and `Pdf`. Rough transmission evaluation
 and PDFs require both directions to agree with the reconstructed microfacet and
 macrosurface orientation; opposite macrohemispheres alone are insufficient.
 Tangent and zero-half-vector continuous queries return zero rather than NaN.
-Plastic uses exterior-to-coating Fresnel IORs `(1, 1.5)`; rough glass retains its
+Plastic uses explicit exterior-to-coating Fresnel IORs; rough glass retains its
 existing exterior-to-interior IOR order. These contracts have actual-material
 and component regressions in `TestBsdfSample.*`.
 
@@ -20,8 +20,16 @@ The native GGX model retains separable Smith masking, as in Mitsuba, rather than
 PBRT-v3's height-correlated masking. The PBRT-style artist-roughness mapping is
 also unchanged: roughness `0.1` maps to alpha approximately `0.462`, not raw alpha
 `0.1`. These model/parameter differences must be matched explicitly in reference
-comparisons. A native diffuse-plus-GGX plastic preview is not Mitsuba's smooth
-layered plastic.
+comparisons. Native Plastic now uses Mitsuba-style smooth layering, not GGX.
+
+For mixed delta/continuous BSDFs, `IsDelta` means all lobes are delta; `Sample`
+reports the event actually selected. Weighted lobe selection and filtered PDFs
+use the same probabilities, while delta masses are never added to continuous
+densities. Direct-light estimation excludes delta components. PT/VPT emission
+and BDPT MIS use the sampled event, and SPPM compensates the probability of
+recording a continuous visible point. An iteration with no visible points skips
+photon tracing rather than querying an empty hash grid. Plastic and mixed-lobe
+regressions cover these contracts, including geometric-normal filtering.
 
 PT, VPT and the SPPM eye pass accumulate emitted radiance and reflected direct
 lighting independently, including after a specular bounce and on an emitter's

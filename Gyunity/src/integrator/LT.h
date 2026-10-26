@@ -87,7 +87,7 @@ public:
 			scene.QueryIntersectionInfo(ray, &isect);
 			isect.ComputeScatteringFunction(arena, TransportMode::Importance);
 
-			lightPath[bounce].mIsDelta = isect.mBsdf->IsDelta();
+			lightPath[bounce].mIsDelta = false;
 			lightPath[bounce].mPdfFwd = pdfDir;
 			lightPath[bounce].mThroughput = throughput;
 
@@ -95,7 +95,10 @@ public:
 			if (bounce >= mMaxDepth) break;
 
 			Vec3 wi;
-			Vec3 f = isect.mBsdf->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()));
+			ScatterEventType event = ScatterEventType(0);
+			Vec3 f = isect.mBsdf->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()), BSDF_ALL, &event);
+			if (f == Vec3() || pdfDir == 0) break;
+			lightPath[bounce - 1].mIsDelta = SurfaceEventClassifier::IsDelta(event);
 			ray = isect.SpawnRay(wi);
 
 			throughput = throughput * f * std::abs(Dot(wi, isect.mNormal)) / pdfDir;

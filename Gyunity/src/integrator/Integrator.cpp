@@ -10,6 +10,7 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 	real uLight, const Vec2& u, const Vec3& v, StateSequence& rand, bool handleMedia) 
 {
 	Vec3 L;
+	const auto nonDeltaFlags = SurfaceEventClassifier::NonDeltaFlags();
 	//Sample light
 	real lightSamplingPdf;
 	real weight1 = 1, weight2 = 1;
@@ -27,8 +28,8 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 			VisibilityTester visibilityTester(isect, lightPoint);
 			if (isect.IsSurfaceScatter()) {
 				BSDF* bsdf = isect.mBsdf;
-				scatteringPdf = bsdf->Pdf(isect.mOutDir, wi);
-				f = bsdf->Evaluate(isect.mOutDir, wi);
+				scatteringPdf = bsdf->Pdf(isect.mOutDir, wi, nonDeltaFlags);
+				f = bsdf->Evaluate(isect.mOutDir, wi, nonDeltaFlags);
 				cosTheta = std::abs(isect.mNormal.Dot(wi));
 			}
 			else {
@@ -64,7 +65,7 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		real cosTheta = 1;
 		if (isect.IsSurfaceScatter()) {
 			BSDF* bsdf = isect.mBsdf;
-			f = bsdf->Sample(isect.mOutDir, &wi, &pdf, v);
+			f = bsdf->Sample(isect.mOutDir, &wi, &pdf, v, nonDeltaFlags);
 			cosTheta = std::abs(isect.mNormal.Dot(wi));
 		}
 		else {

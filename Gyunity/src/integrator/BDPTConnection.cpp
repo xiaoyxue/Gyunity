@@ -42,7 +42,7 @@ bool Surface(const PathVertex& vertex) {
 bool Connectible(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Camera ||
 		(vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf &&
-			!vertex.mIsect.mBsdf->IsDelta());
+			vertex.mIsect.mBsdf->HasNonDeltaLobes());
 }
 
 bool Counts(const std::vector<PathVertex>& light, const std::vector<PathVertex>& camera, int s, int t) {

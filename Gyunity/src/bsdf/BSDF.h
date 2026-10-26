@@ -78,7 +78,18 @@ enum ScatterEventType
 	BSDF_ALL = BSDF_ALL_REFLECTION | BSDF_ALL_TRANSMISSION
 };
 
+class SurfaceEventClassifier {
+public:
+	static bool IsDelta(ScatterEventType event) { return (event & BSDF_SPECULAR) != 0; }
+	static bool IsDiffuse(ScatterEventType event) { return (event & BSDF_DIFFUSE) != 0; }
+	static bool IsGlossy(ScatterEventType event) { return (event & BSDF_GLOSSY) != 0; }
+	static bool IsReflection(ScatterEventType event) { return (event & BSDF_REFLECTION) != 0; }
+	static bool IsTransmission(ScatterEventType event) { return (event & BSDF_TRANSMISSION) != 0; }
+	static ScatterEventType NonDeltaFlags() { return ScatterEventType(BSDF_ALL & ~BSDF_SPECULAR); }
+};
+
 real FrDielectric(real cosThetaI, real etaI, real etaT);
+real FrDiffuseDielectric(real eta);
 
 // https://seblagarde.wordpress.com/2013/04/29/memo-on-fresnel-equations/
 Vec3 FrConductor(real cosThetaI, const Vec3& etai, const Vec3& etat, const Vec3& k);
@@ -149,14 +160,21 @@ public:
 	~BSDF(){}
 	void Add(BxDF* bxdf);
 	real Pdf(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
-	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0), ScatterEventType flags = BSDF_ALL) const;
+	// Delta samples return probability mass; continuous samples return solid-angle density.
+	// Type and delta/continuous group probability describe selection even if the lobe rejects its direction.
+	// Empty/absorbing mixtures clear outputs; invalid weights log and return NaN probabilities.
+	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0), ScatterEventType flags = BSDF_ALL,
+		ScatterEventType* sampledType = nullptr, real* eventProbability = nullptr) const;
 	Vec3 Evaluate(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
 	bool IsDelta() const { 
 		return mIsDelta;
 	}
 	bool MatchScatterType(ScatterEventType flag) const;
+	bool HasNonDeltaLobes() const;
 	bool HasMixedDeltaLobes() const;
 
+private:
+	bool SamplingWeights(const Vec3& woLocal, ScatterEventType flags, real* weights, real* total) const;
 };
 
 class BxDF {
@@ -166,7 +184,9 @@ public:
 	virtual real Pdf(const Vec3& wo, const Vec3& wi) const = 0;
 	virtual Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand = Vec3(0, 0, 0)) const = 0;
 	virtual Vec3 Evaluate(const Vec3& wo, const Vec3& wi) const = 0;
-	virtual bool IsDelta() const { return mScatterEventType & BSDF_SPECULAR; }
+	// Nonnegative finite selection weight in the local shading frame; zero disables sampling.
+	virtual real SamplingWeight(const Vec3& wo) const { return 1; }
+	virtual bool IsDelta() const { return SurfaceEventClassifier::IsDelta(mScatterEventType); }
 	virtual bool MatchesTypes(ScatterEventType flags) const { return (mScatterEventType & flags) == mScatterEventType; }
 	const ScatterEventType mScatterEventType;
 };
@@ -201,7 +221,7 @@ public:
 class SpecularBSDF : public BxDF {
 public:
 	SpecularBSDF(Vec3 r = Vec3(1.0, 1.0, 1.0)) 
-		: BxDF(ScatterEventType(BSDF_ALL_REFLECTION | BSDF_SPECULAR)), mR(r) 
+		: BxDF(ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR)), mR(r)
 	{
 	}
 

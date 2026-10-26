@@ -57,8 +57,9 @@ public:
 		return std::make_shared<RoughDielectricMaterial>(ConstantColor(kr), ConstantColor(kt), ConstantValue(roughnessX),
 			ConstantValue(roughnessY), ConstantValue(ior));
 	}
-	static std::shared_ptr<Material> Plastic(const Vec3& kd, const Vec3& ks, real roughness) {
-		return std::make_shared<PlasticMaterial>(ConstantColor(kd), ConstantColor(ks), ConstantValue(roughness));
+	static std::shared_ptr<Material> Plastic(const Vec3& kd, const Vec3& ks,
+		real etaOutside, real etaInside, bool nonlinear) {
+		return PlasticMaterial::Create(ConstantColor(kd), ConstantColor(ks), etaOutside, etaInside, nonlinear);
 	}
 
 	// MediumInterface is non-owning; its media must outlive the scene.

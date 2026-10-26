@@ -225,13 +225,19 @@ std::shared_ptr<Material> ReadMaterial(const Json& value) {
 		return SceneBuilder::RoughDielectric(*reflection, *transmission, *x, *y, *inside);
 	}
 	if (*type == "plastic") {
-		if (!Fields(value, {"type","diffuse","specular","roughness"}, {"diffuse","roughness"})) return nullptr;
+		if (value.contains("roughness")) {
+			Fail("Plastic now uses a smooth dielectric coating. Legacy roughness is unsupported; regenerate the scene with explicit IORs.");
+			return nullptr;
+		}
+		if (!Fields(value, {"type","diffuse","specular","eta_inside","eta_outside","nonlinear"}, {"diffuse"})) return nullptr;
 		const auto diffuse = Color(value.at("diffuse"), true);
 		const auto specular = Color(value.value("specular", Json::array({1,1,1})), true);
-		const auto roughness = Number(value.at("roughness"));
-		if (!diffuse || !specular || !roughness) return nullptr;
-		if (*roughness <= 0 || *roughness > 1) { Fail("Plastic roughness must be in (0,1]."); return nullptr; }
-		return SceneBuilder::Plastic(*diffuse, *specular, *roughness);
+		const auto inside = Number(value.value("eta_inside", Json(1.49)));
+		const auto outside = Number(value.value("eta_outside", Json(1.000277)));
+		const auto nonlinear = value.value("nonlinear", Json(false));
+		if (!diffuse || !specular || !inside || !outside) return nullptr;
+		if (!nonlinear.is_boolean()) { Fail("Plastic nonlinear must be boolean."); return nullptr; }
+		return SceneBuilder::Plastic(*diffuse, *specular, *outside, *inside, nonlinear.get<bool>());
 	}
 	if (*type == "conductor") {
 		if (!Fields(value, {"type","distribution","alpha","reflectance","eta","k","two_sided"}, {"distribution","alpha","eta","k"})) return nullptr;

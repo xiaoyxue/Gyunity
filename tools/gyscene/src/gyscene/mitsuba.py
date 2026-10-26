@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
 
-from .model import Box, Camera, Conductor, Dielectric, Diffuse, IDENTITY, Mesh, Quad, RenderSettings, Scene, Sphere
+from .model import Box, Camera, Conductor, Dielectric, Diffuse, IDENTITY, Mesh, Plastic, Quad, RenderSettings, Scene, Sphere
 from .transforms import look_at, multiply, rotation
 
 ARCHIVES = {
@@ -195,6 +195,18 @@ def parse_scene(xml: bytes, name: str, *, max_depth: int | None = None) -> Scene
         elif kind == "dielectric" and not two_sided:
             p = parameters(node, {"int_ior": "float", "ext_ior": "float"})
             material = Dielectric(eta_inside=float(value(p["int_ior"])), eta_outside=float(value(p["ext_ior"])))
+        elif kind == "plastic" and not two_sided:
+            p = parameters(node, {"diffuse_reflectance": "rgb", "specular_reflectance": "rgb",
+                                  "int_ior": "float", "ext_ior": "float", "nonlinear": "boolean"})
+            nonlinear = value(p["nonlinear"]) if "nonlinear" in p else "false"
+            if nonlinear not in ("true", "false"):
+                raise ValueError("Plastic nonlinear must be true or false")
+            material = Plastic(
+                diffuse=rgb(p["diffuse_reflectance"]) if "diffuse_reflectance" in p else (0.5, 0.5, 0.5),
+                specular=rgb(p["specular_reflectance"]) if "specular_reflectance" in p else (1., 1., 1.),
+                eta_inside=float(value(p["int_ior"])) if "int_ior" in p else 1.49,
+                eta_outside=float(value(p["ext_ior"])) if "ext_ior" in p else 1.000277,
+                nonlinear=nonlinear == "true")
         else:
             raise ValueError(f"Unsupported source BSDF: {kind}")
         scene.add_material(identifier, material)

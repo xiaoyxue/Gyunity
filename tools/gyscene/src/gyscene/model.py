@@ -149,7 +149,23 @@ class Plastic(Model):
     type: Literal["plastic"] = "plastic"
     diffuse: ReflectanceColor
     specular: ReflectanceColor = (1., 1., 1.)
-    roughness: Roughness
+    eta_outside: Positive = 1.000277
+    eta_inside: Positive = 1.49
+    nonlinear: bool = False
+
+    @model_validator(mode="after")
+    def coating(self) -> Plastic:
+        ratio = self.eta_outside / self.eta_inside
+        if not math.isfinite(ratio) or ratio <= 0:
+            raise ValueError("Plastic requires a finite positive IOR ratio")
+        if ratio < 1:
+            internal = 0.0636 / ratio + 0.6681 + 0.7099 * ratio - 1.4399 * ratio * ratio
+        else:
+            x = 1 / ratio
+            internal = 0.919317 + x * (-3.4793 + x * (6.75335 + x * (-7.80989 + x * (4.98554 - 1.36881 * x))))
+        if not 0 <= internal < 1 or not math.isfinite(ratio * ratio) or ratio * ratio == 0:
+            raise ValueError("Plastic IORs are outside the valid diffuse-Fresnel fit domain")
+        return self
 
 
 Material = Annotated[Diffuse | Conductor | Dielectric | Mirror | RoughDielectric | Plastic, Field(discriminator="type")]
