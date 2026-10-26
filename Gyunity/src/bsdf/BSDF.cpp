@@ -124,6 +124,7 @@ Vec3 BSDF::Evaluate(const Vec3& wo, const Vec3& wi, ScatterEventType flags) cons
 	bool reflect = Dot(wi, mGeometryNormal) * Dot(wo, mGeometryNormal) > 0;
 
 	for (int i = 0; i < mBsdfCnt; ++i) {
+		if (!mBxdfs[i]->MatchesTypes(flags)) continue;
 		if ((reflect && (mBxdfs[i]->mScatterEventType & BSDF_REFLECTION)) ||
 			(!reflect && (mBxdfs[i]->mScatterEventType & BSDF_TRANSMISSION)))
 			f += mBxdfs[i]->Evaluate(woLocal, wiLocal);
