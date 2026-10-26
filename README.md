@@ -226,11 +226,18 @@ anisotropic samples are unit half-vectors. Reflection PDFs reject opposite-side,
 tangent and degenerate direction pairs. `BSDF::Evaluate`, `Sample` and `Pdf`
 honor the same lobe flags. The existing Smith masking model is unchanged.
 
-PT accumulates emitted radiance and reflected direct lighting independently:
-an emitting diffuse surface still reflects illumination, including after a
-specular bounce and on its nonemitting back side. These contracts are covered
-by `TestMicrofacetDistribution.*`, `TestBsdfSample.*` and
-`PathTracingEmission.*` in `GyunityTest`.
+PT, VPT and the SPPM eye pass accumulate emitted radiance and reflected direct
+lighting independently, including after a specular bounce and on an emitter's
+nonemitting back side. VPT estimates direct surface lighting only at non-delta
+BSDFs. SPPM records emission before choosing a delta, continued-glossy or
+visible-point branch; its first-hit photon exclusion remains unchanged.
+
+These contracts are covered by `TestMicrofacetDistribution.*`,
+`TestBsdfSample.*`, `PathTracingEmission.*`,
+`VptAndSppm/EmissiveSurfaceIntegrators.*` and `SppmSurfaceEmission.*` in
+`GyunityTest`. SPPM fixtures use positive iteration/photon budgets and the
+public renderer; set `GYUNITY_TEST_OUTPUT_DIRECTORY` under the main checkout's
+`Test` for their HDR outputs.
 
 ## Bidirectional probability interfaces
 BDPT uses deterministic probability queries without changing the existing PT/LT

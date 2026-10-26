@@ -76,7 +76,7 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 				const Light* emitter = isect.mPrimitive->GetLight();
 				L += throughput * emitter->Emission(isect, isect.mOutDir);
 			}
-			else {
+			if (!bsdf->IsDelta()) {
 				L += throughput * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand, true);
 
 			}
