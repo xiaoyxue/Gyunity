@@ -33,7 +33,7 @@ void SPPM::GeneratePhoton(const Scene& scene, Ray* pr, Vec3* f, real u, const Ve
 	real pdfPos, pdfDir;
 	Vec3 Le = light->SampleLight(&lightPoint, &lightDir, &pdfPos, &pdfDir, v, w);
 	*pr = lightPoint.SpawnRay(lightDir);
-	real cosTheta = std::abs(lightPoint.mNormal.Dot(lightDir));
+	real cosTheta = std::abs((light->IsAreaLight() ? lightPoint.mGeometryNormal : lightPoint.mNormal).Dot(lightDir));
 	if (pdfPos == 0 || pdfDir == 0) {
 		*f = 0;
 	}

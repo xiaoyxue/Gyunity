@@ -179,6 +179,7 @@ public:
 
 		isect.mPos = mObjectToWorld(pos, pError, &isect.mPointError);
 		isect.mNormal = mObjectToWorld.TransformNormal(normal).Norm();
+		isect.mGeometryNormal = isect.mNormal;
 
 		isect.mAbsNormal = isect.mNormal;
 		isect.mShapeId = mShapeId;
@@ -253,7 +254,7 @@ public:
 			else {
 				real s = wi.Length();
 				wi.Normalize();
-				*pdf *= s * s / std::abs(lightPoint.mNormal.Dot(-1 * wi));
+				*pdf *= s * s / std::abs(lightPoint.mGeometryNormal.Dot(-1 * wi));
 			}
 			if (std::isinf(*pdf)) *pdf = 0.f;
 			return lightPoint;
@@ -284,6 +285,7 @@ public:
 		Intersection ret;
 		ret.mPos = pWorld;
 		ret.mNormal = nWorld;
+		ret.mGeometryNormal = nWorld;
 		ret.mAbsNormal = ret.mNormal;
 		//ret.pError = gamma(6) * Abs(pWorld) + gamma(6) * Abs(scaledDir);
 		ret.mPointError = Gamma(5) * Abs(pWorld);

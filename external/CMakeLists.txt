@@ -40,6 +40,34 @@ add_subdirectory(googletest)
 set(GOOGLE_TEST_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/googletest/googletest/include)
 set(GOOGLE_MOCK_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/googletest/googlemock/include)
 
+# Keep EXR dependencies local and reproducible without changing the older libraries.
+set(_gyunity_shared_libraries "${BUILD_SHARED_LIBS}")
+set(BUILD_SHARED_LIBS ON)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(IMATH_INSTALL OFF CACHE BOOL "" FORCE)
+set(IMATH_INSTALL_PKG_CONFIG OFF CACHE BOOL "" FORCE)
+set(OPENEXR_INSTALL OFF CACHE BOOL "" FORCE)
+set(OPENEXR_INSTALL_PKG_CONFIG OFF CACHE BOOL "" FORCE)
+set(OPENEXR_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(OPENEXR_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(OPENEXR_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+set(OPENEXR_FORCE_INTERNAL_DEFLATE ON CACHE BOOL "" FORCE)
+set(OPENEXR_FORCE_INTERNAL_OPENJPH ON CACHE BOOL "" FORCE)
+set(OPENEXR_USE_TBB OFF CACHE BOOL "" FORCE)
+add_subdirectory(imath)
+# OpenEXR calls find_package before CMake generates Imath's build-tree export.
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/imath/config/ImathTargets.cmake"
+  "# Imath targets are already defined by the parent dependency build.\n")
+add_subdirectory(openexr)
+foreach(_exr_target Iex IlmThread OpenEXRCore OpenEXR OpenEXRUtil)
+  if(TARGET ${_exr_target})
+    set_target_properties(${_exr_target} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build/runtime")
+  endif()
+endforeach()
+set(BUILD_SHARED_LIBS "${_gyunity_shared_libraries}")
+unset(_gyunity_shared_libraries)
+
 include(cmake/ide.cmake)
 # ext headers
 message("Create header project...")

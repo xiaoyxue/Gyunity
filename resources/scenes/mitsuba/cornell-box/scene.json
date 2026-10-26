@@ -1,0 +1,490 @@
+{
+  "camera": {
+    "fov_y": 19.5,
+    "to_world": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.0,
+      1.0,
+      0.0,
+      1.0,
+      -0.0,
+      0.0,
+      -1.0,
+      6.8,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "type": "pinhole"
+  },
+  "materials": {
+    "BackWallBSDF": {
+      "reflectance": [
+        0.725,
+        0.71,
+        0.68
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "CeilingBSDF": {
+      "reflectance": [
+        0.725,
+        0.71,
+        0.68
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "FloorBSDF": {
+      "reflectance": [
+        0.725,
+        0.71,
+        0.68
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "LeftWallBSDF": {
+      "reflectance": [
+        0.63,
+        0.065,
+        0.05
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "LightBSDF": {
+      "reflectance": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "RightWallBSDF": {
+      "reflectance": [
+        0.14,
+        0.45,
+        0.091
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "ShortBoxBSDF": {
+      "reflectance": [
+        0.725,
+        0.71,
+        0.68
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "TallBoxBSDF": {
+      "reflectance": [
+        0.725,
+        0.71,
+        0.68
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    }
+  },
+  "metadata": {
+    "archive": "cornell-box.zip",
+    "archive_sha256": "273bbbe0f2c319359b21488d83d3de7a098a9f7cb3270cb603347ee31a63aa08",
+    "importer_version": "0.1.0",
+    "license": "CC0-1.0",
+    "source_camera_to_world": [
+      -1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      -1.0,
+      6.8,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "source_file_format": "openexr",
+    "source_format": "mitsuba-3",
+    "source_fov": 19.5,
+    "source_fov_axis": "x",
+    "source_max_depth": 65,
+    "xml_sha256": "e8dc759d48133da52c3ce318cf7004bf64e791c34569f79e9da0ba051c680d99"
+  },
+  "name": "CornellBoxStandard",
+  "render": {
+    "accelerator": "bvh",
+    "filter": "tent",
+    "height": 1024,
+    "integrator": "path",
+    "max_depth": 65,
+    "seed": 123,
+    "spp": 64,
+    "width": 1024
+  },
+  "schema_version": 1,
+  "shapes": [
+    {
+      "emission": null,
+      "id": "Floor",
+      "material": "FloorBSDF",
+      "to_world": [
+        -4.37114e-08,
+        1.0,
+        4.37114e-08,
+        0.0,
+        0.0,
+        -8.74228e-08,
+        2.0,
+        0.0,
+        1.0,
+        4.37114e-08,
+        1.91069e-15,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": null,
+      "id": "Ceiling",
+      "material": "CeilingBSDF",
+      "to_world": [
+        -1.0,
+        7.64274e-15,
+        -1.74846e-07,
+        0.0,
+        8.74228e-08,
+        8.74228e-08,
+        -2.0,
+        2.0,
+        0.0,
+        -1.0,
+        -4.37114e-08,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": null,
+      "id": "BackWall",
+      "material": "BackWallBSDF",
+      "to_world": [
+        1.91069e-15,
+        1.0,
+        1.31134e-07,
+        0.0,
+        1.0,
+        3.82137e-15,
+        -8.74228e-08,
+        1.0,
+        -4.37114e-08,
+        1.31134e-07,
+        -2.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": null,
+      "id": "RightWall",
+      "material": "RightWallBSDF",
+      "to_world": [
+        4.37114e-08,
+        -1.74846e-07,
+        2.0,
+        1.0,
+        1.0,
+        3.82137e-15,
+        -8.74228e-08,
+        1.0,
+        3.82137e-15,
+        1.0,
+        2.18557e-07,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": null,
+      "id": "LeftWall",
+      "material": "LeftWallBSDF",
+      "to_world": [
+        -4.37114e-08,
+        8.74228e-08,
+        -2.0,
+        -1.0,
+        1.0,
+        3.82137e-15,
+        -8.74228e-08,
+        1.0,
+        0.0,
+        -1.0,
+        -4.37114e-08,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": null,
+      "id": "ShortBox",
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "material": "ShortBoxBSDF",
+      "to_world": [
+        0.0851643,
+        0.289542,
+        1.31134e-08,
+        0.328631,
+        3.72265e-09,
+        1.26563e-08,
+        -0.3,
+        0.3,
+        -0.284951,
+        0.0865363,
+        5.73206e-16,
+        0.374592,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "box",
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "emission": null,
+      "id": "TallBox",
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "material": "TallBoxBSDF",
+      "to_world": [
+        0.286776,
+        0.098229,
+        -2.29282e-15,
+        -0.335439,
+        -4.36233e-09,
+        1.23382e-08,
+        -0.6,
+        0.6,
+        -0.0997984,
+        0.282266,
+        2.62268e-08,
+        -0.291415,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "box",
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "emission": [
+        17.0,
+        12.0,
+        4.0
+      ],
+      "id": "Light",
+      "material": "LightBSDF",
+      "to_world": [
+        0.235,
+        -1.66103e-08,
+        -7.80685e-09,
+        -0.005,
+        -2.05444e-08,
+        3.90343e-09,
+        -0.0893,
+        1.98,
+        2.05444e-08,
+        0.19,
+        8.30516e-09,
+        -0.03,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    }
+  ]
+}

@@ -22,6 +22,12 @@
     <ClCompile Include="tests\BDPTPathTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\BDPTShadingNormalTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\ToneMapTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\BDPTConnectionTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
@@ -61,8 +67,32 @@
     <ClCompile Include="tests\VectorTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\ArrayTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp">
       <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GyunityApp\SceneRenderer.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GyunityApp\Examples.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GyunityApp\NativeScene.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\NativeSceneTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\MaterialPreviewTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VeachMisSceneTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VeachBidirSceneTest.cpp">
+      <Filter>tests</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

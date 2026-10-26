@@ -125,7 +125,7 @@ public:
 		lightPath[0].mPdfFwd = pdfPos;
 		lightPath[0].mThroughput = Le;
 		lightPath[0].mIsDelta = light->IsDeltaLight();
-		real cosTheta = std::abs(Dot(isect.mNormal, dir));
+		real cosTheta = std::abs(Dot(light->IsAreaLight() ? isect.mGeometryNormal : isect.mNormal, dir));
 		Vec3 throughput = Le * cosTheta / pdfLight / pdfPos / pdfDir;
 		Ray ray = isect.SpawnRay(dir);
 

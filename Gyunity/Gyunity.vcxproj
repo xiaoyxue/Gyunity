@@ -187,9 +187,12 @@
     <ClCompile Include="src\system\ProgressReporter.cpp" />
     <ClCompile Include="src\volume\Homogeneous.cpp" />
     <ClCompile Include="src\image\ImageIO.cpp" />
+    <ClCompile Include="src\image\ToneMap.cpp" />
     <ClCompile Include="src\integrator\Integrator.cpp" />
     <ClCompile Include="src\integrator\BDPTPath.cpp" />
     <ClCompile Include="src\integrator\BDPT.cpp" />
+    <ClCompile Include="src\integrator\BDPTConnection.cpp" />
+    <ClCompile Include="src\integrator\BDPTScattering.cpp" />
     <ClCompile Include="src\visual\Intersection.cpp" />
     <ClCompile Include="src\accelerator\KdTreeAccel.cpp" />
     <ClCompile Include="src\math\Linalg.cpp" />
@@ -229,6 +232,7 @@
     <ClInclude Include="src\integrator\PathVertex.h" />
     <ClInclude Include="src\integrator\BDPTPath.h" />
     <ClInclude Include="src\integrator\BDPT.h" />
+    <ClInclude Include="src\integrator\BDPTScattering.h" />
     <ClInclude Include="src\math\AABB.h" />
     <ClInclude Include="src\accelerator\Accelerator.h" />
     <ClInclude Include="src\light\AreaLight.h" />
@@ -257,6 +261,7 @@
     <ClInclude Include="src\integrator\HashGrid.h" />
     <ClInclude Include="src\volume\Homogeneous.h" />
     <ClInclude Include="src\image\ImageIO.h" />
+    <ClInclude Include="src\image\ToneMap.h" />
     <ClInclude Include="src\texture\ImageTexture.h" />
     <ClInclude Include="src\integrator\Integrator.h" />
     <ClInclude Include="src\visual\Intersection.h" />
@@ -301,6 +306,7 @@
     <ClInclude Include="src\visual\Visibility.h" />
     <ClInclude Include="src\integrator\VPT.h" />
   </ItemGroup>
+  <Import Project="..\external\openexr.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

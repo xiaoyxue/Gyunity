@@ -32,7 +32,7 @@ bool ValidRay(const Ray& ray) {
 }
 
 int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, Vec3 throughput,
-	real pdfFwd, int maxVertices, TransportMode mode, std::vector<PathVertex>& path) {
+	real pdfFwd, int maxVertices, TransportMode mode, SurfaceNormalMode normalMode, std::vector<PathVertex>& path) {
 	while (static_cast<int>(path.size()) < maxVertices) {
 		Intersection isect;
 		if (!scene.Intersect(ray, &isect)) {
@@ -56,9 +56,7 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 			Fail("BDPT surface has an invalid geometric normal.");
 			return -1;
 		}
-		// This initial BDPT path builder explicitly uses geometric-normal shading only.
-		isect.mNormal = isect.mGeometryNormal.Norm();
-		CoordinateSystem(isect.mNormal, &isect.mShadingDpDu, &isect.mShadingDpDv);
+		if (!Bidirectional::PrepareSurfaceFrame(&isect, normalMode)) return -1;
 		isect.ComputeScatteringFunction(arena, mode);
 		if (!isect.mBsdf) {
 			Fail("Surface BDPT requires a material at every surface vertex.");
@@ -72,6 +70,7 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 		vertex.mIsect = isect;
 		vertex.mLight = isect.mPrimitive->GetLight();
 		vertex.mThroughput = throughput;
+		vertex.mNormalMode = normalMode;
 		if (!ConvertDensity(pdfFwd, path.back(), vertex, &vertex.mPdfFwd)) return -1;
 		// Rounded endpoints can lose continuous area support; delta zeros remain valid markers.
 		if (vertex.mPdfFwd == 0 && !path.back().mIsDelta) break;
@@ -81,6 +80,9 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 		PathVertex& current = path.back();
 		PathVertex& previous = path[path.size() - 2];
 		const Vec3 wo = -ray.mDir;
+		// An incoming direction outside the shading support is a null event: the vertex stays
+		// available as a connection endpoint, but the walk cannot continue from it.
+		if (normalMode == SurfaceNormalMode::Shading && !Bidirectional::ShadingSupport(isect, wo)) break;
 		Vec3 wi;
 		real pdf = 0;
 		const real u0 = rand(), u1 = rand(), u2 = rand();
@@ -94,11 +96,9 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 			Fail("BDPT BSDF sampling returned an invalid direction.");
 			return -1;
 		}
-		throughput *= f * std::abs(Dot(isect.mNormal, wi)) / pdf;
-		if (!Finite(throughput)) {
-			Fail("BDPT path throughput is not finite.");
-			return -1;
-		}
+		const auto scatter = Bidirectional::ScatterThroughput(current, mode, wo, wi, f, pdf, &throughput);
+		if (scatter == Bidirectional::ScatterStatus::Invalid) return -1;
+		if (scatter == Bidirectional::ScatterStatus::Null) break;
 		current.mIsDelta = isect.mBsdf->IsDelta();
 		pdfFwd = current.mIsDelta ? 0 : pdf;
 		// Evaluate with the saved incoming direction, before replacing the ray.
@@ -145,13 +145,14 @@ bool ConvertDensity(real pdf, const PathVertex& vertex, const PathVertex& next, 
 }
 
 int GenerateCameraPath(const Scene& scene, const Camera& camera, StateSequence& rand, MemoryPool& arena,
-	const Ray& cameraRay, int maxVertices, std::vector<PathVertex>& cameraPath) {
+	const Ray& cameraRay, int maxVertices, SurfaceNormalMode normalMode, std::vector<PathVertex>& cameraPath) {
 	cameraPath.clear();
 	if (maxVertices < 0) { Fail("BDPT maximum vertex count must be nonnegative."); return -1; }
 	if (maxVertices == 0) return 0;
 	if (!ValidRay(cameraRay)) return -1;
 	PathVertex endpoint;
 	endpoint.mType = PathVertexType::Camera;
+	endpoint.mNormalMode = normalMode;
 	endpoint.mCamera = &camera;
 	endpoint.mIsect.mPos = cameraRay.mOrig;
 	endpoint.mThroughput = Vec3(1);
@@ -165,11 +166,11 @@ int GenerateCameraPath(const Scene& scene, const Camera& camera, StateSequence& 
 	}
 	cameraPath.push_back(endpoint);
 	return Trace(scene, rand, arena, cameraRay, Vec3(1), endpoint.mPdfDir,
-		maxVertices, TransportMode::Radiance, cameraPath);
+		maxVertices, TransportMode::Radiance, normalMode, cameraPath);
 }
 
 int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena,
-	int maxVertices, std::vector<PathVertex>& lightPath) {
+	int maxVertices, SurfaceNormalMode normalMode, std::vector<PathVertex>& lightPath) {
 	lightPath.clear();
 	if (maxVertices < 0) { Fail("BDPT maximum vertex count must be nonnegative."); return -1; }
 	if (maxVertices == 0 || scene.GetLights().empty()) return 0;
@@ -194,7 +195,12 @@ int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena
 	if (endpoint.mPdfPos == 0 || endpoint.mPdfDir == 0) return 0;
 	endpoint.mLight = light;
 	endpoint.mType = light->IsEnvironmentLight() ? PathVertexType::Environment : PathVertexType::Light;
-	if (light->IsAreaLight()) endpoint.mIsect.mGeometryNormal = endpoint.mIsect.mNormal;
+	endpoint.mNormalMode = normalMode;
+	// Emission is tied to the oriented geometric surface; shapes populate it when sampled.
+	if (light->IsAreaLight() && !Bidirectional::UnitDirection(endpoint.mIsect.mGeometryNormal)) {
+		Fail("BDPT area-light sample has no valid geometric normal.");
+		return -1;
+	}
 	endpoint.mDirection = -dir;
 	endpoint.mThroughput = radiance;
 	endpoint.mPdfFwd = endpoint.mLightSelectionPdf *
@@ -203,12 +209,12 @@ int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena
 	if (!ValidRay(ray)) return -1;
 	lightPath.push_back(endpoint);
 	if (radiance == Vec3(0) || maxVertices == 1) return 1;
-	const real cosine = light->IsAreaLight() ? std::abs(Dot(endpoint.mIsect.mNormal, dir)) : 1;
+	const real cosine = light->IsAreaLight() ? std::abs(Dot(endpoint.mIsect.mGeometryNormal, dir)) : 1;
 	const Vec3 throughput = radiance * cosine / endpoint.mLightSelectionPdf / endpoint.mPdfPos / endpoint.mPdfDir;
 	if (!Finite(throughput)) { Fail("BDPT emitted path throughput is not finite."); return -1; }
 	return Trace(scene, rand, arena, ray, throughput,
 		light->IsEnvironmentLight() ? endpoint.mPdfPos : endpoint.mPdfDir,
-		maxVertices, TransportMode::Importance, lightPath);
+		maxVertices, TransportMode::Importance, normalMode, lightPath);
 }
 
 GYT_NAMESPACE_END

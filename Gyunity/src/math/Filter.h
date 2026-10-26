@@ -38,6 +38,14 @@ public:
 };
 
 
+class TentFilter : public Filter {
+public:
+	TentFilter() : Filter(1) {}
+	real Evaluate(real dx, real dy) const override {
+		return std::max(real(0), 1 - std::abs(dx)) * std::max(real(0), 1 - std::abs(dy));
+	}
+};
+
 class GaussianFilter : public Filter
 {
 private:

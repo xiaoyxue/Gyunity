@@ -1,0 +1,541 @@
+{
+  "camera": {
+    "fov_y": 35.0,
+    "to_world": [
+      0.00500708,
+      -0.00467005,
+      -0.999977,
+      16.2155,
+      -0.0,
+      0.999989,
+      -0.00467011,
+      4.05167,
+      -0.999987,
+      -2.34659e-05,
+      -0.00502464,
+      0.0114864,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "type": "pinhole"
+  },
+  "materials": {
+    "DiffuseBSDF": {
+      "reflectance": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "GlassBSDF": {
+      "eta_inside": 1.5,
+      "eta_outside": 1.0,
+      "reflection": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "transmission": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "type": "dielectric"
+    },
+    "LampBSDF": {
+      "alpha": [
+        0.25,
+        0.25
+      ],
+      "distribution": "beckmann",
+      "eta": [
+        2.8656,
+        2.11918,
+        1.94008
+      ],
+      "k": [
+        3.03233,
+        2.05611,
+        1.61629
+      ],
+      "reflectance": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "two_sided": true,
+      "type": "conductor"
+    },
+    "WoodBSDF": {
+      "reflectance": [
+        0.32963,
+        0.257976,
+        0.150292
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    }
+  },
+  "metadata": {
+    "archive": "veach-bidir.zip",
+    "archive_sha256": "53ad0f938de0f6e6f5b980fd3ce6d64b2743e409612d2e327cd3bb63c284b321",
+    "importer_version": "0.1.0",
+    "license": "CC0-1.0",
+    "native_integrator_override": "bdpt",
+    "source_camera_to_world": [
+      -0.00500708,
+      -0.00467005,
+      -0.999977,
+      16.2155,
+      0.0,
+      0.999989,
+      -0.00467011,
+      4.05167,
+      0.999987,
+      -2.34659e-05,
+      -0.00502464,
+      0.0114864,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "source_file_format": "openexr",
+    "source_format": "mitsuba-3",
+    "source_fov": 35.0,
+    "source_fov_axis": "x",
+    "source_integrator": "path",
+    "source_max_depth": 7,
+    "xml_sha256": "06e391581b3e673400f34d81767a591395ef3808454af989eac155f40ea46ea6"
+  },
+  "name": "veach-bidir",
+  "render": {
+    "accelerator": "bvh",
+    "filter": "tent",
+    "height": 1024,
+    "integrator": "bdpt",
+    "max_depth": 7,
+    "seed": 123,
+    "spp": 64,
+    "width": 1024
+  },
+  "schema_version": 1,
+  "shapes": [
+    {
+      "emission": null,
+      "face_normals": true,
+      "file": "models\\Mesh007.obj",
+      "id": "Lamp_0001",
+      "material": "LampBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": true,
+      "file": "models\\Mesh004.obj",
+      "id": "Diffuse_0001",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": [
+        523.258,
+        523.258,
+        523.258
+      ],
+      "id": "Diffuse_0002",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        -1.20536e-08,
+        0.275755,
+        1.20536e-08,
+        -2.48161,
+        0.0,
+        -6.64767e-09,
+        0.152081,
+        6.0,
+        0.275754,
+        1.20536e-08,
+        5.2688e-16,
+        2.5894,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": [
+        12048.2,
+        8605.84,
+        6196.21
+      ],
+      "id": "Diffuse_0003",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        -0.0101082,
+        0.067068,
+        0.00138972,
+        -2.69082,
+        -0.0610016,
+        -0.0070995,
+        -0.00842772,
+        5.10417,
+        -0.0282857,
+        -0.00865658,
+        0.0176788,
+        -3.77057,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": null,
+      "face_normals": false,
+      "file": "models\\Mesh001.obj",
+      "id": "Lamp_0002",
+      "material": "LampBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": false,
+      "file": "models\\Mesh005.obj",
+      "id": "Lamp_0003",
+      "material": "LampBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": true,
+      "file": "models\\Mesh008.obj",
+      "id": "Diffuse_0004",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": false,
+      "file": "models\\Mesh002.obj",
+      "id": "Glass",
+      "material": "GlassBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": false,
+      "file": "models\\Mesh011.obj",
+      "id": "Diffuse_0005",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": false,
+      "file": "models\\Mesh003.obj",
+      "id": "Diffuse_0006",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": false,
+      "file": "models\\Mesh009.obj",
+      "id": "Diffuse_0007",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": false,
+      "file": "models\\Mesh006.obj",
+      "id": "Diffuse_0008",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": true,
+      "file": "models\\Mesh000.obj",
+      "id": "Wood",
+      "material": "WoodBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    },
+    {
+      "emission": null,
+      "face_normals": true,
+      "file": "models\\Mesh010.obj",
+      "id": "Diffuse_0009",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh"
+    }
+  ]
+}

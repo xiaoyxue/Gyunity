@@ -64,8 +64,10 @@ bool RenderSppmSample(const Scene& scene, const Ray& ray, int depth, real sample
 	integrator.Render(scene, camera);
 	film->SetFileName(filename);
 	if (!film->SaveImage()) return false;
-	const auto image = ImageIO::LoadImage(filename, 1, 1);
-	if (image.size() != 1) {
+	std::vector<Vec3> image;
+	int width = 0, height = 0;
+	if (!ImageIO::LoadImage(filename, image, width, height)) return false;
+	if (width != 1 || height != 1 || image.size() != 1) {
 		ADD_FAILURE() << "Unexpected SPPM output size: " << filename;
 		return false;
 	}

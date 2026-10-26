@@ -47,20 +47,35 @@
     <ClCompile Include="tests\SceneRegistryTest.cpp" />
     <ClCompile Include="tests\SphereLightPdfTest.cpp" />
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
+    <ClCompile Include="..\GyunityApp\SceneRenderer.cpp" />
+    <ClCompile Include="..\GyunityApp\Examples.cpp" />
+    <ClCompile Include="..\GyunityApp\NativeScene.cpp" />
+    <ClCompile Include="tests\NativeSceneTest.cpp" />
+    <ClCompile Include="tests\MaterialPreviewTest.cpp" />
+    <ClCompile Include="tests\VeachMisSceneTest.cpp" />
+    <ClCompile Include="tests\VeachBidirSceneTest.cpp" />
     <ClCompile Include="test.cpp" />
     <ClCompile Include="tests\TransformTest.cpp" />
     <ClCompile Include="tests\BoundaryTransmittanceTest.cpp" />
     <ClCompile Include="tests\VectorTest.cpp" />
+    <ClCompile Include="tests\ArrayTest.cpp" />
     <ClCompile Include="tests\LightTracingEmissionTest.cpp" />
     <ClCompile Include="tests\LightProbabilityTest.cpp" />
     <ClCompile Include="tests\BDPTPathTest.cpp" />
+    <ClCompile Include="tests\BDPTShadingNormalTest.cpp" />
+    <ClCompile Include="tests\ToneMapTest.cpp" />
     <ClCompile Include="tests\BDPTConnectionTest.cpp" />
     <ClCompile Include="tests\BDPTEnvironmentTest.cpp" />
     <ClCompile Include="tests\PixelDebugTest.cpp" />
     <ClCompile Include="tests\ProgressReporterTest.cpp" />
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp" />
   </ItemGroup>
-  <ItemDefinitionGroup />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="..\external\openexr.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

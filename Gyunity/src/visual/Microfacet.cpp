@@ -3,6 +3,38 @@
 
 GYT_NAMESPACE_BEGIN
 
+real BeckmannDistribution::D(const Vec3& normal) const {
+	if (normal.z <= 0) return 0;
+	const real cos2 = normal.z * normal.z;
+	const real slope2 = (normal.x * normal.x / (mAlphaX * mAlphaX) +
+		normal.y * normal.y / (mAlphaY * mAlphaY)) / cos2;
+	return std::exp(-slope2) / (PI * mAlphaX * mAlphaY * cos2 * cos2);
+}
+
+real BeckmannDistribution::Lambda(const Vec3& direction) const {
+	if (direction.z == 0) return std::numeric_limits<real>::infinity();
+	const double slope2 = (double(mAlphaX) * mAlphaX * direction.x * direction.x +
+		double(mAlphaY) * mAlphaY * direction.y * direction.y) / (double(direction.z) * direction.z);
+	if (slope2 == 0) return 0;
+	const double a = 1 / std::sqrt(slope2);
+	return static_cast<real>(std::max(0.0, (std::erf(a) - 1) * 0.5 + std::exp(-a * a) / (2 * std::sqrt(double(PI)) * a)));
+}
+
+real BeckmannDistribution::G1(const Vec3& direction, const Vec3& normal) const {
+	if (Dot(direction, normal) * direction.z <= 0) return 0;
+	return 1 / (1 + Lambda(direction));
+}
+
+real BeckmannDistribution::G(const Vec3& wo, const Vec3& wi, const Vec3& normal) const {
+	return G1(wo, normal) * G1(wi, normal);
+}
+
+Vec3 BeckmannDistribution::SampleWh(const Vec3&, const Vec2& sample) const {
+	const real radius = std::sqrt(-std::log1p(-std::min(sample.x, ONE_MINUS_EPSILON)));
+	const real phi = 2 * PI * sample.y;
+	return Vec3(-mAlphaX * radius * std::cos(phi), -mAlphaY * radius * std::sin(phi), 1).Norm();
+}
+
 static void TrowbridgeReitzSample11(real cosTheta, real U1, real U2,
 	real* slopeX, real* slope_y) {
 	// special case (normal incidence)
