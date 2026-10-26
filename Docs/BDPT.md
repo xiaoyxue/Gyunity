@@ -37,8 +37,10 @@ an invalid or unsupported configuration with non-throwing logging. Discard parti
 output on `-1`. Keep the supplied `MemoryPool` alive until connections are finished.
 
 Camera paths use radiance transport and light paths use importance transport.
-For BDPT generation only, shading frames are explicitly built from geometric
-normals; interpolated shading-normal transport is not advertised as supported.
+Both builders take an explicit `SurfaceNormalMode`, which must be the same for the
+two subpaths of a render. `Geometric` builds shading frames from geometric normals
+(the initial BDPT model). `Shading` keeps interpolated normals; see
+[Smooth shading normals](#smooth-shading-normals).
 Media, null-material boundaries and mixed delta/continuous BSDFs are rejected.
 Pure mirror/glass events remain supported. A zero-contribution sample stops
 extension without losing the surface vertex already reached.
@@ -61,8 +63,10 @@ directions, geometric conversion, budgets, endpoint metadata, explicit failures,
 glass transport modes, and environment launch/escape conventions.
 
 ## Bidirectional path tracing
-`BidirectionalPathTracing(sampler, maxDepth, spp)` supports finite area/point
-lights and one environment light, alone or mixed with finite lights.
+`BidirectionalPathTracing(sampler, maxDepth, spp, useShadingNormals = false)` supports
+finite area/point lights and one environment light, alone or mixed with finite lights.
+The default selects the geometric-normal model; `true` selects corrected smooth
+shading normals for both subpaths.
 `RenderChecked(scene, camera)` returns success/failure explicitly; the shared
 `RenderScene` checks this result before saving the film. Other integrators retain
 their existing behavior through the default checked-render adapter.
@@ -72,7 +76,7 @@ unsupported. Environment emission requires finite nonempty scene bounds.
 The renderer generates both subpaths, evaluates supported connections at
 `depth = s + t - 2`, adds each camera-sample sum once and normalizes camera splats
 once by samples per pixel. It does not call the PT direct-light estimator.
-Only geometric-normal shading is used by its path builders.
+The path builders use the integrator's single normal policy.
 
 `MisWeight` follows the original PBRT-v3 balance heuristic: walk neighboring
 strategies in both directions using forward/reverse density ratios, then evaluate
@@ -140,3 +144,31 @@ state; the renderer only calls `Advance()` for each finished tile and
 work-unit count without a 100% message. If stderr
 is redirected to a log, monitor that log (for example with `Get-Content -Wait`)
 or use `Tee-Object` to retain both console output and a log.
+
+## Smooth shading normals
+With `useShadingNormals = true` (`--bdpt-normals shading` in GyunityApp), BDPT follows
+the #148 contract instead of replacing interpolated normals:
+
+- `ns` (interpolated, normalized) defines the BSDF frame and scattering cosines. The
+  tangent comes from `dpdu` projected onto the shading plane, independent of the ray;
+  a degenerate parameterization uses a deterministic `CoordinateSystem` basis.
+  `ng` keeps area densities (`ConvertDensity`), sidedness, emission and ray offsets.
+  A shading normal on the far side of `ng` is a checked failure.
+- `Bidirectional::ScatteringCosine` returns `K = |wi.ns| * C`, with
+  `C = |wo.ns| |wi.ng| / (|wo.ng| |wi.ns|)` for importance and `1` for radiance
+  (Veach / PBRT-v3 `CorrectShadingNormal`). It is applied exactly once to extension,
+  `t = 1`, `s = 1` and interior connections; connections then keep only distance
+  falloff and an area emitter's geometric cosine. Densities and event masses are never
+  multiplied by `K`.
+- Support: `wo` and `wi` must each lie strictly on the same side of `ns` and `ng`.
+  Outside it, extension stops without retrying, connections contribute zero and
+  queried directional PDFs are zero; accepted samples keep their original densities.
+- Area lights orient emission, emitted-direction sampling and `PdfLight` by `ng`.
+  Triangle and sphere samples return unit normals with `ng` oriented like ray
+  intersections, and area-to-solid-angle conversions use `ng`.
+
+Shading-normal transport is an approximate model: strongly tilted normals can still
+show shadow-terminator artifacts or high variance near grazing angles; they are not
+clamped. `BDPTShadingNormalTest.cpp` covers the analytic factors, support, frames,
+density separation, one-time correction on both subpaths, emitter sidedness and the
+PBRT tone-mapping operators.

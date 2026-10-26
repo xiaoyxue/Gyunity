@@ -47,7 +47,8 @@ The imported `CornellBoxStandard` is additional to the unchanged legacy Cornell
 demos. Its source camera, red/green walls, two transformed boxes, tent filter
 and colored emitter are taken from the CC0 gallery XML. PNG/HDR files generated
 by Gyunity are distinct from the archive's supplied Tungsten reference images.
-BDPT currently uses geometric-normal shading and unfiltered camera splats;
+BDPT uses geometric-normal shading by default (smooth normals are opt-in with
+`--bdpt-normals shading`) and unfiltered camera splats;
 those existing limitations are not claims of exact cross-renderer equivalence.
 
 C++ failures use checked statuses, not exception-based control flow:

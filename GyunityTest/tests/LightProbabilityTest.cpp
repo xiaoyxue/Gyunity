@@ -162,7 +162,8 @@ TEST(LightProbability, AreaEmissionSampleAndPdfAgree) {
 TEST(LightProbability, AreaDirectionalPdfIntegratesToOneAndRejectsBackside) {
 	AreaLight light(EmittingTriangle(), Vec3(1));
 	Intersection point;
-	point.mNormal = Vec3(0, 0, 1);
+	// Emission is oriented by the geometric surface normal.
+	point.mNormal = point.mGeometryNormal = Vec3(0, 0, 1);
 	double integral = 0;
 	for (int i = 0; i < 1024; ++i) {
 		const real z = (i + 0.5f) / 1024;
@@ -201,7 +202,7 @@ TEST(LightProbability, OriginPmfIsSeparateFromConditionalEmissionPdf) {
 	scene->AddLight(std::make_shared<AreaLight>(shape, Vec3(3)));
 	Initialize(scene);
 	Intersection point;
-	point.mNormal = Vec3(0, 0, 1);
+	point.mNormal = point.mGeometryNormal = Vec3(0, 0, 1);
 	real selectionPdf, positionPdf, directionPdf;
 	ASSERT_TRUE(scene->LightSelectionPdf(0, &selectionPdf));
 	ASSERT_TRUE(light->PdfLight(point, Vec3(0, 0, 1), &positionPdf, &directionPdf));

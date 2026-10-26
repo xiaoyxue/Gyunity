@@ -71,10 +71,25 @@ rectangle BSDFs/radiances and the source camera are retained.
 The source default depth is 7; the command explicitly overrides it to 8.
 PT may have considerable noise/fireflies at this sample budget; changing the
 materials or light intensity to hide that would invalidate the import.
-BDPT currently uses geometric-normal shading even when the imported OBJ has
-smooth normals. `VeachBidirScene.*` checks primitive counts against the actual
+BDPT uses geometric-normal shading by default even when the imported OBJ has
+smooth normals; the faceted glass then produces lattice-like caustics. Add
+`--bdpt-normals shading` for adjoint-corrected smooth normals (see
+[BDPT](BDPT.md#smooth-shading-normals)). `VeachBidirScene.*` checks primitive counts against the actual
 OBJ faces, source normal policies, camera conversion and nonblack diffuse
 BSDFs on the emitting rectangles.
+
+LDR outputs accept PBRT `imgtool` tone mapping with 8-bit sRGB encoding, and
+`--convert` applies it to an existing image:
+
+```powershell
+..\x64\Release\GyunityApp.exe --scene veach-bidir --integrator bdpt --bdpt-normals shading --spp 256 --out "$TestRoot\veach-bidir.exr"
+..\x64\Release\GyunityApp.exe --convert "$TestRoot\veach-bidir.exr" --tonemap aces --out "$TestRoot\veach-bidir-aces.png"
+..\x64\Release\GyunityApp.exe --convert "$TestRoot\veach-bidir.exr" --tonemap reinhard --max-luminance 4 --out "$TestRoot\veach-bidir-reinhard.png"
+```
+
+`aces` is pbrt-v4's `--acesfilmic` (Narkowicz fit per channel, no implicit exposure);
+`reinhard` is pbrt-v3's `--tonemap` with `--max-luminance` as the white luminance.
+`--tonemap-scale` multiplies values first, like pbrt's `--scale`.
 
 The named scene and C++ `Examples::VeachBidir` helper default to **BDPT**.
 The reviewed archive importer records this native integrator override in

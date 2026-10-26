@@ -1,4 +1,6 @@
 #include "SceneCommandLine.h"
+#include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <set>
 
@@ -19,6 +21,21 @@ bool ParseInteger(const std::string& option, const std::string& value, int minim
 	if (result < minimum) return Error(option + " must be at least " + std::to_string(minimum));
 	output = result;
 	return true;
+}
+
+bool ParsePositiveReal(const std::string& option, const std::string& value, Gyunity::real& output) {
+	char* end = nullptr;
+	const double result = std::strtod(value.c_str(), &end);
+	if (value.empty() || end != value.c_str() + value.size() || !std::isfinite(result) || result <= 0)
+		return Error(option + " requires a positive finite number: " + value);
+	output = static_cast<Gyunity::real>(result);
+	return true;
+}
+
+bool LowDynamicRange(const std::string& output) {
+	if (output.size() < 4) return false;
+	const auto suffix = output.substr(output.size() - 4);
+	return suffix == ".png" || suffix == ".bmp";
 }
 
 }
@@ -45,7 +62,9 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 		if (option != "--scene" && option != "--scene-file" && option != "--integrator" &&
 			option != "--accel" && option != "--width" && option != "--height" &&
 			option != "--spp" && option != "--max-depth" && option != "--out" &&
-			option != "--iterations" && option != "--photons-per-stage")
+			option != "--iterations" && option != "--photons-per-stage" &&
+			option != "--bdpt-normals" && option != "--tonemap" && option != "--max-luminance" &&
+			option != "--tonemap-scale" && option != "--convert")
 			return Error("Unknown option '" + option + "'. Use --help.");
 		if (!seen.insert(option).second) return Error("Duplicate option: " + option);
 		if (++i == argc || std::string(argv[i]).empty() || std::string(argv[i]).find("--") == 0)
@@ -72,7 +91,32 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 		else if (option == "--max-depth" && !ParseInteger(option, value, 1, options.maxDepth)) return false;
 		else if (option == "--iterations" && !ParseInteger(option, value, 1, options.sppm.iterations)) return false;
 		else if (option == "--photons-per-stage" && !ParseInteger(option, value, 1, options.sppm.photonsPerStage)) return false;
+		else if (option == "--bdpt-normals") {
+			if (value == "shading") options.bdptShadingNormals = true;
+			else if (value == "geometric") options.bdptShadingNormals = false;
+			else return Error("Use --bdpt-normals geometric|shading.");
+		}
+		else if (option == "--tonemap") {
+			if (!Gyunity::ParseToneMapOperator(value, &options.toneMap.op)) return Error("Use --tonemap none|reinhard|aces.");
+		}
+		else if (option == "--max-luminance" && !ParsePositiveReal(option, value, options.toneMap.maxLuminance)) return false;
+		else if (option == "--tonemap-scale" && !ParsePositiveReal(option, value, options.toneMap.scale)) return false;
+		else if (option == "--convert") parsed.convertInput = value;
 	}
+	const bool toneMapped = seen.count("--tonemap") || seen.count("--max-luminance") || seen.count("--tonemap-scale");
+	if (seen.count("--convert")) {
+		for (const auto& option : seen) {
+			if (option != "--convert" && option != "--out" && option != "--tonemap" &&
+				option != "--max-luminance" && option != "--tonemap-scale")
+				return Error("--convert accepts only --out, --tonemap, --max-luminance and --tonemap-scale.");
+		}
+		if (!LowDynamicRange(options.output)) return Error("--convert requires a .png or .bmp --out file.");
+		parsed.command = SceneCommand::Convert;
+		output = std::move(parsed);
+		return true;
+	}
+	if (toneMapped && !LowDynamicRange(options.output))
+		return Error("--tonemap, --max-luminance and --tonemap-scale apply to .png or .bmp output only.");
 	if (options.scene && !nativeFile.empty()) return Error("--scene and --scene-file are mutually exclusive.");
 	const auto overrides = options;
 	if (!LoadSceneDefaults(options, nativeFile)) return false;
@@ -91,6 +135,8 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 		return Error("SPPM uses --iterations and --photons-per-stage, not --spp.");
 	if (options.integrator != "sppm" && (seen.count("--iterations") || seen.count("--photons-per-stage")))
 		return Error("--iterations and --photons-per-stage require the sppm integrator.");
+	if (options.integrator != "bdpt" && seen.count("--bdpt-normals"))
+		return Error("--bdpt-normals requires the bdpt integrator.");
 	if (options.output.empty()) return Error("--out is required.");
 	if (options.output.size() < 4) return Error("--out must end in .png, .bmp, .hdr or .exr.");
 	const auto suffix = options.output.substr(options.output.size() - 4);
@@ -120,6 +166,13 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 			"  --photons-per-stage N  SPPM photon budget per iteration (default 300000)\n"
 			"  --max-depth N          Path depth (default 8)\n"
 			"  --accel bvh|kd         Accelerator (default bvh)\n"
+			"  --bdpt-normals geometric|shading  BDPT surface normals (default geometric);\n"
+			"                         shading uses adjoint-corrected smooth normals (#148)\n"
+			"  --tonemap none|reinhard|aces  PBRT imgtool tone mapping for .png/.bmp output\n"
+			"  --max-luminance N      Reinhard white luminance (default 1)\n"
+			"  --tonemap-scale S      Linear scale before tone mapping (default 1)\n"
+			"  --convert IN           Convert IN (.exr/.hdr/...) to the --out .png/.bmp with the\n"
+			"                         tone-mapping options and 8-bit sRGB encoding\n"
 			"  --out FILE             Required .png, .bmp, .hdr or .exr output\n"
 			"Native scenes supply defaults; explicit flags override them.\n"
 			"Fog uses volume path tracing. Run from GyunityApp for named scene assets.\n"
@@ -135,6 +188,8 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 		return 0;
 	}
 	if (options.command == SceneCommand::Render) return RenderScene(options.render) ? 0 : 1;
+	if (options.command == SceneCommand::Convert)
+		return ConvertImage(options.convertInput, options.render.output, options.render.toneMap) ? 0 : 1;
 	Error("No scene command supplied.");
 	return 1;
 }

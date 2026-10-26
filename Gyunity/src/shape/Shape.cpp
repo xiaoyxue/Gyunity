@@ -11,7 +11,8 @@ Intersection Shape::Sample(const Intersection& isect, real* pdf, const Vec2& u) 
 	}
 	else {
 		wi.Normalize();
-		*pdf *= Distance2(isect.mPos, it.mPos) / std::abs(Dot(it.mNormal, -wi));
+		// Area-to-solid-angle Jacobian uses the geometric surface normal.
+		*pdf *= Distance2(isect.mPos, it.mPos) / std::abs(Dot(it.mGeometryNormal, -wi));
 		if (std::isinf(*pdf)) *pdf = 0;
 	}
 	it.mShapeId = mShapeId;

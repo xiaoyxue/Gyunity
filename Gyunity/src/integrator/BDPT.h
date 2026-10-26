@@ -12,14 +12,17 @@ bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<Pa
 
 class BidirectionalPathTracing : public Integrator {
 public:
-	BidirectionalPathTracing(std::shared_ptr<Sampler> sampler, int maxDepth, int spp)
-		: mSampler(sampler), mMaxDepth(maxDepth), mSpp(spp) {}
+	// useShadingNormals = true enables smooth shading normals with adjoint-corrected transport
+	// (#148) on both subpaths; the default keeps the geometric-normal model.
+	BidirectionalPathTracing(std::shared_ptr<Sampler> sampler, int maxDepth, int spp, bool useShadingNormals = false)
+		: mSampler(sampler), mMaxDepth(maxDepth), mSpp(spp), mUseShadingNormals(useShadingNormals) {}
 	void Render(const Scene& scene, const Camera& camera) override;
 	bool RenderChecked(const Scene& scene, const Camera& camera) override;
 
 private:
 	std::shared_ptr<Sampler> mSampler;
 	int mMaxDepth, mSpp;
+	bool mUseShadingNormals;
 };
 
 GYT_NAMESPACE_END

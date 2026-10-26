@@ -8,6 +8,7 @@
 #include "sampler/Halton.h"
 #include "sampler/HaltonEnum.h"
 #include "sampler/SamplerEnum.h"
+#include "image/ImageIO.h"
 #include <limits>
 
 namespace {
@@ -46,7 +47,7 @@ bool RenderScene(const SceneRenderOptions& options) {
 	auto sampler = std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123);
 	auto samplerEnum = std::make_shared<SamplerEnum>();
 	if (options.integrator == "bdpt") {
-		BidirectionalPathTracing integrator(sampler, options.maxDepth, options.spp);
+		BidirectionalPathTracing integrator(sampler, options.maxDepth, options.spp, options.bdptShadingNormals);
 		return RenderScene(options, integrator);
 	}
 	if (options.scene && options.scene->usesVolume) {
@@ -110,6 +111,17 @@ bool RenderScene(const SceneRenderOptions& options, Integrator& integrator) {
 	scene->Initialize();
 	film->SetFileName(options.output);
 	if (!integrator.RenderChecked(*scene, *camera)) return false;
-	if (!film->SaveImage()) return Error("Cannot write image '" + options.output + "'. Check its directory and permissions.");
+	if (!film->SaveImage(options.toneMap)) return Error("Cannot write image '" + options.output + "'. Check its directory and permissions.");
+	return true;
+}
+
+bool ConvertImage(const std::string& input, const std::string& output, const ToneMapSettings& toneMap) {
+	std::vector<Vec3> image;
+	int width = 0, height = 0;
+	if (!ImageIO::LoadImage(input, image, width, height) || width <= 0 || height <= 0)
+		return Error("Cannot read image '" + input + "'.");
+	if (!ApplyToneMap(image, toneMap)) return Error("Cannot tone map '" + input + "'.");
+	if (!ImageIO::WriteSrgbLdrImage(output, image, uint32(width), uint32(height)))
+		return Error("Cannot write image '" + output + "'. Use a .png or .bmp output.");
 	return true;
 }

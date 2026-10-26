@@ -4,6 +4,7 @@
 #include "math/Filter.h"
 #include "math/MathUtils.h"
 #include "system/Threading.h"
+#include "image/ToneMap.h"
 #include <mutex>
 #include <vector>
 #include <algorithm>
@@ -122,6 +123,9 @@ public:
 	}
 
 	bool SaveImage();
+
+	// Low-dynamic-range output with pbrt's tone-mapping operators and 8-bit sRGB encoding.
+	bool SaveImage(const ToneMapSettings& toneMap);
 
 private:
 

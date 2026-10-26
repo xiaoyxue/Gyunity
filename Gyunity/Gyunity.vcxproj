@@ -187,6 +187,7 @@
     <ClCompile Include="src\system\ProgressReporter.cpp" />
     <ClCompile Include="src\volume\Homogeneous.cpp" />
     <ClCompile Include="src\image\ImageIO.cpp" />
+    <ClCompile Include="src\image\ToneMap.cpp" />
     <ClCompile Include="src\integrator\Integrator.cpp" />
     <ClCompile Include="src\integrator\BDPTPath.cpp" />
     <ClCompile Include="src\integrator\BDPT.cpp" />
@@ -257,6 +258,7 @@
     <ClInclude Include="src\integrator\HashGrid.h" />
     <ClInclude Include="src\volume\Homogeneous.h" />
     <ClInclude Include="src\image\ImageIO.h" />
+    <ClInclude Include="src\image\ToneMap.h" />
     <ClInclude Include="src\texture\ImageTexture.h" />
     <ClInclude Include="src\integrator\Integrator.h" />
     <ClInclude Include="src\visual\Intersection.h" />

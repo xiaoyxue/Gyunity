@@ -44,6 +44,9 @@ public:
 
 	static bool WriteImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY, real gamma = 2.2);
 
+	// Writes .png/.bmp with pbrt's 8-bit sRGB encoding; values are expected to be display-referred.
+	static bool WriteSrgbLdrImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY);
+
 };
 
 GYT_NAMESPACE_END

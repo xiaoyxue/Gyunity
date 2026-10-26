@@ -1,4 +1,5 @@
 #include "ImageIO.h"
+#include "ToneMap.h"
 #include "svpng.inc"
 #include "math/MathUtils.h"
 #include "container/Array.h"
@@ -305,6 +306,18 @@ bool ImageIO::WriteImage(const std::string& filename, const std::vector<Vec3>& i
 		}
 		return false;
 	}
+}
+
+bool ImageIO::WriteSrgbLdrImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY) {
+	static const int channels = 3;
+	if (filename.size() < 4 || image.size() != size_t(resX) * resY) return false;
+	const std::string suffix = filename.substr(filename.length() - 4);
+	if (suffix != ".png" && suffix != ".bmp") return false;
+	std::vector<unsigned char> data(size_t(resX) * resY * channels);
+	for (size_t i = 0; i < image.size(); ++i)
+		for (int k = 0; k < channels; ++k) data[i * channels + k] = EncodeSrgb8(image[i][k]);
+	if (suffix == ".bmp") return stbi_write_bmp(filename.c_str(), resX, resY, channels, data.data()) != 0;
+	return stbi_write_png(filename.c_str(), resX, resY, channels, data.data(), channels * resX) != 0;
 }
 
 
