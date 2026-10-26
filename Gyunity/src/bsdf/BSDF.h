@@ -322,10 +322,12 @@ public:
 
 	real Pdf(const Vec3& wo, const Vec3& wi) const override 
 	{
+		if (!SameHemisphere(wo, wi)) return 0;
 		real pdf = 0;
-		Vec3 wh;
+		Vec3 wh = wo + wi;
+		if (wh == Vec3(0)) return 0;
 		real dwhDwi;
-		wh = (wo + wi).Norm();
+		wh = wh.Norm();
 		dwhDwi = 1.f / (4 * Dot(wi, wh));
 		wh = wh * Sgn(BSDFCoordinate::CosTheta(wh));
 		pdf = std::abs(mDistribution->Pdf(wo, wh) * dwhDwi);
