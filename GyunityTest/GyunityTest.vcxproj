@@ -38,6 +38,7 @@
     <ClCompile Include="tests\PlasticTest.cpp" />
     <ClCompile Include="tests\MixedBsdfIntegratorTest.cpp" />
     <ClCompile Include="tests\PathTracingTest.cpp" />
+    <ClCompile Include="tests\PathVolumeAuditTest.cpp" />
     <ClCompile Include="tests\EnvironmentAccumulationTest.cpp" />
     <ClCompile Include="tests\ConfigTest.cpp" />
     <ClCompile Include="tests\BoundaryScatteringTest.cpp" />
