@@ -16,11 +16,14 @@
 #include "sampler/Sobol.h"
 #include "tbb/task_arena.h"
 #include <array>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <map>
 #include <mutex>
+#include <regex>
 #include <set>
+#include <sstream>
 
 using namespace Gyunity;
 
@@ -701,7 +704,69 @@ TEST_F(VCMRenderer, CompletionOccursOnceAfterBothPhases) {
 	const auto completion = text.find("100.0%");
 	ASSERT_NE(completion, std::string::npos);
 	EXPECT_GT(completion, text.find("VCM camera phase 2/2"));
+	EXPECT_GT(completion, text.find("VCM iteration 2/2:"));
 	EXPECT_EQ(text.find("100.0%", completion + 1), std::string::npos);
+}
+
+TEST_F(VCMRenderer, IterationSummariesReportCurrentRadiusPhotonsTimingsAndEta) {
+	const std::regex summary(
+		R"(^VCM iteration ([0-9]+)/3: radius ([0-9.e+-]+), ([0-9]+) photons, light [0-9]+\.[0-9]s, map [0-9]+\.[0-9]s, camera [0-9]+\.[0-9]s; elapsed [0-9]+:[0-5][0-9]:[0-5][0-9], remaining ~([0-9]+:[0-5][0-9]:[0-5][0-9])$)");
+	for (Mode mode : Modes) {
+		Scene scene{};
+		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), Diffuse(0.5f)));
+		scene.AddLight(std::make_shared<FixedLight>());
+		Initialize(scene);
+		auto camera = CameraFor(2, 2, 0.1f);
+		Renderer render(std::make_shared<FixedSampler>(), 1, 3, 0.5f, .75f, mode, 1);
+		testing::internal::CaptureStderr();
+		const bool success = render.RenderChecked(scene, *camera);
+		const auto text = testing::internal::GetCapturedStderr();
+		ASSERT_TRUE(success);
+		int completed = 0;
+		std::istringstream lines(text);
+		std::string line;
+		while (std::getline(lines, line)) {
+			if (!line.empty() && line.back() == '\r') line.pop_back();
+			if (line.find("VCM iteration ") != 0) continue;
+			std::smatch match;
+			ASSERT_TRUE(std::regex_match(line, match, summary)) << line;
+			++completed;
+			EXPECT_EQ(std::strtol(match[1].str().c_str(), nullptr, 10), completed);
+			EXPECT_NEAR(std::strtod(match[2].str().c_str(), nullptr), .5 * std::pow(double(completed), -.125), 1e-6);
+			EXPECT_EQ(std::strtol(match[3].str().c_str(), nullptr, 10), mode == Mode::ConnectionOnly ? 0 : 4);
+			EXPECT_GT(text.find(line), text.find("VCM camera phase " + std::to_string(completed) + "/3"));
+			if (completed < 3)
+				EXPECT_LT(text.find(line), text.find("VCM light phase " + std::to_string(completed + 1) + "/3"));
+			else EXPECT_EQ(match[4].str(), "0:00:00");
+			if (mode == Mode::ConnectionOnly) EXPECT_NE(line.find("map 0.0s"), std::string::npos);
+		}
+		EXPECT_EQ(completed, 3);
+	}
+}
+
+TEST_F(VCMRenderer, FailedIterationDoesNotReportCompletionOrEta) {
+	class FailSecondIteration : public FixedSampler {
+	public:
+		real Sample(unsigned, unsigned long long i) override {
+			return i >= 8 ? std::numeric_limits<real>::quiet_NaN() : 0.5f;
+		}
+		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<FailSecondIteration>(); }
+	};
+	Scene scene{};
+	scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), Diffuse(0.5f)));
+	scene.AddLight(std::make_shared<FixedLight>());
+	Initialize(scene);
+	auto camera = CameraFor(2, 2, 0.1f);
+	Renderer render(std::make_shared<FailSecondIteration>(), 1, 3, .5f, .75f, Mode::Combined, 1);
+	testing::internal::CaptureStderr();
+	const bool success = render.RenderChecked(scene, *camera);
+	const auto text = testing::internal::GetCapturedStderr();
+	EXPECT_FALSE(success);
+	EXPECT_EQ(render.GetStatistics().mIterations, 1);
+	EXPECT_NE(text.find("VCM iteration 1/3:"), std::string::npos);
+	EXPECT_EQ(text.find("VCM iteration 2/3:"), std::string::npos);
+	EXPECT_EQ(text.find("VCM iteration 3/3:"), std::string::npos);
+	EXPECT_EQ(text.find("100.0%"), std::string::npos);
 }
 
 TEST_F(VCMRenderer, SingleWorkerFreshRendersAreDeterministicInEveryMode) {
@@ -1028,6 +1093,7 @@ TEST_F(VCMRendererNegative, MapFailureAndCancellationJoinWithoutStartingCameraWo
 		EXPECT_FALSE(success);
 		EXPECT_EQ(output.find("100.0%"), std::string::npos);
 		EXPECT_NE(output.find("failed after 2 of 10 work units"), std::string::npos);
+		EXPECT_EQ(output.find("VCM iteration "), std::string::npos);
 		const auto& stats = render.GetStatistics();
 		EXPECT_EQ(stats.mMapPhases, 1);
 		EXPECT_EQ(stats.mMapBuilds, cancellation ? 1 : 0);
@@ -1159,6 +1225,7 @@ TEST_F(VCMRendererNegative, CancellationAndInvalidSamplerDrainBothPhaseLifetimes
 		EXPECT_EQ(text.find("100.0%"), std::string::npos);
 		EXPECT_FALSE(render.GetStatistics().mSucceeded);
 		EXPECT_EQ(render.GetStatistics().mIterations, 0);
+		EXPECT_EQ(text.find("VCM iteration "), std::string::npos);
 		EXPECT_EQ(render.GetStatistics().mLastLightPhase.mActive, 0);
 		EXPECT_EQ(render.GetStatistics().mLastCameraPhase.mActive, 0);
 		EXPECT_EQ(render.GetStatistics().mCameraPhases, phase);

@@ -6,7 +6,9 @@
 #include "system/ProgressReporter.h"
 #include "sampler/Halton.h"
 #include "sampler/Sobol.h"
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <unordered_set>
 
@@ -32,6 +34,11 @@ bool Radius(real initial, real alpha, int iteration, int64 count, real* radius, 
 	return (std::isfinite(*radius) && *radius > 0 && std::isnormal(*area) &&
 		std::isfinite(double(count) * *area) && double(count) * *area > 0) ||
 		Fail("VCM iteration radius, disk area and attempted-count normalization must be representable.");
+}
+
+std::string FormatTime(double seconds) {
+	const auto total = static_cast<uint64>(seconds);
+	return fmt::format("{}:{:02}:{:02}", total / 3600, (total / 60) % 60, total % 60);
 }
 
 struct SamplerDomain {
@@ -142,6 +149,7 @@ struct VertexConnectionMerging::RenderState {
 	const Scene& scene;
 	const Camera& camera;
 	const std::shared_ptr<Film> film;
+	const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 	int width = 0, height = 0, iteration = 0;
 	int64 count = 0;
 	size_t workPerIteration = 0;
@@ -201,10 +209,26 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 	bool success = true;
 	for (state.iteration = 0; state.iteration < mIterations && success; ++state.iteration) {
 		success = RenderIteration(state, progress);
+		const size_t photons = state.map.RecordCount();
 		state.ClearPaths();
+		if (success) ReportIteration(state, photons);
 	}
 	mStatistics.mSucceeded = progress.Finish(success);
 	return mStatistics.mSucceeded;
+}
+
+void VertexConnectionMerging::ReportIteration(const RenderState& state, size_t photons) const {
+	const int completed = state.iteration + 1;
+	const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - state.start).count();
+	const double remaining = elapsed * (mIterations - completed) / completed;
+	const auto message = fmt::format(
+		"VCM iteration {}/{}: radius {:.6g}, {} photons, light {:.1f}s, map {:.1f}s, camera {:.1f}s; "
+		"elapsed {}, remaining ~{}",
+		completed, mIterations, state.radius, photons, mStatistics.mLastLightPhase.mElapsed.count(),
+		mStatistics.mLastMapPhase.mElapsed.count(), mStatistics.mLastCameraPhase.mElapsed.count(),
+		FormatTime(elapsed), FormatTime(remaining));
+	std::fprintf(stderr, "\n%s\n", message.c_str());
+	std::fflush(stderr);
 }
 
 bool VertexConnectionMerging::Prepare(RenderState& state) const {

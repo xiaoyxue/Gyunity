@@ -206,6 +206,18 @@ work or reporting overall 100%.
 `mMapPhases` counts invoked groups; `mMapBuilds` counts successful constructions,
 including a finished map discarded when cancellation is observed after building.
 
+After each successful iteration, stderr also reports its physical radius, current
+photon count, light/map/camera phase durations, total elapsed time and estimated
+remaining time. Elapsed time includes preparation and iteration cleanup; ETA uses
+the average completed-iteration time and is approximate as radius/workload change.
+Failed or cancelled iterations do not print a completion summary. ConnectionOnly
+reports zero photons and zero map time. Overall 100% still appears only after
+the entire render succeeds, after the final iteration summary:
+
+```text
+VCM iteration 64/64: radius 0.00308965, 3804768 photons, light 0.1s, map 1.2s, camera 3.6s; elapsed 0:06:54, remaining ~0:00:00
+```
+
 `VCMRenderer.*` exercises actual emission/black/environment/specular renders,
 camera/splat normalization, radius-dependent gather arithmetic, persistent RNG
 streams, partial tiles, barriers, arena reuse and single-worker determinism.

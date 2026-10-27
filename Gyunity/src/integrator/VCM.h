@@ -66,6 +66,7 @@ private:
 
 	bool Prepare(RenderState& state) const;
 	bool RenderIteration(RenderState& state, ProgressReporter& progress);
+	void ReportIteration(const RenderState& state, size_t photons) const;
 	ThreadedTaskManager::Status TraceLightPaths(RenderState& state, Tile& tile,
 		const ThreadedTaskManager::Context& context);
 	ThreadedTaskManager::Status TraceCameraPaths(RenderState& state, Tile& tile,
