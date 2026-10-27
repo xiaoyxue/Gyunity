@@ -49,14 +49,14 @@ public:
 	bool IsAreaLight() const override { return !environment; }
 	bool IsEnvironmentLight() const override { return environment; }
 	Vec3 Power() const override { return Vec3(1); }
-	Vec3 Emission() const override { return Vec3(2); }
+	Vec3 Emission() const override { return radiance; }
 	Vec3 Emission(const Intersection& hit, const Vec3& wi) const override {
-		return Dot(hit.mGeometryNormal, wi) > 0 ? Emission() : Vec3(0);
+		return Dot(hit.mGeometryNormal, wi) > 0 ? Emission() * cameraScale : Vec3(0);
 	}
 	void SampleOnLight(Intersection* hit, Vec3* wi, real* posPdf, real* dirPdf,
 		const Vec2&, const Vec2&) const override {
-		hit->mPos = Vec3(0);
-		hit->mGeometryNormal = hit->mNormal = Vec3(0, 0, 1);
+		hit->mPos = position;
+		hit->mGeometryNormal = hit->mNormal = normal;
 		*wi = Vec3(0, 0, 1);
 		*posPdf = positionPdf;
 		*dirPdf = directionPdf;
@@ -71,6 +71,8 @@ public:
 	}
 	real PdfLi(const Intersection&, const Vec3&) const override { return 0; }
 	real positionPdf = 0.5f, directionPdf = 0.25f;
+	real cameraScale = 1;
+	Vec3 radiance = Vec3(2), position = Vec3(0), normal = Vec3(0, 0, 1);
 	bool environment = false;
 };
 
@@ -80,6 +82,19 @@ Vec3 Connect(const Scene& scene, const Camera& camera, const PathVertex& vertex,
 	LightTracing tracer(std::make_shared<RandomSampler>(1), 2, 1);
 	return tracer.ConnectToCamera(scene, camera, samples, vertex, 0, &raster, inside);
 }
+
+class SampleCamera : public PinHoleCamera {
+public:
+	SampleCamera() : PinHoleCamera(std::make_shared<Film>(1, 1),
+		Vec3(0, 0, 2), Vec3(0), Vec3(0, 1, 0), 90, 1) {}
+	Vec3 SampleWi(const Intersection& hit, real* pdf, Vec3* wi, Vec3 u) const override {
+		PinHoleCamera::SampleWi(hit, pdf, wi, u);
+		*pdf = density;
+		return importance;
+	}
+	real density = 1;
+	Vec3 importance = Vec3(1);
+};
 
 }
 
@@ -222,8 +237,8 @@ TEST(LTTransportAudit, InvalidOrNullEmissionDirectionKeepsFiniteOriginPrefix) {
 		ConstantSamples samples;
 		std::vector<PathVertex> path(3);
 		path[1].mThroughput = Vec3(99);
-		EXPECT_EQ(tracer.GenerateLightPath(scene, camera, samples, arena, path), 1);
-		EXPECT_EQ(path[0].mThroughput, Vec3(2));
+		EXPECT_EQ(tracer.GenerateLightPath(scene, camera, samples, arena, path), pdf == 0 ? 1 : -1);
+		if (pdf == 0) EXPECT_EQ(path[0].mThroughput, Vec3(2));
 		EXPECT_EQ(path[1].mThroughput, Vec3(99));
 	}
 
@@ -245,7 +260,94 @@ TEST(LTTransportAudit, InvalidContinuationDoesNotAppendNonfiniteVertices) {
 		const Vec3 weight = invalid == 0 ? Vec3(infinity) : Vec3(1);
 		const real pdf = invalid == 1 ? infinity : invalid == 2 ? -1.f : 1.f;
 		EXPECT_EQ(tracer.Trace(scene, camera, Ray(Vec3(0, 0, 1), Vec3(0, 0, -1)),
-			arena, samples, 1, weight, pdf, path), 1);
+			arena, samples, 1, weight, pdf, path), -1);
 		EXPECT_EQ(path[1].mThroughput, Vec3(99));
+	}
+
+}
+
+TEST(LTTransportAudit, CheckedRenderRejectsInvalidSettings) {
+	Scene scene{};
+	Initialize(scene);
+	auto camera = CameraAt();
+	LightTracing negativeDepth(std::make_shared<RandomSampler>(1), -1, 1);
+	EXPECT_FALSE(negativeDepth.RenderChecked(scene, camera));
+	LightTracing noSamples(std::make_shared<RandomSampler>(1), 0, 0);
+	EXPECT_FALSE(noSamples.RenderChecked(scene, camera));
+	LightTracing noSampler(nullptr, 0, 1);
+	EXPECT_FALSE(noSampler.RenderChecked(scene, camera));
+	LightTracing overflowingDepth(std::make_shared<RandomSampler>(1), std::numeric_limits<int>::max(), 1);
+	EXPECT_FALSE(overflowingDepth.RenderChecked(scene, camera));
+}
+
+TEST(LTTransportAudit, CheckedRenderRejectsMalformedEmitterSamples) {
+	const real infinity = std::numeric_limits<real>::infinity();
+	for (int invalid = 0; invalid < 7; ++invalid) {
+		SCOPED_TRACE(invalid);
+		Scene scene{};
+		auto light = std::make_shared<OriginLight>();
+		if (invalid == 0) light->positionPdf = -1;
+		if (invalid == 1) light->positionPdf = infinity;
+		if (invalid == 2) light->directionPdf = -1;
+		if (invalid == 3) light->directionPdf = infinity;
+		if (invalid == 4) light->radiance = Vec3(infinity);
+		if (invalid == 5) light->cameraScale = infinity;
+		if (invalid == 6) light->positionPdf = std::numeric_limits<real>::min();
+		scene.AddLight(light);
+		Initialize(scene);
+		PinHoleCamera camera(std::make_shared<Film>(1, 1), Vec3(0, 0, 2), Vec3(0), Vec3(0, 1, 0), 90, 1);
+		LightTracing tracer(std::make_shared<RandomSampler>(1), 1, 1);
+		EXPECT_FALSE(tracer.RenderChecked(scene, camera));
+	}
+}
+
+TEST(LTTransportAudit, CheckedRenderRejectsNonfiniteBsdfContribution) {
+	for (int depth : { 1, 2 }) {
+		SCOPED_TRACE(depth);
+		Scene scene{};
+		scene.AddLight(std::make_shared<OriginLight>());
+		scene.AddPrimitive(Plane(1, -1), std::make_shared<DiffuseMaterial>(
+			std::make_shared<ConstantTexture<Vec3>>(Vec3(std::numeric_limits<real>::infinity()))));
+		Initialize(scene);
+		PinHoleCamera camera(std::make_shared<Film>(1, 1), Vec3(0, 0, 0.5f), Vec3(0, 0, 1), Vec3(0, 1, 0), 90, 1);
+		LightTracing tracer(std::make_shared<RandomSampler>(1), depth, 1);
+		EXPECT_FALSE(tracer.RenderChecked(scene, camera));
+	}
+}
+
+TEST(LTTransportAudit, CheckedRenderAcceptsLegitimateNullEvents) {
+	for (int nullEvent = 0; nullEvent < 6; ++nullEvent) {
+		SCOPED_TRACE(nullEvent);
+		Scene scene{};
+		auto light = std::make_shared<OriginLight>();
+		if (nullEvent == 0) light->positionPdf = 0;
+		if (nullEvent == 1) light->directionPdf = 0;
+		if (nullEvent == 2) light->radiance = Vec3(0);
+		if (nullEvent == 3) light->normal = Vec3(0, 0, -1);
+		if (nullEvent == 4) light->position = Vec3(100, 0, 0);
+		if (nullEvent != 5) scene.AddLight(light);
+		Initialize(scene);
+		PinHoleCamera camera(std::make_shared<Film>(1, 1), Vec3(0, 0, 2), Vec3(0), Vec3(0, 1, 0), 90, 1);
+		LightTracing tracer(std::make_shared<RandomSampler>(1), 1, 1);
+		EXPECT_TRUE(tracer.RenderChecked(scene, camera));
+	}
+}
+
+TEST(LTTransportAudit, CheckedRenderDistinguishesInvalidCameraSamplesFromNulls) {
+	Scene scene{};
+	scene.AddLight(std::make_shared<OriginLight>());
+	Initialize(scene);
+	const real infinity = std::numeric_limits<real>::infinity();
+	for (int sample = 0; sample < 6; ++sample) {
+		SCOPED_TRACE(sample);
+		SampleCamera camera;
+		if (sample == 0) camera.density = -1;
+		if (sample == 1) camera.density = infinity;
+		if (sample == 2) camera.importance = Vec3(infinity);
+		if (sample == 3) camera.importance = Vec3(std::numeric_limits<real>::max());
+		if (sample == 4) camera.density = 0;
+		if (sample == 5) camera.importance = Vec3(0);
+		LightTracing tracer(std::make_shared<RandomSampler>(1), 0, 1);
+		EXPECT_EQ(tracer.RenderChecked(scene, camera), sample >= 4);
 	}
 }

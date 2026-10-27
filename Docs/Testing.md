@@ -3,8 +3,8 @@
 ## Light tracing transport
 
 LT depth D permits D scattering vertices after the light origin; D=0 connects
-only that origin without accessing a surface slot. A null or nonfinite sampled
-continuation terminates the walk while retaining its finite prefix. Mixed BSDFs
+only that origin without accessing a surface slot. A zero-density or zero-value
+sample terminates the walk while retaining its finite prefix. Mixed BSDFs
 retain typed, weighted sampling and classify the sampled event, not the whole
 material. No shading-normal/adjoint correction is introduced here.
 
@@ -18,6 +18,14 @@ half-open film bounds before splatting, without integer truncation.
 `LTTransportAudit.*`, `LightTracingEmission.*` and `MixedBsdfIntegrators.Lt*`
 cover these contracts. Depth expectations use analytic mirror throughput and
 vertex counts, not PT's depth convention.
+
+`RenderChecked` returns false, with nonthrowing error logging, for invalid
+settings, malformed densities or nonfinite transport contributions. Path
+generation returns -1 on failure; `ConnectToCameraChecked` exposes the camera
+connection status. Legitimate zero-density/value, occluded, back-facing and
+off-film samples remain successful null events. The legacy `Render` and
+`ConnectToCamera` wrappers retain their signatures and log failures; callers
+that need status must use the checked methods.
 
 ## Scattering and emissive-surface consistency
 
