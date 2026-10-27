@@ -66,6 +66,33 @@ The transformed `AddSphere(center, radius, material, objectToWorld)` overload
 retains the sphere's object-space texture mapping. `AddCornellSphereWalls`
 shares the large inward-facing sphere walls used by `SphereBox` and `TriangleBox`.
 
+For finite, nonsingular object transforms and valid surface normals, transformed
+intersections use inverse-transpose normals and an orthonormal shading frame.
+The projected transformed shading-u tangent determines its orientation; the
+transformed shading-v tangent determines its handedness (including reflections).
+If the u projection degenerates, v supplies the orientation; if both degenerate,
+`CoordinateSystem` supplies a deterministic right-handed basis. Geometric
+derivatives and UV coordinates are not replaced with the shading basis.
+
+The public look-at camera keeps the existing right/up/forward projection for
+nondegenerate inputs. A nonzero up vector parallel or nearly parallel to a
+nonzero view direction (squared sine at most `1e-12`) produces an explicit warning
+and uses `CoordinateSystem(view)`'s first perpendicular vector as its deterministic
+up. No position, target, FOV or film defaults are invented.
+`PinHoleCamera::Create(film, pos, lookAt, up, fovy, distance)` returns null on
+invalid inputs and logs a non-throwing error. Direct constructors remain available;
+check `IsValid()` before using them. Invalid cameras return zero importance/PDFs
+and an empty (`tMax = 0`) ray. Explicit camera axes must be finite, unit and
+orthogonal; either supplied handedness is preserved. Native JSON already checks
+its camera matrix for orthonormal axes before construction.
+
+Checked `ImageIO::LoadImage` / `LoadTexture` return false and leave caller outputs
+unchanged on missing or corrupt input. Native gray and gray-alpha images expand
+gray into RGB, while RGB/RGBA retain RGB; alpha is ignored, not premultiplied.
+For LDR inputs stb's existing gamma-2.2 decoding remains unchanged. Texture loading
+flips rows; ordinary image loading does not. Decoder buffers are owned and freed
+inside the loader.
+
 `AddTriangle` and `AddQuad` accept an optional non-owning `MediumInterface`.
 Its media must outlive the scene. `FogBunny` uses an immutable, static homogeneous
 medium and preserves the original material-free front boundary; use

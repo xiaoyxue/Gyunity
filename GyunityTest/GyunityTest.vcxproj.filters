@@ -61,6 +61,12 @@
     <ClCompile Include="tests\MatrixTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\CameraBasisTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\FrameIoAuditTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\SceneBuilderTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
