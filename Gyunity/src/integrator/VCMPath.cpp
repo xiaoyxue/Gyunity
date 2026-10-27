@@ -204,16 +204,6 @@ bool Validate(const Scene& scene, const PathContext& path) {
 	return true;
 }
 
-bool Enabled(const PathContext& path, const Strategy& strategy) {
-	if (strategy.technique == Technique::Merging) return path.mode != Mode::ConnectionOnly;
-	if (path.mode != Mode::MergingOnly) return true;
-	if (strategy.s != 0) return false;
-	for (int i = 1; i + 1 < VertexCount(path); ++i) {
-		if (!Delta(LightVertex(path, i))) return false;
-	}
-	return true; // Camera-visible LS*E emission, including the empty S* prefix.
-}
-
 bool Feasible(const PathContext& path, const Strategy& strategy) {
 	const int n = VertexCount(path), s = strategy.s;
 	if (strategy.technique == Technique::Merging) {
@@ -302,53 +292,97 @@ bool ReverseDensity(const PathContext& path, int i, real* pdf) {
 		i + 2 < n ? &LightVertex(path, i + 2) : nullptr, LightVertex(path, i), pdf);
 }
 
-// The public entry points validate the immutable selected context once.
-bool StrategyDensity(const Scene& scene, const PathContext& path,
-	const Strategy& strategy, StrategyPdf* result) {
-	*result = {};
+class MisPdfs {
+public:
+	MisPdfs(const Scene& scene, const PathContext& path)
+		: scene(scene), path(path), mPdfFwd(VertexCount(path)), mPdfPrev(VertexCount(path)),
+		mHasFwd(VertexCount(path), false), mHasPrev(VertexCount(path), false) {}
+
+	bool PdfFwd(int i, real* pdf) {
+		if (!mHasFwd[i]) {
+			if (!ForwardDensity(scene, path, i, &mPdfFwd[i])) return false;
+			if (!ValidPdf(mPdfFwd[i])) return Fail("VCM evaluated a nonfinite or negative density.");
+			mHasFwd[i] = true;
+		}
+		*pdf = mPdfFwd[i];
+		return true;
+	}
+
+	bool PdfPrev(int i, real* pdf) {
+		if (!mHasPrev[i]) {
+			if (!ReverseDensity(path, i, &mPdfPrev[i])) return false;
+			if (!ValidPdf(mPdfPrev[i])) return Fail("VCM evaluated a nonfinite or negative density.");
+			mHasPrev[i] = true;
+		}
+		*pdf = mPdfPrev[i];
+		return true;
+	}
+
+	const Scene& scene;
+	const PathContext& path;
+private:
+	std::vector<real> mPdfFwd, mPdfPrev;
+	std::vector<bool> mHasFwd, mHasPrev;
+};
+
+// Cached getters reuse recorded edge PDFs and lazily correct only changed boundary events.
+bool StrategyDensity(MisPdfs& pdfs, const Strategy& strategy, StrategyPdf* pdfPath) {
+	*pdfPath = {};
+	const auto& path = pdfs.path;
 	if (!ValidTechnique(strategy.technique) || strategy.s < 0 || strategy.t < 0 ||
 		int64(strategy.s) + strategy.t - (strategy.technique == Technique::Merging ? 1 : 0) != VertexCount(path)) {
 		return Fail("VCM alternative must have valid counts at the selected physical depth.");
 	}
-	if (!Enabled(path, strategy) || !Feasible(path, strategy)) return true;
+	if (!IsStrategyEnabled(path, strategy) || !Feasible(path, strategy)) return true;
 
-	double logPdf = 0;
+	double logPdfPath = 0;
 	bool positive = true;
 	// Eq. (10): light prefix, then camera prefix in light-to-camera index order.
 	for (int i = 0; i < strategy.s; ++i) {
 		real pdf;
-		if (!ForwardDensity(scene, path, i, &pdf)) return false;
-		if (!ValidPdf(pdf)) return Fail("VCM evaluated a nonfinite or negative density.");
+		if (!pdfs.PdfFwd(i, &pdf)) return false;
 		if (pdf == 0) positive = false;
-		else logPdf += std::log(double(pdf));
+		else logPdfPath += std::log(double(pdf));
 	}
 	// VM samples both the landing and query densities; it does not collapse their geometry.
 	const int cameraStart = strategy.s - (strategy.technique == Technique::Merging ? 1 : 0);
 	for (int i = cameraStart; i < VertexCount(path); ++i) {
 		real pdf;
-		if (!ReverseDensity(path, i, &pdf)) return false;
-		if (!ValidPdf(pdf)) return Fail("VCM evaluated a nonfinite or negative density.");
+		if (!pdfs.PdfPrev(i, &pdf)) return false;
 		if (pdf == 0) positive = false;
-		else logPdf += std::log(double(pdf));
+		else logPdfPath += std::log(double(pdf));
 	}
 	if (!positive) return true;
 	if (strategy.technique == Technique::Merging) {
-		logPdf += std::log(std::acos(-1.0) * path.radius * path.radius);
+		logPdfPath += std::log(std::acos(-1.0) * path.radius * path.radius);
 	}
-	if (!std::isfinite(logPdf)) return Fail("VCM path log density is not finite.");
-	result->feasible = true;
-	result->logPdf = logPdf;
+	if (!std::isfinite(logPdfPath)) return Fail("VCM path log density is not finite.");
+	pdfPath->feasible = true;
+	pdfPath->logPdf = logPdfPath;
 	return true;
 }
 
 }
 
+bool UseVc(Mode mode) { return mode == Mode::Combined || mode == Mode::ConnectionOnly; }
+bool UseVm(Mode mode) { return mode == Mode::Combined || mode == Mode::MergingOnly; }
+
+bool IsStrategyEnabled(const PathContext& path, const Strategy& strategy) {
+	if (strategy.technique == Technique::Merging) return UseVm(path.mode);
+	if (UseVc(path.mode)) return true;
+	if (path.mode != Mode::MergingOnly || strategy.s != 0) return false;
+	for (int i = 1; i + 1 < VertexCount(path); ++i)
+		if (!Delta(LightVertex(path, i))) return false;
+	return true; // Retain camera-visible LS*E emission in MergingOnly.
+}
+
 bool ComputePathPdf(const Scene& scene, const PathContext& path,
-	const Strategy& strategy, StrategyPdf* result) {
-	if (!result) return Fail("VCM PDF output is null.");
-	*result = {};
+	const Strategy& strategy, StrategyPdf* pdfPath) {
+	if (!pdfPath) return Fail("VCM PDF output is null.");
+	*pdfPath = {};
 	if (!Validate(scene, path)) return false;
-	return StrategyDensity(scene, path, strategy, result);
+	MisPdfs pdfs(scene, path);
+	return StrategyDensity(pdfs, strategy, pdfPath);
 }
 
 bool ComputeMisWeight(const Scene& scene, const PathContext& path,
@@ -356,25 +390,33 @@ bool ComputeMisWeight(const Scene& scene, const PathContext& path,
 	if (!weight) return Fail("VCM weight output is null.");
 	*weight = 0;
 	if (!Validate(scene, path)) return false;
-	StrategyPdf currentPdf;
-	if (!StrategyDensity(scene, path, current, &currentPdf)) return false;
-	if (!currentPdf.feasible) return Fail("VCM current strategy has zero support or is disabled.");
-	const double logCount = std::log(double(path.lightPathCount));
-	const double currentScore = currentPdf.logPdf + (current.technique == Technique::Merging ? logCount : 0);
+	MisPdfs pdfs(scene, path);
+	StrategyPdf currentPdfPath;
+	if (!StrategyDensity(pdfs, current, &currentPdfPath)) return false;
+	if (!currentPdfPath.feasible) return Fail("VCM current strategy has zero support or is disabled.");
+	const int64 nVc = 1, nVm = path.lightPathCount;
+	const double logCountVc = std::log(double(nVc)), logCountVm = std::log(double(nVm));
+	const double currentScore = currentPdfPath.logPdf + (current.technique == Technique::Merging ? logCountVm : logCountVc);
 	std::vector<double> scores;
 	double maximum = -std::numeric_limits<double>::infinity();
 	const int n = VertexCount(path);
-	for (Technique technique : { Technique::Connection, Technique::Merging }) {
-		for (int s = technique == Technique::Connection ? 0 : 2; s < n; ++s) {
-			const Strategy strategy{ technique, s, n - s + (technique == Technique::Merging ? 1 : 0) };
-			StrategyPdf pdf;
-			if (!StrategyDensity(scene, path, strategy, &pdf)) return false;
-			if (!pdf.feasible) continue;
-			const double score = pdf.logPdf + (technique == Technique::Merging ? logCount : 0);
-			scores.push_back(score);
-			maximum = std::max(maximum, score);
-		}
+	const auto addScore = [&](const Strategy& strategy, double logSampleCount) {
+		StrategyPdf pdfPath;
+		if (!StrategyDensity(pdfs, strategy, &pdfPath)) return false;
+		if (!pdfPath.feasible) return true;
+		const double score = pdfPath.logPdf + logSampleCount;
+		scores.push_back(score);
+		maximum = std::max(maximum, score);
+		return true;
+	};
+	if (UseVc(path.mode)) {
+		for (int s = 0; s < n; ++s)
+			if (!addScore({ Technique::Connection, s, n - s }, logCountVc)) return false;
 	}
+	else if (!addScore({ Technique::Connection, 0, n }, logCountVc)) return false;
+	if (UseVm(path.mode))
+		for (int s = 2; s < n; ++s)
+			if (!addScore({ Technique::Merging, s, n - s + 1 }, logCountVm)) return false;
 	double sum = 0;
 	for (double score : scores) sum += std::exp(score - maximum);
 	const double normalized = std::exp(currentScore - maximum) / sum;

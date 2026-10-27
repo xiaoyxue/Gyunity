@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <random>
+#include <limits>
+#include <typeinfo>
 #include "math/LowDiscrepancy.h"
 #include "visual/Rng.h"
 
@@ -11,6 +13,14 @@ class Sampler {
 public:
 	virtual real Sample(unsigned int d, unsigned long long i) = 0;
 	virtual std::shared_ptr<Sampler> Clone(uint32 seed) = 0;
+	// Legacy custom samplers can keep Clone; wide path keys require an explicit implementation.
+	virtual std::shared_ptr<Sampler> CloneForPath(uint64 pathKey) {
+		if (pathKey > (std::numeric_limits<uint32>::max)()) {
+			GetDefaultLogger()->Error("Sampler does not support 64-bit path-stream cloning.", false);
+			return nullptr;
+		}
+		return Clone(static_cast<uint32>(pathKey));
+	}
 };
 
 class StateSequence {
@@ -67,7 +77,7 @@ public:
 
 class RandomSampler : public Sampler {
 public:
-	RandomSampler(int seed) : mRng(seed), mPcg32(seed) {
+	RandomSampler(int seed) : mSeed(static_cast<uint64>(seed)), mRng(seed), mPcg32(seed) {
 
 	}
 
@@ -81,7 +91,15 @@ public:
 		newSampler->mPcg32.SetSequence(seed);
 		return std::shared_ptr<Sampler>(newSampler);
 	}
+	std::shared_ptr<Sampler> CloneForPath(uint64 pathKey) override {
+		// Subclasses retain their virtual Clone behavior unless they opt into wide path keys.
+		if (typeid(*this) != typeid(RandomSampler)) return Sampler::CloneForPath(pathKey);
+		return std::shared_ptr<Sampler>(new RandomSampler(mSeed ^ pathKey, PathSeed{}));
+	}
 private:
+	struct PathSeed {};
+	RandomSampler(uint64 seed, PathSeed) : mSeed(seed), mRng(seed), mPcg32(seed) {}
+	uint64 mSeed;
 	std::mt19937_64 mRng;
 	std::uniform_real_distribution<real> mUniform;
 	Pcg32 mPcg32;

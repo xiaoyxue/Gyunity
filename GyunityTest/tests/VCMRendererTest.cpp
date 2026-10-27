@@ -58,6 +58,57 @@ public:
 	std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<FixedSampler>(); }
 };
 
+TEST(VCMPathSampling, FullWidthPathKeysAreDeterministicAndDoNotChangeLegacySampling) {
+	RandomSampler sampler(123), legacyReference(123);
+	std::vector<real> previous;
+	for (uint64 key : { uint64(7), (uint64(1) << 32) + 7, (uint64(1) << 48) + 7 }) {
+		auto first = sampler.CloneForPath(key), second = sampler.CloneForPath(key);
+		ASSERT_NE(first, nullptr);
+		ASSERT_NE(second, nullptr);
+		EXPECT_NE(first.get(), second.get());
+		std::vector<real> values;
+		for (unsigned d = 0; d < 16; ++d) {
+			const real value = first->Sample(d, key);
+			EXPECT_EQ(value, second->Sample(d, key));
+			values.push_back(value);
+		}
+		if (!previous.empty()) EXPECT_NE(values, previous);
+		previous = values;
+	}
+	for (unsigned d = 0; d < 16; ++d)
+		EXPECT_EQ(sampler.Sample(d, 1), legacyReference.Sample(d, 1));
+	for (uint32 seed : { 0u, 123u, 0xfedcba98u }) {
+		auto clone = sampler.Clone(seed);
+		RandomSampler reference(static_cast<int>(seed));
+		for (unsigned d = 0; d < 16; ++d)
+			EXPECT_EQ(clone->Sample(d, 0), reference.Sample(d, 0));
+	}
+	RandomSampler otherSeed(124);
+	auto first = sampler.CloneForPath(7), other = otherSeed.CloneForPath(7);
+	std::vector<real> firstValues, otherValues;
+	for (unsigned d = 0; d < 16; ++d) {
+		firstValues.push_back(first->Sample(d, 7));
+		otherValues.push_back(other->Sample(d, 7));
+	}
+	EXPECT_NE(firstValues, otherValues);
+}
+
+TEST(VCMPathSampling, LegacyCustomClonesKeepTheirBehaviorAndRejectUnsupportedWideKeys) {
+	class CustomRandom : public RandomSampler {
+	public:
+		explicit CustomRandom(int seed = 0) : RandomSampler(seed) {}
+		real Sample(unsigned, unsigned long long) override { return 0.25f; }
+		std::shared_ptr<Sampler> Clone(uint32 seed) override { return std::make_shared<CustomRandom>(int(seed)); }
+	} custom;
+	auto supported = custom.CloneForPath(17);
+	ASSERT_NE(supported, nullptr);
+	EXPECT_EQ(supported->Sample(0, 17), 0.25f);
+	EXPECT_EQ(custom.CloneForPath(uint64(1) << 32), nullptr);
+	FixedSampler legacy;
+	EXPECT_NE(legacy.CloneForPath((std::numeric_limits<uint32>::max)()), nullptr);
+	EXPECT_EQ(legacy.CloneForPath(uint64(1) << 32), nullptr);
+}
+
 class DownwardSampler : public FixedSampler {
 public:
 	real Sample(unsigned int d, unsigned long long i) override { return i % 2 == 0 && d == 3 ? 0.999f : 0.5f; }

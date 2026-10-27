@@ -9,6 +9,9 @@ namespace Vcm {
 enum class Technique { Connection, Merging };
 enum class Mode { Combined, ConnectionOnly, MergingOnly };
 
+bool UseVc(Mode mode);
+bool UseVm(Mode mode);
+
 struct Strategy {
 	Technique technique;
 	int s, t;
@@ -35,11 +38,14 @@ struct StrategyPdf {
 	double logPdf = 0; // Common reduced-measure density; excludes the strategy sample count.
 };
 
+// Mode mask for an already validated selected-prefix view; shared by rendering and MIS.
+bool IsStrategyEnabled(const PathContext& path, const Strategy& strategy);
+
 // Only selected prefixes are inspected. Invalid/unsupported input fails;
 // ordinary zero support or a disabled strategy succeeds with !feasible.
 // Singular factors retain sampled masses and geometry, per report (51)-(55).
 bool ComputePathPdf(const Scene& scene, const PathContext& path,
-	const Strategy& strategy, StrategyPdf* result);
+	const Strategy& strategy, StrategyPdf* pdfPath);
 
 // Enumerates the same physical depth (VC s+t-2, VM s+t-3) with balance scores
 // pVC and lightPathCount*pVM. A disabled or zero-support current is an error.
