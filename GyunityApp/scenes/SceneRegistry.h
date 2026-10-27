@@ -11,7 +11,7 @@ struct SceneCamera {
 	real filmDistance = 1;
 
 	std::shared_ptr<Camera> Create(const std::shared_ptr<Film>& film) const {
-		return std::make_shared<PinHoleCamera>(film, pos, lookAt, up, fovy, filmDistance);
+		return PinHoleCamera::Create(film, pos, lookAt, up, fovy, filmDistance);
 	}
 };
 

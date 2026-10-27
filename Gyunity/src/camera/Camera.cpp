@@ -18,6 +18,7 @@ void CameraError(const char* message) {
 }
 
 void ProjectiveCamera::Initialize() {
+	mValid = false;
 	if (!mFilm || mFilm->mResX == 0 || mFilm->mResY == 0 ||
 		!Finite(mPos) || !std::isfinite(mFovy) || mFovy <= 0 || mFovy >= 179 ||
 		!std::isfinite(mFilmDistance) || mFilmDistance <= 0) {

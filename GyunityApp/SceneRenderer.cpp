@@ -96,6 +96,7 @@ bool RenderScene(const SceneRenderOptions& options, Integrator& integrator) {
 	auto film = std::make_shared<Film>(options.width, options.height, filter);
 	auto scene = native ? native->scene : std::make_shared<Scene>();
 	auto camera = native ? native->CreateCamera(film) : options.scene->camera.Create(film);
+	if (!camera || !camera->IsValid()) return Error("Cannot render an invalid camera.");
 	if (!native) {
 		SceneBuilder builder(scene);
 		options.scene->build(builder);

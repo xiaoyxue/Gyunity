@@ -212,6 +212,74 @@ TEST(FrameIoAudit, ExplicitCameraAxesKeepEitherHandednessAndRejectDegeneracy) {
 	EXPECT_FALSE(invalid.IsValid());
 }
 
+TEST(FrameIoAudit, FailedCameraReinitializationClearsValidity) {
+	class ReinitializableCamera : public PinHoleCamera {
+	public:
+		using PinHoleCamera::PinHoleCamera;
+		using ProjectiveCamera::Initialize;
+	};
+	ReinitializableCamera camera(std::make_shared<Film>(4, 4), Vec3(0, 0, 3),
+		Vec3(), Vec3(0, 1, 0), 45, 1);
+	ASSERT_TRUE(camera.IsValid());
+	camera.mFovy = 0;
+	camera.Initialize();
+	EXPECT_FALSE(camera.IsValid());
+	EXPECT_EQ(camera.GenerateRay(0, 0, Vec2(.5f), 0).mTmax, 0);
+	camera.mFovy = 45;
+	camera.Initialize();
+	EXPECT_TRUE(camera.IsValid());
+}
+
+TEST(FrameIoAudit, RegisteredCameraFactoryPropagatesCheckedFailure) {
+	SceneCamera description;
+	description.lookAt = description.pos;
+	EXPECT_EQ(description.Create(std::make_shared<Film>(4, 4)), nullptr);
+	description.lookAt = Vec3();
+	description.fovy = 0;
+	EXPECT_EQ(description.Create(std::make_shared<Film>(4, 4)), nullptr);
+}
+
+TEST_F(FrameIoFiles, InvalidCameraFailsBothRenderEntryPointsWithoutWritingAnImage) {
+	class RecordingIntegrator : public Integrator {
+	public:
+		bool called = false;
+		void Render(const Scene&, const Camera&) override { called = true; }
+	};
+	for (int scenario = 0; scenario < 4; ++scenario) {
+		SceneDescription description = { "invalid-camera", NormalScene, {}, false, {} };
+		SceneRenderOptions options;
+		options.scene = &description;
+		options.width = options.height = 4;
+		options.spp = options.maxDepth = 1;
+		options.integrator = "path";
+		if (scenario == 0) description.camera.lookAt = description.camera.pos;
+		if (scenario == 1) description.camera.fovy = 0;
+		if (scenario >= 2) {
+			auto native = std::make_shared<NativeScene>();
+			native->scene = std::make_shared<Scene>();
+			SceneBuilder builder(native->scene);
+			NormalScene(builder);
+			native->seed = 123;
+			native->fovY = scenario == 2 ? 0.f : 45.f;
+			native->cameraToWorld = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 3, 0, 0, 0, 1 };
+			if (scenario == 3) {
+				native->cameraToWorld[0] = 0;
+				native->cameraToWorld[8] = -1;
+			}
+			options.scene = nullptr;
+			options.nativeScene = native;
+		}
+		options.output = output + "\\invalid-camera-default-" + std::to_string(scenario) + ".exr";
+		EXPECT_FALSE(RenderScene(options));
+		EXPECT_FALSE(std::ifstream(options.output, std::ios::binary).good());
+		options.output = output + "\\invalid-camera-custom-" + std::to_string(scenario) + ".exr";
+		RecordingIntegrator integrator;
+		EXPECT_FALSE(RenderScene(options, integrator));
+		EXPECT_FALSE(integrator.called);
+		EXPECT_FALSE(std::ifstream(options.output, std::ios::binary).good());
+	}
+}
+
 TEST_F(FrameIoFiles, NativeChannelsConvertToRgbAndFailuresLeaveOutputsUnchanged) {
 	for (int channels = 1; channels <= 4; ++channels) {
 		const auto file = output + "\\channels" + std::to_string(channels) + ".png";

@@ -85,6 +85,10 @@ check `IsValid()` before using them. Invalid cameras return zero importance/PDFs
 and an empty (`tMax = 0`) ray. Explicit camera axes must be finite, unit and
 orthogonal; either supplied handedness is preserved. Native JSON already checks
 its camera matrix for orthonormal axes before construction.
+Registered camera creation propagates checked failure. Both `RenderScene` entry
+points reject null or invalid registered/native cameras before scene acceleration,
+integrator execution or image writing. Failed camera reinitialization clears
+`IsValid()` rather than retaining a previously successful state.
 
 Checked `ImageIO::LoadImage` / `LoadTexture` return false and leave caller outputs
 unchanged on missing or corrupt input. Native gray and gray-alpha images expand
