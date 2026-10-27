@@ -17,6 +17,10 @@ public:
 
 	void Render(const Scene& scene, const Camera& camera) override {
 
+		if (mMaxDepth < 0 || mSpp <= 0) {
+			GetDefaultLogger()->Error("LT requires nonnegative depth and positive samples per pixel.", false);
+			return;
+		}
 		int64 totalPhotons = mSpp * (int64)(camera.GetFilm()->mResX) * (int64)(camera.GetFilm()->mResY);
 		int64 photonsPerRenderStage = (int64)(camera.GetFilm()->mResX) * (int64)(camera.GetFilm()->mResY);
 		std::atomic<int64> workDone = 0;
@@ -79,25 +83,29 @@ public:
 		Ray ray = r;
 		int bounce = depth;
 		real pdfDir = pdfFwd;
-		while (true) {
+		while (bounce <= mMaxDepth && bounce < static_cast<int>(lightPath.size())) {
+			if (!Finite(throughput) || throughput == Vec3(0) ||
+				!PositivePdf(pdfDir) || !Finite(ray.mDir) || ray.mDir.Length2() == 0) break;
 			Intersection& isect = lightPath[bounce].mIsect;
 
 			if (!scene.Intersect(ray, &isect)) break;
 
 			scene.QueryIntersectionInfo(ray, &isect);
 			isect.ComputeScatteringFunction(arena, TransportMode::Importance);
+			if (!isect.mBsdf) break;
 
 			lightPath[bounce].mIsDelta = false;
 			lightPath[bounce].mPdfFwd = pdfDir;
 			lightPath[bounce].mThroughput = throughput;
 
 			bounce++;
-			if (bounce >= mMaxDepth) break;
+			if (bounce > mMaxDepth) break;
 
 			Vec3 wi;
 			ScatterEventType event = ScatterEventType(0);
 			Vec3 f = isect.mBsdf->Sample(-1 * ray.mDir, &wi, &pdfDir, Vec3(rand(), rand(), rand()), BSDF_ALL, &event);
-			if (f == Vec3() || pdfDir == 0) break;
+			if (!Finite(f) || f == Vec3() || !PositivePdf(pdfDir) ||
+				!Finite(wi) || wi.Length2() == 0) break;
 			lightPath[bounce - 1].mIsDelta = SurfaceEventClassifier::IsDelta(event);
 			ray = isect.SpawnRay(wi);
 
@@ -110,6 +118,7 @@ public:
 	int GenerateLightPath(const Scene& scene, const Camera& camera, StateSequence& rand, MemoryPool& arena, 
 		std::vector<PathVertex>& lightPath) const {
 		
+		if (mMaxDepth < 0 || lightPath.empty()) return 0;
 		real pdfLight;
 		real pdfPos;
 		real pdfDir;
@@ -117,6 +126,7 @@ public:
 		Vec3 dir;
 		Intersection isect;
 		Light* light = scene.SampleOneLight(&pdfLight, rand());
+		if (!light || !PositivePdf(pdfLight)) return 0;
 		if (light->IsAreaLight()) {
 			Le = light->Emission();
 			light->SampleOnLight(&isect, &dir, &pdfPos, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
@@ -124,10 +134,17 @@ public:
 		else {
 			Le = light->SampleLight(&isect, &dir, &pdfPos, &pdfDir, Vec2(rand(), rand()), Vec2(rand(), rand()));
 		}
+		if (!Finite(Le) || !Finite(isect.mPos) || !PositivePdf(pdfPos)) return 0;
 		lightPath[0].mIsect = isect;
 		lightPath[0].mPdfFwd = pdfPos;
 		lightPath[0].mThroughput = Le;
 		lightPath[0].mIsDelta = light->IsDeltaLight();
+		lightPath[0].mType = light->IsEnvironmentLight() ? PathVertexType::Environment : PathVertexType::Light;
+		lightPath[0].mLight = light;
+		lightPath[0].mLightSelectionPdf = pdfLight;
+		lightPath[0].mPdfPos = pdfPos;
+		lightPath[0].mPdfDir = pdfDir;
+		if (mMaxDepth == 0 || !PositivePdf(pdfDir) || !Finite(dir) || dir.Length2() == 0) return 1;
 		real cosTheta = std::abs(Dot(light->IsAreaLight() ? isect.mGeometryNormal : isect.mNormal, dir));
 		Vec3 throughput = Le * cosTheta / pdfLight / pdfPos / pdfDir;
 		Ray ray = isect.SpawnRay(dir);
@@ -142,15 +159,14 @@ public:
 	Vec3 WorldToScreen(const Camera& camera, const Vec3& point, bool* inScreen) const {
 		Transform World2Raster = camera.mCameraToRaster * camera.mWorldToCamera;
 		Vec3 rasterPoint = World2Raster(point);
-		Vec2i rasterPointPrim = Vec2i(int(rasterPoint.x), int(rasterPoint.y));
-		if (rasterPointPrim.x >= 0 && rasterPointPrim.x <= camera.GetFilm()->mResX &&
-			rasterPointPrim.y >= 0 && rasterPointPrim.y <= camera.GetFilm()->mResY) {
+		if (Finite(rasterPoint) && rasterPoint.x >= 0 && rasterPoint.x < camera.GetFilm()->mResX &&
+			rasterPoint.y >= 0 && rasterPoint.y < camera.GetFilm()->mResY) {
 			*inScreen = true;
 		}
 		else {
 			*inScreen = false;
 		}
-		return Vec3(rasterPointPrim.x, rasterPointPrim.y, 0);
+		return Vec3(rasterPoint.x, rasterPoint.y, 0);
 	}
 
 	//Vec3 WorldToScreen(const Camera& camera, const Vec3& point, bool* inScreen) const {
@@ -185,15 +201,21 @@ public:
 
 	Vec3 ConnectToCamera(const Scene& scene, const Camera& camera, StateSequence& rand,
 		const PathVertex& vertex, int s, Vec3* pRaster, bool* inScreen) const {
+		*inScreen = false;
+		if (s == 0 && (!vertex.mLight || !vertex.mLight->IsAreaLight() ||
+			vertex.mLight->IsDeltaLight() || vertex.mLight->IsEnvironmentLight() ||
+			!PositivePdf(vertex.mLightSelectionPdf) || !PositivePdf(vertex.mPdfPos))) return Vec3(0);
 		Vec3 pos = vertex.mIsect.mPos;
 		Vec3 hitToCameraDir = camera.mPos - pos;
+		if (!Finite(hitToCameraDir) || hitToCameraDir.Length2() == 0) return Vec3(0);
 		Normalize(hitToCameraDir);
-		if (Dot(camera.mCz, -1 * hitToCameraDir) < 0) {
+		if (Dot(camera.mCz, -1 * hitToCameraDir) <= 0) {
 			*inScreen = false;
 			return Vec3();
 		}
 		
 		*pRaster = WorldToScreen(camera, pos, inScreen);
+		if (!*inScreen) return Vec3(0);
 
 		
 		//GYT_DEBUG_PIXEL_V3(pRaster->x, pRaster->y, 428, 926, 563, 977, ThreadIndex());
@@ -205,15 +227,26 @@ public:
 		if (scene.Intersect(ray))
 		{
 			*inScreen = false;
+			return Vec3(0);
 		}
 
 		if (s == 0) {
-			return vertex.mThroughput;
+			real pdfCamera;
+			Vec3 wi;
+			const Vec3 importance = camera.SampleWi(vertex.mIsect, &pdfCamera, &wi, Vec3(0.5f));
+			if (!PositivePdf(pdfCamera) || !Finite(importance)) return Vec3(0);
+			const Vec3 emission = vertex.mLight->Emission(vertex.mIsect, wi);
+			// The sampled emission direction is not part of this camera connection.
+			const Vec3 L = emission * importance * std::abs(Dot(wi, vertex.mIsect.mGeometryNormal)) /
+				pdfCamera / vertex.mLightSelectionPdf / vertex.mPdfPos;
+			return Finite(L) ? L : Vec3(0);
 		}
 
+		if (!vertex.mIsect.mBsdf) return Vec3(0);
 		real pdfDir;
 		Vec3 wi;
 		Vec3 We = camera.SampleWi(vertex.mIsect, &pdfDir, &wi, Vec3(rand(), rand(), rand()));
+		if (!PositivePdf(pdfDir) || !Finite(We)) return Vec3(0);
 		Vec3 f = vertex.mIsect.mBsdf->Evaluate(vertex.mIsect.mOutDir, wi);
 		Vec3 L = We * f * vertex.mThroughput * std::abs(Dot(wi, vertex.mIsect.mNormal)) / pdfDir;
 
@@ -230,10 +263,18 @@ public:
 		//	}
 		//}
 
-		return L;
+		return Finite(L) ? L : Vec3(0);
 	}
 
 private:
+	static bool Finite(const Vec3& value) {
+		return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+	}
+
+	static bool PositivePdf(real pdf) {
+		return std::isfinite(pdf) && pdf > 0;
+	}
+
 	int mSpp, mMaxDepth;
 	std::shared_ptr<Sampler> mSampler;
 

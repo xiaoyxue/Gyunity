@@ -1,5 +1,24 @@
 # Rendering tests
 
+## Light tracing transport
+
+LT depth D permits D scattering vertices after the light origin; D=0 connects
+only that origin without accessing a surface slot. A null or nonfinite sampled
+continuation terminates the walk while retaining its finite prefix. Mixed BSDFs
+retain typed, weighted sampling and classify the sampled event, not the whole
+material. No shading-normal/adjoint correction is introduced here.
+
+The stored origin throughput remains Le. Its camera splat is restricted to
+area lights emitting toward the camera and applies camera importance/PDF,
+geometric endpoint cosine, light-selection PMF and position density exactly
+once, independent of the sampled emission-direction density. Point and
+environment origins do not splat directly. LT tests the floating raster against
+half-open film bounds before splatting, without integer truncation.
+
+`LTTransportAudit.*`, `LightTracingEmission.*` and `MixedBsdfIntegrators.Lt*`
+cover these contracts. Depth expectations use analytic mirror throughput and
+vertex counts, not PT's depth convention.
+
 ## Scattering and emissive-surface consistency
 
 GGX full-NDF and visible-normal sampling use their corresponding PDFs; full-NDF
