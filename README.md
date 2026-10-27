@@ -21,34 +21,46 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 
 ## Some Results
 ### Original scene previews
-Height 1024 with original aspect ratios, 512 samples per pixel and depth 10.
-Veach bidir uses BDPT; the other five use PT. These are generated Gyunity
-renders with no resizing or reference-image substitution.
-[Settings and image hashes](https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/transport-scenes-1024h.json).
+Height 1024 with original aspect ratios and 512 samples per pixel.
+Veach bidir uses BDPT with shading normals, depth 7 and ACES display mapping;
+the other seven use PT at depth 10 with the native PNG display encoding.
+These are generated Gyunity renders with no resizing or reference-image substitution.
+[Settings and image hashes](https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/transport-scenes-shading-rough-glass-1024h.json).
 
 <div align="center">
   <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/CornellBoxStandard-path-1024x1024-spp512-depth10.png?raw=true" alt="CornellBoxStandard, path tracing"/>
-  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-mis-path-1820x1024-spp512-depth10.png?raw=true" alt="Original Veach MIS, path tracing"/>
-  <p>CornellBoxStandard (PT) / Veach MIS (PT)</p>
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-bidir-bdpt-shading-1024x1024-spp512-depth7-aces.png?raw=true" alt="Original Veach bidir, BDPT with shading normals and ACES"/>
+  <p>CornellBoxStandard (PT) / Veach bidir (BDPT, shading normals, ACES)</p>
 </div>
 
 <br/>
 <div align="center">
-  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-bidir-bdpt-1024x1024-spp512-depth10.png?raw=true" alt="Original Veach bidir, bidirectional path tracing"/>
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-mis-path-1820x1024-spp512-depth10.png?raw=true" alt="Original Veach MIS, path tracing"/>
   <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-copper-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native copper, path tracing"/>
-  <p>Veach bidir (BDPT) / Matpreview copper (PT)</p>
+  <p>Veach MIS (PT) / Matpreview copper (PT)</p>
 </div>
 
 <br/>
 <div align="center">
   <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-glass-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native glass, path tracing"/>
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-rough-glass-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native rough glass, path tracing"/>
+  <p>Matpreview glass (PT) / Matpreview rough glass (PT)</p>
+</div>
+
+<br/>
+<div align="center">
   <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-diffuse-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native diffuse material, path tracing"/>
-  <p>Matpreview glass (PT) / Matpreview diffuse (PT)</p>
+  <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/matpreview-plastic-path-1366x1024-spp512-depth10.png?raw=true" alt="Original Matpreview geometry with native smooth plastic, path tracing"/>
+  <p>Matpreview diffuse (PT) / Matpreview plastic (PT)</p>
 </div>
 
 Matpreview uses explicit supported native material overrides. Source geometry
 and environments are not redistributed here. Some Monte Carlo noise,
 fireflies and caustic speckles remain.
+Rough glass uses the native GGX dielectric with artist roughness (0.1, 0.1)
+and the source interior IOR of 1.9.
+Plastic uses the native smooth layered material with interior IOR 1.9,
+exterior air IOR 1.000277 and linear diffuse compensation.
 
 ### Earlier renders
 <div align="center">
@@ -108,12 +120,10 @@ See [INSTRUCTIONS.md](INSTRUCTIONS.md) for cmd.exe, Python/uv, PowerShell and SP
 
 | Topic | Details |
 |---|---|
-| [Projects](Docs/Projects.md) | Repository and application layout |
 | [Scene authoring](Docs/SceneAuthoring.md) | Native Python/JSON, uv and Mitsuba/PBRT imports |
 | [Scene builder](Docs/SceneBuilder.md) | C++ construction API and legacy scene correspondence |
 | [Scenes](Docs/Scenes.md) | Named scene commands, Cornell/Veach data and Matpreview preparation |
 | [Examples](Docs/Examples.md) | C++ helpers, named examples and explicit batch rendering |
-| [BDPT](Docs/BDPT.md) | Probability interfaces, subpaths, rendering and limitations |
 | [Debugging](Docs/Debugging.md) | Thread-local pixel diagnostics |
 | [Testing](Docs/Testing.md) | Scene regression commands and reference comparisons |
 
