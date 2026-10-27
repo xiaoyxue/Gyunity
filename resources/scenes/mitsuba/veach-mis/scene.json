@@ -1,0 +1,514 @@
+{
+  "camera": {
+    "fov_y": 20.11429322446647,
+    "to_world": [
+      4.37113e-08,
+      0.0,
+      -1.0,
+      28.2792,
+      -0.0,
+      1.0,
+      0.0,
+      3.5,
+      -1.0,
+      0.0,
+      -4.37113e-08,
+      1.23612e-06,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "type": "pinhole"
+  },
+  "materials": {
+    "DiffuseBSDF": {
+      "reflectance": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "GlossyBSDF": {
+      "alpha": [
+        0.05,
+        0.05
+      ],
+      "distribution": "beckmann",
+      "eta": [
+        0.200438,
+        0.924033,
+        1.10221
+      ],
+      "k": [
+        3.91295,
+        2.45285,
+        2.14219
+      ],
+      "reflectance": [
+        0.3,
+        0.3,
+        0.3
+      ],
+      "two_sided": true,
+      "type": "conductor"
+    },
+    "NullBSDF": {
+      "reflectance": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "two_sided": true,
+      "type": "diffuse"
+    },
+    "RoughBSDF": {
+      "alpha": [
+        0.1,
+        0.1
+      ],
+      "distribution": "beckmann",
+      "eta": [
+        0.200438,
+        0.924033,
+        1.10221
+      ],
+      "k": [
+        3.91295,
+        2.45285,
+        2.14219
+      ],
+      "reflectance": [
+        0.3,
+        0.3,
+        0.3
+      ],
+      "two_sided": true,
+      "type": "conductor"
+    },
+    "SmoothBSDF": {
+      "alpha": [
+        0.01,
+        0.01
+      ],
+      "distribution": "beckmann",
+      "eta": [
+        0.200438,
+        0.924033,
+        1.10221
+      ],
+      "k": [
+        3.91295,
+        2.45285,
+        2.14219
+      ],
+      "reflectance": [
+        0.3,
+        0.3,
+        0.3
+      ],
+      "two_sided": true,
+      "type": "conductor"
+    },
+    "SuperRoughBSDF": {
+      "alpha": [
+        0.25,
+        0.25
+      ],
+      "distribution": "beckmann",
+      "eta": [
+        0.200438,
+        0.924033,
+        1.10221
+      ],
+      "k": [
+        3.91295,
+        2.45285,
+        2.14219
+      ],
+      "reflectance": [
+        0.3,
+        0.3,
+        0.3
+      ],
+      "two_sided": true,
+      "type": "conductor"
+    }
+  },
+  "metadata": {
+    "archive": "veach-mis.zip",
+    "archive_sha256": "ce064bd3e7d46b318b44f02639b63ea3e1c7bdded1c5cd680e5733f6f525f3ce",
+    "importer_version": "0.1.0",
+    "license": "CC0-1.0",
+    "source_camera_to_world": [
+      -4.37113e-08,
+      0.0,
+      -1.0,
+      28.2792,
+      0.0,
+      1.0,
+      0.0,
+      3.5,
+      1.0,
+      0.0,
+      -4.37113e-08,
+      1.23612e-06,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "source_file_format": "openexr",
+    "source_format": "mitsuba-3",
+    "source_fov": 35.0,
+    "source_fov_axis": "x",
+    "source_max_depth": 3,
+    "xml_sha256": "4d7eb0309fe003967f0edb3684f5cd934aa076b549959ea83964a3e5a2cd331d"
+  },
+  "name": "veach-mis",
+  "render": {
+    "accelerator": "bvh",
+    "filter": "tent",
+    "height": 720,
+    "integrator": "path",
+    "max_depth": 3,
+    "seed": 123,
+    "spp": 64,
+    "width": 1280
+  },
+  "schema_version": 1,
+  "shapes": [
+    {
+      "emission": null,
+      "id": "Smooth",
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "material": "SmoothBSDF",
+      "to_world": [
+        0.805757,
+        0.0961775,
+        0.0,
+        0.264069,
+        -0.673242,
+        0.115108,
+        0.0,
+        4.09801,
+        0.0,
+        0.0,
+        4.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "box",
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "emission": null,
+      "id": "Glossy",
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "material": "GlossyBSDF",
+      "to_world": [
+        0.972057,
+        0.0567134,
+        0.0,
+        3.06163,
+        -0.396994,
+        0.138865,
+        0.0,
+        2.71702,
+        0.0,
+        0.0,
+        4.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "box",
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "emission": null,
+      "id": "Rough",
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "material": "RoughBSDF",
+      "to_world": [
+        1.03191,
+        0.0277252,
+        0.0,
+        7.09981,
+        -0.194077,
+        0.147415,
+        0.0,
+        1.81891,
+        0.0,
+        0.0,
+        4.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "box",
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "emission": null,
+      "id": "Diffuse_0001",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        9.9,
+        0.0,
+        0.0,
+        4.9,
+        0.0,
+        -4.32743e-07,
+        9.9,
+        0.0,
+        0.0,
+        -23.76,
+        -1.03858e-06,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "emission": null,
+      "id": "Diffuse_0002",
+      "material": "DiffuseBSDF",
+      "to_world": [
+        -4.32743e-07,
+        -4.32743e-07,
+        9.9,
+        -5.0,
+        -9.9,
+        1.89158e-14,
+        -4.32743e-07,
+        9.9,
+        0.0,
+        -23.76,
+        -1.03858e-06,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "quad",
+      "vertices": [
+        [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          1.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "center": [
+        0.0,
+        6.5,
+        -2.8
+      ],
+      "emission": [
+        7.59909,
+        7.59909,
+        7.59909
+      ],
+      "id": "Null_0001",
+      "material": "NullBSDF",
+      "radius": 1.0,
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "sphere"
+    },
+    {
+      "center": [
+        0.0,
+        6.5,
+        0.0
+      ],
+      "emission": [
+        30.3964,
+        30.3964,
+        30.3964
+      ],
+      "id": "Null_0002",
+      "material": "NullBSDF",
+      "radius": 0.5,
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "sphere"
+    },
+    {
+      "center": [
+        0.0,
+        6.5,
+        2.7
+      ],
+      "emission": [
+        3039.64,
+        3039.64,
+        3039.64
+      ],
+      "id": "Null_0003",
+      "material": "NullBSDF",
+      "radius": 0.05,
+      "to_world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "sphere"
+    },
+    {
+      "emission": null,
+      "id": "SuperRough",
+      "lower": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "material": "SuperRoughBSDF",
+      "to_world": [
+        1.04217,
+        0.0182831,
+        0.0,
+        10.6769,
+        -0.127982,
+        0.148882,
+        0.0,
+        1.23376,
+        0.0,
+        0.0,
+        4.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "box",
+      "upper": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ]
+}

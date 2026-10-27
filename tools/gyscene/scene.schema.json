@@ -1,0 +1,1340 @@
+{
+  "$defs": {
+    "Box": {
+      "additionalProperties": false,
+      "properties": {
+        "emission": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Emission"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "lower": {
+          "default": [
+            -1.0,
+            -1.0,
+            -1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Lower",
+          "type": "array"
+        },
+        "material": {
+          "minLength": 1,
+          "title": "Material",
+          "type": "string"
+        },
+        "to_world": {
+          "default": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "To World",
+          "type": "array"
+        },
+        "type": {
+          "const": "box",
+          "default": "box",
+          "title": "Type",
+          "type": "string"
+        },
+        "upper": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Upper",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "material"
+      ],
+      "title": "Box",
+      "type": "object"
+    },
+    "Camera": {
+      "additionalProperties": false,
+      "properties": {
+        "fov_y": {
+          "exclusiveMaximum": 179,
+          "exclusiveMinimum": 0,
+          "title": "Fov Y",
+          "type": "number"
+        },
+        "to_world": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "To World",
+          "type": "array"
+        },
+        "type": {
+          "const": "pinhole",
+          "default": "pinhole",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to_world",
+        "fov_y"
+      ],
+      "title": "Camera",
+      "type": "object"
+    },
+    "Checkerboard": {
+      "additionalProperties": false,
+      "properties": {
+        "color0": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Color0",
+          "type": "array"
+        },
+        "color1": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Color1",
+          "type": "array"
+        },
+        "scale": {
+          "default": [
+            1.0,
+            1.0
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Scale",
+          "type": "array"
+        },
+        "type": {
+          "const": "checkerboard",
+          "default": "checkerboard",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "color0",
+        "color1"
+      ],
+      "title": "Checkerboard",
+      "type": "object"
+    },
+    "Conductor": {
+      "additionalProperties": false,
+      "properties": {
+        "alpha": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Alpha",
+          "type": "array"
+        },
+        "distribution": {
+          "enum": [
+            "ggx",
+            "beckmann"
+          ],
+          "title": "Distribution",
+          "type": "string"
+        },
+        "eta": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Eta",
+          "type": "array"
+        },
+        "k": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "K",
+          "type": "array"
+        },
+        "reflectance": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Reflectance",
+          "type": "array"
+        },
+        "two_sided": {
+          "const": true,
+          "default": true,
+          "title": "Two Sided",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "conductor",
+          "default": "conductor",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "distribution",
+        "alpha",
+        "eta",
+        "k"
+      ],
+      "title": "Conductor",
+      "type": "object"
+    },
+    "Dielectric": {
+      "additionalProperties": false,
+      "properties": {
+        "eta_inside": {
+          "default": 1.5,
+          "exclusiveMinimum": 0,
+          "title": "Eta Inside",
+          "type": "number"
+        },
+        "eta_outside": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Eta Outside",
+          "type": "number"
+        },
+        "reflection": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Reflection",
+          "type": "array"
+        },
+        "transmission": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Transmission",
+          "type": "array"
+        },
+        "type": {
+          "const": "dielectric",
+          "default": "dielectric",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "Dielectric",
+      "type": "object"
+    },
+    "Diffuse": {
+      "additionalProperties": false,
+      "properties": {
+        "reflectance": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Checkerboard"
+            }
+          ],
+          "title": "Reflectance"
+        },
+        "two_sided": {
+          "default": true,
+          "title": "Two Sided",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "diffuse",
+          "default": "diffuse",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reflectance"
+      ],
+      "title": "Diffuse",
+      "type": "object"
+    },
+    "Environment": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "minLength": 1,
+          "title": "File",
+          "type": "string"
+        },
+        "id": {
+          "default": "environment",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "scale": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Scale",
+          "type": "number"
+        },
+        "to_world": {
+          "default": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "To World",
+          "type": "array"
+        },
+        "type": {
+          "const": "environment",
+          "default": "environment",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "title": "Environment",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "Mesh": {
+      "additionalProperties": false,
+      "properties": {
+        "emission": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Emission"
+        },
+        "face_normals": {
+          "default": false,
+          "title": "Face Normals",
+          "type": "boolean"
+        },
+        "file": {
+          "minLength": 1,
+          "title": "File",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "material": {
+          "minLength": 1,
+          "title": "Material",
+          "type": "string"
+        },
+        "to_world": {
+          "default": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "To World",
+          "type": "array"
+        },
+        "type": {
+          "const": "mesh",
+          "default": "mesh",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "material",
+        "file"
+      ],
+      "title": "Mesh",
+      "type": "object"
+    },
+    "Mirror": {
+      "additionalProperties": false,
+      "properties": {
+        "reflection": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Reflection",
+          "type": "array"
+        },
+        "type": {
+          "const": "mirror",
+          "default": "mirror",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "Mirror",
+      "type": "object"
+    },
+    "Plastic": {
+      "additionalProperties": false,
+      "properties": {
+        "diffuse": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Diffuse",
+          "type": "array"
+        },
+        "eta_inside": {
+          "default": 1.49,
+          "exclusiveMinimum": 0,
+          "title": "Eta Inside",
+          "type": "number"
+        },
+        "eta_outside": {
+          "default": 1.000277,
+          "exclusiveMinimum": 0,
+          "title": "Eta Outside",
+          "type": "number"
+        },
+        "nonlinear": {
+          "default": false,
+          "title": "Nonlinear",
+          "type": "boolean"
+        },
+        "specular": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Specular",
+          "type": "array"
+        },
+        "type": {
+          "const": "plastic",
+          "default": "plastic",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "diffuse"
+      ],
+      "title": "Plastic",
+      "type": "object"
+    },
+    "Quad": {
+      "additionalProperties": false,
+      "properties": {
+        "emission": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Emission"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "material": {
+          "minLength": 1,
+          "title": "Material",
+          "type": "string"
+        },
+        "to_world": {
+          "default": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "To World",
+          "type": "array"
+        },
+        "type": {
+          "const": "quad",
+          "default": "quad",
+          "title": "Type",
+          "type": "string"
+        },
+        "vertices": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            }
+          ],
+          "title": "Vertices",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "material",
+        "vertices"
+      ],
+      "title": "Quad",
+      "type": "object"
+    },
+    "RenderSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "accelerator": {
+          "default": "bvh",
+          "enum": [
+            "bvh",
+            "kd"
+          ],
+          "title": "Accelerator",
+          "type": "string"
+        },
+        "filter": {
+          "default": "box",
+          "enum": [
+            "box",
+            "tent",
+            "gaussian"
+          ],
+          "title": "Filter",
+          "type": "string"
+        },
+        "height": {
+          "default": 512,
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "integer"
+        },
+        "integrator": {
+          "default": "path",
+          "enum": [
+            "path",
+            "bdpt",
+            "sppm"
+          ],
+          "title": "Integrator",
+          "type": "string"
+        },
+        "max_depth": {
+          "default": 8,
+          "exclusiveMinimum": 0,
+          "title": "Max Depth",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 123,
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "spp": {
+          "default": 64,
+          "exclusiveMinimum": 0,
+          "title": "Spp",
+          "type": "integer"
+        },
+        "sppm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SppmSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "width": {
+          "default": 512,
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "RenderSettings",
+      "type": "object"
+    },
+    "RoughDielectric": {
+      "additionalProperties": false,
+      "properties": {
+        "eta_inside": {
+          "default": 1.5,
+          "exclusiveMinimum": 0,
+          "title": "Eta Inside",
+          "type": "number"
+        },
+        "reflection": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Reflection",
+          "type": "array"
+        },
+        "roughness": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            }
+          ],
+          "title": "Roughness",
+          "type": "array"
+        },
+        "transmission": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Transmission",
+          "type": "array"
+        },
+        "type": {
+          "const": "rough_dielectric",
+          "default": "rough_dielectric",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "roughness"
+      ],
+      "title": "RoughDielectric",
+      "type": "object"
+    },
+    "Sphere": {
+      "additionalProperties": false,
+      "properties": {
+        "center": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Center",
+          "type": "array"
+        },
+        "emission": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "minimum": 0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Emission"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "material": {
+          "minLength": 1,
+          "title": "Material",
+          "type": "string"
+        },
+        "radius": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Radius",
+          "type": "number"
+        },
+        "to_world": {
+          "default": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "To World",
+          "type": "array"
+        },
+        "type": {
+          "const": "sphere",
+          "default": "sphere",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "material"
+      ],
+      "title": "Sphere",
+      "type": "object"
+    },
+    "SppmSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "iterations": {
+          "default": 256,
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "photons_per_stage": {
+          "default": 300000,
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647,
+          "title": "Photons Per Stage",
+          "type": "integer"
+        }
+      },
+      "title": "SppmSettings",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "camera": {
+      "$ref": "#/$defs/Camera"
+    },
+    "lights": {
+      "items": {
+        "$ref": "#/$defs/Environment"
+      },
+      "maxItems": 1,
+      "title": "Lights",
+      "type": "array"
+    },
+    "materials": {
+      "additionalProperties": {
+        "discriminator": {
+          "mapping": {
+            "conductor": "#/$defs/Conductor",
+            "dielectric": "#/$defs/Dielectric",
+            "diffuse": "#/$defs/Diffuse",
+            "mirror": "#/$defs/Mirror",
+            "plastic": "#/$defs/Plastic",
+            "rough_dielectric": "#/$defs/RoughDielectric"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/Diffuse"
+          },
+          {
+            "$ref": "#/$defs/Conductor"
+          },
+          {
+            "$ref": "#/$defs/Dielectric"
+          },
+          {
+            "$ref": "#/$defs/Mirror"
+          },
+          {
+            "$ref": "#/$defs/RoughDielectric"
+          },
+          {
+            "$ref": "#/$defs/Plastic"
+          }
+        ]
+      },
+      "title": "Materials",
+      "type": "object"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Metadata",
+      "type": "object"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "render": {
+      "$ref": "#/$defs/RenderSettings"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "shapes": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "box": "#/$defs/Box",
+            "mesh": "#/$defs/Mesh",
+            "quad": "#/$defs/Quad",
+            "sphere": "#/$defs/Sphere"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/Quad"
+          },
+          {
+            "$ref": "#/$defs/Box"
+          },
+          {
+            "$ref": "#/$defs/Sphere"
+          },
+          {
+            "$ref": "#/$defs/Mesh"
+          }
+        ]
+      },
+      "title": "Shapes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "camera"
+  ],
+  "title": "Scene",
+  "type": "object"
+}

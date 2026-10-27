@@ -14,6 +14,7 @@ class Camera
 {
 protected:
 	std::shared_ptr<Film> mFilm;
+	bool mValid = false;
 public:
 	Vec3 mPos, mLookAt, mUp;
 	Vec3 mCx, mCy, mCz;
@@ -45,6 +46,7 @@ public:
 	virtual real PdfPos() const = 0;
 	virtual real PdfDir(const Ray &cameraRay) const = 0;
 	virtual std::shared_ptr<Film> GetFilm() const { return mFilm; }
+	bool IsValid() const { return mValid; }
 };
 
 class ProjectiveCamera : public Camera 

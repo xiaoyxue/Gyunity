@@ -38,13 +38,14 @@ public:
 
 	static int ToInt(real x, real gamma = 2.2f);
 
-	static std::vector<Vec3> LoadImage(const std::string& filename, int resX, int resY);
-
-	static Array2D<Vec3> LoadImage(const std::string& filename);
-
-	static Array2D<Vec3> LoadTexture(std::string filename);
+	static bool LoadImage(const std::string& filename, std::vector<Vec3>& image, int& width, int& height);
+	static bool LoadImage(const std::string& filename, Array2D<Vec3>& image);
+	static bool LoadTexture(const std::string& filename, Array2D<Vec3>& texture);
 
 	static bool WriteImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY, real gamma = 2.2);
+
+	// Writes .png/.bmp with pbrt's 8-bit sRGB encoding; values are expected to be display-referred.
+	static bool WriteSrgbLdrImage(const std::string& filename, const std::vector<Vec3>& image, uint32 resX, uint32 resY);
 
 };
 

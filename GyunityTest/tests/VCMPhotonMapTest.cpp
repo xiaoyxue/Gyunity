@@ -131,6 +131,18 @@ TEST_F(VCMPhotonMap, FirstSurfaceAndEmittingScatteringSurfaceAreIncluded) {
 	EXPECT_EQ(result, (Records{ { 0, 1 }, { 1, 1 } }));
 }
 
+TEST_F(VCMPhotonMap, ShadingPolicyFailsEvenWhenNormalsCoincide) {
+	Paths paths{ { Endpoint(), Surface() } };
+	ASSERT_TRUE(map.Build(paths, 1));
+	paths[0][1].mNormalMode = SurfaceNormalMode::Shading;
+	EXPECT_FALSE(map.Build(paths, 1));
+	EXPECT_FALSE(map.IsBuilt());
+	EXPECT_EQ(map.RecordCount(), 0u);
+	EXPECT_EQ(map.Radius(), 0);
+	EXPECT_FALSE(map.Query(Vec3(), Up, result));
+	EXPECT_TRUE(result.empty());
+}
+
 TEST_F(VCMPhotonMap, SampledAndUnsampledTerminalPureDeltaAreExcluded) {
 	Paths paths{ { Endpoint(), Surface(Vec3(), Up, Lobes::Delta), Surface(),
 		Surface(Vec3(), Up, Lobes::Delta) } };
@@ -446,7 +458,7 @@ TEST_F(VCMPhotonMap, GeneratedPathsAndArenaOwnedDataRemainUnchanged) {
 		real Sample() override { ++mCursor; return 0.75f; }
 	} samples;
 	Paths paths(8);
-	for (auto& path : paths) ASSERT_GE(GenerateLightPath(*scene, samples, arena, 4, path), 2);
+	for (auto& path : paths) ASSERT_GE(GenerateLightPath(*scene, samples, arena, 4, SurfaceNormalMode::Geometric, path), 2);
 	const Paths snapshot = paths;
 	const auto* storage = paths.data();
 	std::vector<const PathVertex*> pathStorage;

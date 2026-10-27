@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)openexr\src\lib;$(MSBuildThisFileDirectory)openexr\src\lib\OpenEXR;$(MSBuildThisFileDirectory)openexr\src\lib\OpenEXRCore;$(MSBuildThisFileDirectory)openexr\src\lib\Iex;$(MSBuildThisFileDirectory)openexr\src\lib\IlmThread;$(MSBuildThisFileDirectory)build\openexr\cmake;$(MSBuildThisFileDirectory)build\openexr\OpenEXR_ImathIncludeCompat;$(MSBuildThisFileDirectory)imath\src;$(MSBuildThisFileDirectory)imath\src\Imath;$(MSBuildThisFileDirectory)build\imath\config;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENEXR_DLL;IMATH_DLL;IEX_DLL;ILMTHREAD_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>

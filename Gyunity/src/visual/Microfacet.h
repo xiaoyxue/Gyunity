@@ -16,6 +16,7 @@ public:
 	virtual real G(const Vec3& wo, const Vec3& wi, const Vec3 &wh) const {
 		return 1 / (1 + Lambda(wo) + Lambda(wi));
 	}
+	// Microfacet normals stay in the canonical +z hemisphere for either view side.
 	virtual Vec3 SampleWh(const Vec3& wo, const Vec2& u) const = 0;
 	virtual real Pdf(const Vec3& wo, const Vec3& wh) const;
 
@@ -24,6 +25,19 @@ protected:
 
 	const bool mSampleVisibleArea;
 
+};
+
+class BeckmannDistribution : public MicrofacetDistribution {
+public:
+	BeckmannDistribution(real alphaX, real alphaY)
+		: MicrofacetDistribution(false), mAlphaX(alphaX), mAlphaY(alphaY) {}
+	real D(const Vec3& normal) const override;
+	real Lambda(const Vec3& direction) const override;
+	real G1(const Vec3& direction, const Vec3& normal) const override;
+	real G(const Vec3& wo, const Vec3& wi, const Vec3& normal) const override;
+	Vec3 SampleWh(const Vec3& wo, const Vec2& sample) const override;
+private:
+	real mAlphaX, mAlphaY;
 };
 
 class GGXDistribution : public MicrofacetDistribution 

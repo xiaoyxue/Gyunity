@@ -53,6 +53,16 @@ namespace BSDFCoordinate {
 			(wb.x * wb.x + wb.y * wb.y)),
 			-1, 1);
 	}
+
+	GYT_FORCE_INLINE bool TransmissionHalfVector(const Vec3& wo, const Vec3& wi, real eta, Vec3& wh) {
+		if (wo.z == 0 || wi.z == 0 || SameHemisphere(wo, wi)) return false;
+		wh = wo + wi * eta;
+		if (!(wh.Length2() > 0)) return false;
+		wh = wh.Norm();
+		if (wh.z < 0) wh = -wh;
+		// Refraction must agree with both microfacet and macrosurface orientation.
+		return Dot(wo, wh) * wo.z > 0 && Dot(wi, wh) * wi.z > 0;
+	}
 }
 
 enum ScatterEventType
@@ -68,7 +78,18 @@ enum ScatterEventType
 	BSDF_ALL = BSDF_ALL_REFLECTION | BSDF_ALL_TRANSMISSION
 };
 
+class SurfaceEventClassifier {
+public:
+	static bool IsDelta(ScatterEventType event) { return (event & BSDF_SPECULAR) != 0; }
+	static bool IsDiffuse(ScatterEventType event) { return (event & BSDF_DIFFUSE) != 0; }
+	static bool IsGlossy(ScatterEventType event) { return (event & BSDF_GLOSSY) != 0; }
+	static bool IsReflection(ScatterEventType event) { return (event & BSDF_REFLECTION) != 0; }
+	static bool IsTransmission(ScatterEventType event) { return (event & BSDF_TRANSMISSION) != 0; }
+	static ScatterEventType NonDeltaFlags() { return ScatterEventType(BSDF_ALL & ~BSDF_SPECULAR); }
+};
+
 real FrDielectric(real cosThetaI, real etaI, real etaT);
+real FrDiffuseDielectric(real eta);
 
 // https://seblagarde.wordpress.com/2013/04/29/memo-on-fresnel-equations/
 Vec3 FrConductor(real cosThetaI, const Vec3& etai, const Vec3& etat, const Vec3& k);
@@ -139,17 +160,23 @@ public:
 	~BSDF(){}
 	void Add(BxDF* bxdf);
 	real Pdf(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
-	// Optional reverse mass of the selected delta component (including lobe
-	// selection). -1 means unavailable; ordinary Pdf() remains unchanged.
-	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0),
-		ScatterEventType flags = BSDF_ALL, real* reverseDeltaMass = nullptr) const;
+	// Delta samples return probability mass; continuous samples return solid-angle density.
+	// Type and delta/continuous group probability describe selection even if the lobe rejects its direction.
+	// Empty/absorbing mixtures clear outputs; invalid weights log and return NaN probabilities.
+	// Optional reverse delta mass includes reverse lobe selection; -1 means unavailable.
+	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0), ScatterEventType flags = BSDF_ALL,
+		ScatterEventType* sampledType = nullptr, real* eventProbability = nullptr,
+		real* reverseDeltaMass = nullptr) const;
 	Vec3 Evaluate(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
 	bool IsDelta() const { 
 		return mIsDelta;
 	}
 	bool MatchScatterType(ScatterEventType flag) const;
+	bool HasNonDeltaLobes() const;
 	bool HasMixedDeltaLobes() const;
 
+private:
+	bool SamplingWeights(const Vec3& woLocal, ScatterEventType flags, real* weights, real* total) const;
 };
 
 class BxDF {
@@ -159,7 +186,9 @@ public:
 	virtual real Pdf(const Vec3& wo, const Vec3& wi) const = 0;
 	virtual Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand = Vec3(0, 0, 0)) const = 0;
 	virtual Vec3 Evaluate(const Vec3& wo, const Vec3& wi) const = 0;
-	virtual bool IsDelta() const { return mScatterEventType & BSDF_SPECULAR; }
+	// Nonnegative finite selection weight in the local shading frame; zero disables sampling.
+	virtual real SamplingWeight(const Vec3& wo) const { return 1; }
+	virtual bool IsDelta() const { return SurfaceEventClassifier::IsDelta(mScatterEventType); }
 	// Only queried for a successful sampled delta event, not arbitrary directions.
 	virtual real ReverseDeltaMass(const Vec3& wo, const Vec3& wi) const { return -1; }
 	virtual bool MatchesTypes(ScatterEventType flags) const { return (mScatterEventType & flags) == mScatterEventType; }
@@ -196,7 +225,7 @@ public:
 class SpecularBSDF : public BxDF {
 public:
 	SpecularBSDF(Vec3 r = Vec3(1.0, 1.0, 1.0)) 
-		: BxDF(ScatterEventType(BSDF_ALL_REFLECTION | BSDF_SPECULAR)), mR(r) 
+		: BxDF(ScatterEventType(BSDF_REFLECTION | BSDF_SPECULAR)), mR(r)
 	{
 	}
 
@@ -334,10 +363,12 @@ public:
 
 	real Pdf(const Vec3& wo, const Vec3& wi) const override 
 	{
+		if (!SameHemisphere(wo, wi)) return 0;
 		real pdf = 0;
-		Vec3 wh;
+		Vec3 wh = wo + wi;
+		if (wh == Vec3(0)) return 0;
 		real dwhDwi;
-		wh = (wo + wi).Norm();
+		wh = wh.Norm();
 		dwhDwi = 1.f / (4 * Dot(wi, wh));
 		wh = wh * Sgn(BSDFCoordinate::CosTheta(wh));
 		pdf = std::abs(mDistribution->Pdf(wo, wh) * dwhDwi);
@@ -413,8 +444,8 @@ public:
 		if (cosThetaI == 0 || cosThetaO == 0) return Vec3();
 
 		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-		Vec3 wh = (wo + wi * eta).Norm();
-		if (wh.z < 0) wh = -wh;
+		Vec3 wh;
+		if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return Vec3();
 
 		Vec3 F = mFresnel.Evaluate(Dot(wo, wh));
 
@@ -447,9 +478,8 @@ public:
 		if (SameHemisphere(wo, wi)) return 0;
 
 		real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-		Vec3 wh = -((wo + wi * eta).Norm());
-
-		wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
+		Vec3 wh;
+		if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return 0;
 		// Compute change of variables _dwh\_dwi_ for microfacet transmission
 		real sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);
 		real dwhDwi = std::abs((eta * eta * Dot(wi, wh)) / (sqrtDenom * sqrtDenom));
@@ -507,8 +537,7 @@ public:
 			if (cosThetaI == 0 || cosThetaO == 0) return Vec3();
 
 			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-			Vec3 wh = (-(wo + wi * eta).Norm());
-			wh = Sgn(BSDFCoordinate::CosTheta(wh)) * wh;
+			if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return Vec3();
 
 			real F = mFresnel.EvaluateScalar(Dot(wo, wh));
 			real D = mDistribution->D(wh);
@@ -527,7 +556,7 @@ public:
 
 	real Pdf(const Vec3& wo, const Vec3& wi) const override 
 	{
-
+		if (wo.z == 0 || wi.z == 0) return 0;
 		bool reflect = BSDFCoordinate::CosTheta(wo) * BSDFCoordinate::CosTheta(wi) > 0;
 		real pdf = 0;
 		Vec3 wh;
@@ -538,7 +567,7 @@ public:
 		}
 		else {
 			real eta = BSDFCoordinate::CosTheta(wo) > 0 ? (mEtaB / mEtaA) : (mEtaA / mEtaB);
-			wh = -((wo + wi * eta).Norm());
+			if (!BSDFCoordinate::TransmissionHalfVector(wo, wi, eta, wh)) return 0;
 
 			// Compute change of variables _dwh\_dwi_ for microfacet transmission
 			real sqrtDenom = Dot(wo, wh) + eta * Dot(wi, wh);

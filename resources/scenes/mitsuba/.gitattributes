@@ -1,0 +1,4 @@
+*/scene.xml -text
+*/LICENSE.txt -text
+*/models/*.obj -text
+*.json text eol=lf

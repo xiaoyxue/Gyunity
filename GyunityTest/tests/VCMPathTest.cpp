@@ -453,6 +453,21 @@ TEST(VCMPath, ExactDepthOneFixtureAllWeightsAndScaling) {
 	}
 }
 
+TEST(VCMPath, ReportRecurrenceRejectsZeroDensityBeforeDividing) {
+	Edges edges;
+	edges.f = { 0.5, 0.25, 0.125 };
+	edges.r = { 0, 0.5, 1 };
+	edges.gf = edges.gr = { 1, 1, 1 };
+	const double expected[] = { 0, 0.4, 0.2, 0.4 };
+	const auto direct = VcmReference::DirectWeights(edges, 0.25, 16, true, true);
+	for (int i = 0; i < 4; ++i) {
+		EXPECT_NEAR(direct[i], expected[i], 1e-12);
+		EXPECT_NEAR(VcmReference::Weight(edges, i == 3, i == 3 ? 2 : i, 0.25, 16, true, true),
+			expected[i], 1e-12);
+	}
+	EXPECT_EQ(VcmReference::Weight(edges, false, 0, 0.25, 16, true, false), 0);
+}
+
 TEST(VCMPath, RegularAndCoincidentMatrixIncludesAllEndpointFamilies) {
 	for (bool directional : { false, true }) {
 		for (int n : { 3, 4, 7 }) {
@@ -545,8 +560,8 @@ TEST(VCMPath, GeneratedContinuousPathsMatchConnectionWeights) {
 		Samples lightSamples(0x1234u + sample), eyeSamples(0x5678u + sample);
 		std::vector<PathVertex> light, eye;
 		const Ray ray = camera.GenerateRay(sample % 4, sample / 4, Vec2(0.37f, 0.61f), 0);
-		ASSERT_EQ(GenerateLightPath(scene, lightSamples, lightArena, maxDepth + 1, light), maxDepth + 1);
-		ASSERT_EQ(GenerateCameraPath(scene, camera, eyeSamples, eyeArena, ray, maxDepth + 2, eye), maxDepth + 2);
+		ASSERT_EQ(GenerateLightPath(scene, lightSamples, lightArena, maxDepth + 1, SurfaceNormalMode::Geometric, light), maxDepth + 1);
+		ASSERT_EQ(GenerateCameraPath(scene, camera, eyeSamples, eyeArena, ray, maxDepth + 2, SurfaceNormalMode::Geometric, eye), maxDepth + 2);
 		const auto originalLight = light, originalEye = eye;
 		for (const auto* subpath : { &light, &eye }) {
 			for (size_t i = 1; i < subpath->size(); ++i) {
@@ -1183,9 +1198,9 @@ TEST(VCMSingularConvention, ActualBuildersPreserveDistinctApprovedConventions) {
 			0.5f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f });
 		Samples eyeSamples({ 0.5f, 0.8f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f });
 		std::vector<PathVertex> light, eye;
-		ASSERT_EQ(GenerateLightPath(scene, lightSamples, lightArena, 4, light), 4);
+		ASSERT_EQ(GenerateLightPath(scene, lightSamples, lightArena, 4, SurfaceNormalMode::Geometric, light), 4);
 		ASSERT_EQ(GenerateCameraPath(scene, camera, eyeSamples, eyeArena,
-			Ray(cameraPosition, Vec3(0, 0, 1)), 5, eye), 5);
+			Ray(cameraPosition, Vec3(0, 0, 1)), 5, SurfaceNormalMode::Geometric, eye), 5);
 		EXPECT_EQ(lightSamples.GetCursor(), 11);
 		EXPECT_EQ(eyeSamples.GetCursor(), 9);
 		for (int i = 0; i < 4; ++i) {
@@ -1282,7 +1297,7 @@ TEST(VCMSingularConvention, ActualDeltaSamplingMassesAndReverseTransportAreNotOr
 					Vec3 wi, returned;
 					real mass, reverseMass, capturedReverse;
 					const Vec3 random(0.75f, reflect ? 0.f : 0.99f, 0.5f);
-					const Vec3 value = bsdf.Sample(wo, &wi, &mass, random, BSDF_ALL, &capturedReverse);
+					const Vec3 value = bsdf.Sample(wo, &wi, &mass, random, BSDF_ALL, nullptr, nullptr, &capturedReverse);
 					Vec3 unchangedDirection;
 					real unchangedMass;
 					EXPECT_EQ(value, bsdf.Sample(wo, &unchangedDirection, &unchangedMass, random));
@@ -1303,6 +1318,55 @@ TEST(VCMSingularConvention, ActualDeltaSamplingMassesAndReverseTransportAreNotOr
 		}
 	}
 	RecordProperty("scope", "oblique dielectric reflection/transmission, TIR, reciprocal events, both transport modes, one/two matching lobes");
+}
+
+TEST(VCMSingularConvention, ReverseMassUsesReverseWeightedLobeSelectionWithoutChangingMainOutputs) {
+	class WeightedMirror : public SpecularBSDF {
+	public:
+		WeightedMirror() : SpecularBSDF(Vec3(1)) {}
+		real SamplingWeight(const Vec3& wo) const override { return wo.x > 0 ? 3 : 1; }
+	} weighted;
+	SpecularBSDF constant(Vec3(1));
+	Intersection hit;
+	hit.mNormal = hit.mGeometryNormal = Vec3(0, 0, 1);
+	CoordinateSystem(hit.mNormal, &hit.mShadingDpDu, &hit.mShadingDpDv);
+	BSDF bsdf(hit);
+	bsdf.Add(&weighted);
+	bsdf.Add(&constant);
+	const Vec3 wo = bsdf.LocalToWorld(Vec3(0.6f, 0, 0.8f));
+	for (real u : { 0.2f, 0.9f }) {
+		Vec3 wi, baselineWi;
+		real pdf, baselinePdf, reverse, event, baselineEvent;
+		ScatterEventType type, baselineType;
+		const Vec3 sample(u, 0.5f, 0.5f);
+		const auto baseline = bsdf.Sample(wo, &baselineWi, &baselinePdf, sample, BSDF_ALL, &baselineType, &baselineEvent);
+		EXPECT_EQ(bsdf.Sample(wo, &wi, &pdf, sample, BSDF_ALL, &type, &event, &reverse), baseline);
+		EXPECT_EQ(wi, baselineWi);
+		EXPECT_EQ(pdf, baselinePdf);
+		EXPECT_EQ(type, baselineType);
+		EXPECT_EQ(event, baselineEvent);
+		EXPECT_EQ(event, 1);
+		EXPECT_EQ(pdf, u < 0.75f ? 0.75f : 0.25f);
+		EXPECT_EQ(reverse, 0.5f);
+		EXPECT_EQ(bsdf.Pdf(wo, wi), 0);
+	}
+}
+
+TEST(VCMPath, ShadingPolicyIsRejectedEvenWhenNormalsCoincide) {
+	Fixture fixture(3, true);
+	std::vector<PathVertex> light, eye;
+	fixture.Split(1, false, light, eye);
+	const Strategy selected{ Technique::Connection, 1, 2 };
+	const Vcm::PathContext path(light, eye, selected, 0.5, 16);
+	real weight;
+	ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, selected, &weight));
+	for (auto* vertex : { &light[0], &eye[0], &eye[1] }) {
+		vertex->mNormalMode = SurfaceNormalMode::Shading;
+		weight = 123;
+		EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, selected, &weight));
+		EXPECT_EQ(weight, 0);
+		vertex->mNormalMode = SurfaceNormalMode::Geometric;
+	}
 }
 
 namespace {
@@ -1713,7 +1777,9 @@ TEST_F(VCMEnvironment, GeneratedMixedOriginsAndSpecularChainsMatchBothIndependen
 	scene.SetAccelerator(std::make_shared<BruteForce>(scene.GetPrimitives()));
 	scene.Initialize();
 	PinHoleCamera camera(std::make_shared<Film>(8, 8), Vec3(0), Vec3(0, 0, 1), Vec3(0, 1, 0), 120, 1);
-	constexpr int pairs = 64, maxDepth = 6;
+	// Main's integrated environment power makes finite-light origins rarer.
+	// Increase independent attempts without relaxing any coverage or error gate.
+	constexpr int pairs = 512, maxDepth = 6;
 	std::array<int, 3> origins{};
 	std::array<int, 4> families{};
 	std::array<int, maxDepth + 1> depths{};
@@ -1725,9 +1791,9 @@ TEST_F(VCMEnvironment, GeneratedMixedOriginsAndSpecularChainsMatchBothIndependen
 		MemoryPool lightArena, eyeArena;
 		Samples lightSamples(0x3920u + sample), eyeSamples(0x7392u + sample);
 		std::vector<PathVertex> light, eye;
-		const Ray ray = camera.GenerateRay(sample % 8, sample / 8, Vec2(0.37f, 0.61f), 0);
-		ASSERT_GE(GenerateLightPath(scene, lightSamples, lightArena, maxDepth + 1, light), 1);
-		ASSERT_GE(GenerateCameraPath(scene, camera, eyeSamples, eyeArena, ray, maxDepth + 2, eye), 2);
+		const Ray ray = camera.GenerateRay(sample % 8, (sample / 8) % 8, Vec2(0.37f, 0.61f), 0);
+		ASSERT_GE(GenerateLightPath(scene, lightSamples, lightArena, maxDepth + 1, SurfaceNormalMode::Geometric, light), 1);
+		ASSERT_GE(GenerateCameraPath(scene, camera, eyeSamples, eyeArena, ray, maxDepth + 2, SurfaceNormalMode::Geometric, eye), 2);
 		const auto beforeLight = light, beforeEye = eye;
 		++origins[light[0].mType == PathVertexType::Environment ? 2 : light[0].mLight->IsDeltaLight() ? 1
 																									  : 0];
@@ -1921,7 +1987,7 @@ TEST_F(VCMEnvironment, GeneratedDielectricBranchesIncludingTirRetainLsEmission) 
 		Samples samples(variant == 1 ? 0.99f : 0.f);
 		MemoryPool arena;
 		std::vector<PathVertex> light, eye;
-		ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(position, direction), 3, eye), 3);
+		ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(position, direction), 3, SurfaceNormalMode::Geometric, eye), 3);
 		ASSERT_EQ(eye.back().mType, PathVertexType::Environment);
 		EXPECT_EQ(samples.GetCursor(), 3);
 		ASSERT_TRUE(eye[1].mIsDelta);
@@ -1965,7 +2031,7 @@ TEST_F(VCMEnvironment, GeneratedEmissiveMirrorHasDistinctEmissionAndScatteringRo
 	PinHoleCamera camera(std::make_shared<Film>(4, 4), Vec3(0, 0, 1), Vec3(0), Vec3(0, 1, 0), 70, 1);
 	MemoryPool arena;
 	std::vector<PathVertex> light, eye;
-	ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(Vec3(0, 0, 1), Vec3(0, 0, -1)), 3, eye), 3);
+	ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(Vec3(0, 0, 1), Vec3(0, 0, -1)), 3, SurfaceNormalMode::Geometric, eye), 3);
 	ASSERT_EQ(eye[1].mLight, emitter.get());
 	ASSERT_TRUE(eye[1].mIsect.mBsdf->IsDelta());
 	ASSERT_TRUE(eye[1].mIsDelta);

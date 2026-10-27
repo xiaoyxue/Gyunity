@@ -73,6 +73,9 @@ inline double Weight(const Edges& e, bool merging, int s, double area, double co
 	const int t = n - s + (merging ? 1 : 0);
 	if ((merging && !vm) || (!merging && !vc && !SpecularEmission(e, s))) return 0;
 	if (!Feasible(e, merging, s)) return 0;
+	// Recurrences divide by the selected sampling densities and require positive support.
+	for (int i = 0; i < s; ++i) if (e.f[i] == 0) return 0;
+	for (int i = s - (merging ? 1 : 0); i < n; ++i) if (e.r[i] == 0) return 0;
 	if (n == 2) return !merging && s == 0 ? 1 : 0;
 	const double eta = count * area;
 	const State light = Trace(e, s, false, eta, vc, vm, count);

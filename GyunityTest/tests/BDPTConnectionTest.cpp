@@ -1,11 +1,13 @@
 #include "gtest/gtest.h"
 #include "integrator/BDPT.h"
+#include "integrator/PT.h"
 #include "accelerator/BruteForceAccel.h"
 #include "camera/PinholeCamera.h"
 #include "light/AreaLight.h"
 #include "light/PointLight.h"
 #include "material/Diffuse.h"
 #include "material/Mirror.h"
+#include "sampler/SamplerEnum.h"
 #include "texture/ConstantTexture.h"
 #include "image/ImageIO.h"
 #include "../../GyunityApp/scenes/SceneBuilder.h"
@@ -75,8 +77,96 @@ protected:
 			cameraPath->push_back(vertex);
 		}
 	}
+
+	void CheckMixedChain(bool sampledDelta, int split) {
+		auto chainCamera = std::make_shared<PinHoleCamera>(std::make_shared<Film>(16, 16),
+			Vec3(1, 0, -1), Vec3(1, 0, 1), Vec3(0, 1, 0), 53.13010235415597f, 1);
+		std::array<PathVertex, 4> chain = { full[0], full[1], full[1], full[2] };
+		chain[0].mIsect.mPos = Vec3(-1, 0, 1);
+		chain[0].mIsect.mNormal = chain[0].mIsect.mGeometryNormal = Vec3(1, 0, -1).Norm();
+		chain[1].mIsect.mBsdf = GYT_MEMORY_POOL_ALLOC(arena, BSDF)(chain[1].mIsect);
+		chain[1].mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Vec3(0.5f)));
+		chain[1].mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, SpecularBSDF)(Vec3(0.5f)));
+		ASSERT_TRUE(chain[1].mIsect.mBsdf->HasMixedDeltaLobes());
+		chain[1].mIsDelta = sampledDelta;
+		chain[2].mIsect.mPos = Vec3(1, 0, 1);
+		chain[2].mIsect.mNormal = chain[2].mIsect.mGeometryNormal = Vec3(0, 0, -1);
+		chain[2].mIsect.mShadingDpDv = Vec3(0, -1, 0);
+		DiffuseMaterial(std::make_shared<ConstantTexture<Vec3>>(Vec3(1))).ComputeScatteringFunction(
+			&chain[2].mIsect, arena);
+		chain[3].mIsect.mPos = chainCamera->mPos;
+		chain[3].mCamera = chainCamera.get();
+
+		// L--M--D--C: distances squared are 2, 2, 4; M has equal lobe probabilities.
+		// A delta event at M permits only splits 0 and 3. Continuous M permits all four.
+		const std::array<real, 4> f = { 0.5f, 1 / (2 * std::sqrt(2.f) * PI),
+			sampledDelta ? 0 : 1 / (8 * PI), 1 / (4 * PI) };
+		const std::array<real, 4> r = { sampledDelta ? 0 : 1 / (4 * std::sqrt(2.f) * PI),
+			1 / (4 * PI), chainCamera->PdfDir(Ray(chainCamera->mPos, Vec3(0, 0, 1))) / 4, 1 };
+		const double probabilities[] = {
+			(sampledDelta ? 1 : double(r[0])) * r[1] * r[2],
+			sampledDelta ? 0 : double(f[0]) * r[1] * r[2],
+			sampledDelta ? 0 : double(f[0]) * f[1] * r[2],
+			double(f[0]) * f[1] * (sampledDelta ? 1 : double(f[2]))
+		};
+		const double total = probabilities[0] + probabilities[1] + probabilities[2] + probabilities[3];
+		std::vector<PathVertex> lightPath, cameraPath;
+		for (int i = 0; i < split; ++i) {
+			auto vertex = chain[i];
+			vertex.mPdfFwd = f[i];
+			vertex.mPdfPrev = r[i];
+			lightPath.push_back(vertex);
+		}
+		for (int i = 3; i >= split; --i) {
+			auto vertex = chain[i];
+			vertex.mPdfFwd = r[i];
+			vertex.mPdfPrev = f[i];
+			cameraPath.push_back(vertex);
+		}
+		real weight;
+		ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, split, 4 - split, &weight));
+		EXPECT_NEAR(weight, probabilities[split] / total, 1e-6) << "split=" << split;
+		for (const auto& path : { lightPath, cameraPath }) {
+			for (const auto& vertex : path) {
+				if (vertex.mIsect.mBsdf == chain[1].mIsect.mBsdf)
+					EXPECT_EQ(vertex.mIsDelta, sampledDelta);
+			}
+		}
+	}
 };
 
+}
+
+TEST_F(FiniteBDPT, InternalCameraMixedDeltaExcludesAdjacentSplits) {
+	CheckMixedChain(true, 0);
+}
+
+TEST_F(FiniteBDPT, InternalLightMixedDeltaExcludesAdjacentSplits) {
+	CheckMixedChain(true, 3);
+}
+
+TEST_F(FiniteBDPT, InternalMixedContinuousKeepsAllFourSplits) {
+	for (int split = 0; split < 4; ++split) CheckMixedChain(false, split);
+}
+
+TEST_F(FiniteBDPT, MixedDeltaReflectionHasOnlyCameraHitStrategy) {
+	camera = std::make_shared<PinHoleCamera>(std::make_shared<Film>(16, 16),
+		Vec3(-1.5f, 0, 3), Vec3(0), Vec3(0, 1, 0), 53.13010235415597f, 1);
+	full[2].mCamera = camera.get();
+	full[2].mIsect.mPos = camera->mPos;
+	const Vec3 direction = -camera->mPos.Norm();
+	reverse[1] = camera->PdfDir(Ray(camera->mPos, direction)) *
+		std::abs(direction.z) / camera->mPos.Length2();
+	full[1].mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, SpecularBSDF)(Vec3(1)));
+	full[1].mIsDelta = true;
+	reverse[0] = 0;
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(0, &lightPath, &cameraPath);
+	real weight;
+	ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, 0, 3, &weight));
+	EXPECT_FLOAT_EQ(weight, 1);
+	EXPECT_TRUE(cameraPath[1].mIsDelta);
+	EXPECT_FLOAT_EQ(cameraPath[2].mPdfFwd, 0);
 }
 
 TEST_F(FiniteBDPT, BalanceWeightsMatchIndependentProductsAndSumToOne) {
@@ -126,6 +216,48 @@ TEST_F(FiniteBDPT, DirectConnectionIncludesGeometryAndItsOwnMisWeight) {
 	ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, 1, 2, &weight));
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
 	EXPECT_NEAR(contribution.x, (8.f / (25 * PI)) * weight, 1e-6f);
+}
+
+TEST_F(FiniteBDPT, PrimaryConnectionsReceiveMisExactlyOnce) {
+	for (SurfaceNormalMode mode : { SurfaceNormalMode::Geometric, SurfaceNormalMode::Shading }) {
+		for (auto& vertex : full) vertex.mNormalMode = mode;
+		for (int s = 0; s < 3; ++s) {
+			std::vector<PathVertex> lightPath, cameraPath;
+			Split(s, &lightPath, &cameraPath);
+			Vec3 primary, weighted;
+			Vec2 primaryRaster, weightedRaster;
+			real weight;
+			ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, s, 3 - s, &primary, &primaryRaster));
+			ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, s, 3 - s, &weight));
+			ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, s, 3 - s, &weighted, &weightedRaster));
+			EXPECT_GT(primary.x, 0);
+			EXPECT_EQ(weighted, primary * weight);
+			EXPECT_EQ(primaryRaster, weightedRaster);
+		}
+	}
+}
+
+TEST_F(FiniteBDPT, PrimaryConnectionDoesNotDependOnMisSnapshots) {
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(1, &lightPath, &cameraPath);
+	for (auto& vertex : lightPath) vertex.mPdfFwd = 0;
+	for (auto& vertex : cameraPath) vertex.mPdfFwd = 0;
+	Vec3 primary, weighted(99);
+	Vec2 raster;
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &primary, &raster));
+	EXPECT_NEAR(primary.x, 8.f / (25 * PI), 1e-6f);
+	EXPECT_FALSE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &weighted, &raster));
+	EXPECT_EQ(weighted, Vec3(0));
+}
+
+TEST_F(FiniteBDPT, PrimaryConnectionRejectsMixedNormalPolicies) {
+	std::vector<PathVertex> lightPath, cameraPath;
+	Split(1, &lightPath, &cameraPath);
+	lightPath.back().mNormalMode = SurfaceNormalMode::Shading;
+	Vec3 primary(99);
+	Vec2 raster;
+	EXPECT_FALSE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &primary, &raster));
+	EXPECT_EQ(primary, Vec3(0));
 }
 
 TEST_F(FiniteBDPT, GeometryUsesInverseSquareAndNormalizedDirections) {
@@ -215,6 +347,8 @@ TEST_F(FiniteBDPT, BlockedConnectionContributesZero) {
 	Split(1, &lightPath, &cameraPath);
 	Vec3 contribution;
 	Vec2 raster;
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
+	EXPECT_EQ(contribution, Vec3(0));
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
 	cameraPath[0].mPdfFwd = -1;
@@ -418,13 +552,65 @@ TEST(FiniteBDPTRender, DirectEmissionIsIndependentOfSampleCount) {
 		const std::string path = std::string(output) + "\\bdpt-emission-" + std::to_string(spp) + ".hdr";
 		film->SetFileName(path);
 		ASSERT_TRUE(film->SaveImage());
-		const auto image = ImageIO::LoadImage(path, 16, 16);
+		std::vector<Vec3> image;
+		int width = 0, height = 0;
+		ASSERT_TRUE(ImageIO::LoadImage(path, image, width, height));
 		for (const auto& pixel : image) {
 			EXPECT_NEAR(pixel.x, 3, 1e-5f);
 			EXPECT_NEAR(pixel.y, 3, 1e-5f);
 			EXPECT_NEAR(pixel.z, 3, 1e-5f);
 		}
 	}
+}
+
+TEST(FiniteBDPTRender, MixedPlasticMirrorHighlightMatchesAnalyticRadiance) {
+	const char* output = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY");
+	if (!output) GTEST_SKIP() << "Set GYUNITY_TEST_OUTPUT_DIRECTORY under the main repository Test folder.";
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	const auto plastic = SceneBuilder::Plastic(Vec3(0.05f), Vec3(1), 1, 1.5f, false);
+	ASSERT_NE(plastic, nullptr);
+	builder.AddQuad(Vec3(-10, -10, 0), Vec3(10, -10, 0), Vec3(10, 10, 0), Vec3(-10, 10, 0),
+		Vec3(0, 0, 1), plastic);
+	const real angle = 50 * PI / 180;
+	const real offset = std::tan(angle);
+	builder.AddQuadLight(Vec3(-0.1f, offset - 0.1f, 1), Vec3(-0.1f, offset + 0.1f, 1),
+		Vec3(0.1f, offset + 0.1f, 1), Vec3(0.1f, offset - 0.1f, 1), Vec3(0, 0, -1), Vec3(50));
+	scene->SetAccelerator(std::make_shared<BruteForce>(scene->GetPrimitives()));
+	scene->Initialize();
+	// A one-degree pixel lies wholly inside the mirror image of the small emitter.
+	// Independent Fresnel formula: dominant radiance F(50 degrees)*Le, plus < .02 diffuse.
+	const double ci = std::cos(double(angle)), ct = std::sqrt(1 - (1 - ci * ci) / 2.25);
+	const double rs = (ci - 1.5 * ct) / (ci + 1.5 * ct);
+	const double rp = (1.5 * ci - ct) / (1.5 * ci + ct);
+	const double expected = 25 * (rs * rs + rp * rp);
+	std::array<Vec3, 2> radiance;
+	for (int bdpt = 0; bdpt < 2; ++bdpt) {
+		auto film = std::make_shared<Film>(1, 1);
+		PinHoleCamera camera(film, Vec3(0, -offset, 1), Vec3(0), Vec3(0, 0, 1), 1, 1);
+		auto sampler = std::make_shared<RandomSampler>(123);
+		if (bdpt) {
+			BidirectionalPathTracing integrator(sampler, 3, 16384);
+			ASSERT_TRUE(integrator.RenderChecked(*scene, camera));
+		} else {
+			PathTracing integrator(16384, 3, sampler, std::make_shared<SamplerEnum>());
+			ASSERT_TRUE(integrator.RenderChecked(*scene, camera));
+		}
+		const std::string path = std::string(output) + "\\mixed-plastic-highlight-" +
+			(bdpt ? "bdpt.exr" : "pt.exr");
+		film->SetFileName(path);
+		ASSERT_TRUE(film->SaveImage());
+		std::vector<Vec3> image;
+		int width = 0, height = 0;
+		ASSERT_TRUE(ImageIO::LoadImage(path, image, width, height));
+		ASSERT_EQ(image.size(), 1);
+		radiance[bdpt] = image[0];
+		for (int channel = 0; channel < 3; ++channel) {
+			EXPECT_GE(image[0][channel], expected * 0.96);
+			EXPECT_LE(image[0][channel], expected * 1.04 + 0.02);
+		}
+	}
+	EXPECT_NEAR(radiance[1].x / radiance[0].x, 1, 0.06);
 }
 
 TEST(FiniteBDPTRender, TinyCornellBoxRunsBothSubpathsAndConnections) {
@@ -442,7 +628,9 @@ TEST(FiniteBDPTRender, TinyCornellBoxRunsBothSubpathsAndConnections) {
 	const std::string path = std::string(output) + "\\bdpt-cornell.hdr";
 	film->SetFileName(path);
 	ASSERT_TRUE(film->SaveImage());
-	const auto image = ImageIO::LoadImage(path, 16, 16);
+	std::vector<Vec3> image;
+	int width = 0, height = 0;
+	ASSERT_TRUE(ImageIO::LoadImage(path, image, width, height));
 	double sum = 0;
 	for (const auto& pixel : image) {
 		ASSERT_TRUE(std::isfinite(pixel.x) && std::isfinite(pixel.y) && std::isfinite(pixel.z));

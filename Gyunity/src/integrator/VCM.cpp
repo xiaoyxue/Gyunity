@@ -145,6 +145,8 @@ void VertexConnectionMerging::Render(const Scene& scene, const Camera& camera) {
 bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& camera) {
 	mStatistics = {};
 	mCancelled.store(false);
+	if (mUseShadingNormals)
+		return Fail("VCM shading-normal transport is not implemented; useShadingNormals must be false.");
 	if (!mSampler || mMaxDepth < 0 || mMaxDepth > 409 || mIterations <= 0 ||
 		!std::isfinite(mInitialRadius) || mInitialRadius <= 0 ||
 		!std::isfinite(mAlpha) || mAlpha <= 0 || mAlpha >= 1 ||
@@ -268,7 +270,8 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 					if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
 					const int64 pixel = int64(y) * width + x;
 					CheckedSequence random(*tile.lightSampler, 2 * (int64(iteration) * count + pixel));
-					const int n = GenerateLightPath(scene, random, *tile.lightArena, mMaxDepth + 1, lightPaths[size_t(pixel)]);
+					const int n = GenerateLightPath(scene, random, *tile.lightArena, mMaxDepth + 1,
+						SurfaceNormalMode::Geometric, lightPaths[size_t(pixel)]);
 					++tile.lightAttempts;
 					if (n < 0 || !random.Valid() || !Vcm::ValidateSubpath(scene, lightPaths[size_t(pixel)], false))
 						return Tasks::Status::Failed;
@@ -322,7 +325,8 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 					const Ray ray = camera.GenerateRay(x, y, Vec2(u, v), 0);
 					auto& eye = tile.cameraPath;
 					const auto& light = lightPaths[size_t(pixel)];
-					const int n = GenerateCameraPath(scene, camera, random, *tile.cameraArena, ray, mMaxDepth + 2, eye);
+					const int n = GenerateCameraPath(scene, camera, random, *tile.cameraArena, ray, mMaxDepth + 2,
+						SurfaceNormalMode::Geometric, eye);
 					if (n < 0 || !random.Valid() || !Vcm::ValidateSubpath(scene, eye, true)) return Tasks::Status::Failed;
 					double sum[3] = {};
 					for (int t = 1; t <= n; ++t) {

@@ -21,7 +21,8 @@ public:
 	Mesh(){
 		mMaterial = nullptr;
 	}
-	void LoadFromFile(std::string finename, bool reverseVertices = false);
+	void LoadFromFile(std::string finename, bool reverseVertices = false, bool faceNormals = false);
+	bool TryLoadFromFile(const std::string& filename, bool reverseVertices = false, bool faceNormals = false);
 	void SetMaterial(const std::shared_ptr<Material> material);
 	void SetEmission(const Vec3 emission);
 	void SetMedium(const MediumInterface& mi);

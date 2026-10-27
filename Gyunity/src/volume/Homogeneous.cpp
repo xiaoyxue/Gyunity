@@ -2,6 +2,7 @@
 #include "visual/Intersection.h"
 #include "visual/Scene.h"
 #include <algorithm>
+#include <limits>
 GYT_NAMESPACE_BEGIN
 
 Vec3 HomogeneousMedium::Tr(const Ray& ray, StateSequence& rand) const {
@@ -12,9 +13,10 @@ Vec3 HomogeneousMedium::Tr(const Ray& ray, StateSequence& rand) const {
 Vec3 HomogeneousMedium::Sample(const Ray& ray, StateSequence& rand, MemoryPool& arena, MediumIntersection* mi) const {
     // Sample a channel and distance along the ray
     int channel = std::min((int)(rand() * 3), 2);
-    //int channel = 0;
-    real dist = -std::log(1 - rand()) / mSigmaT[channel];
-    //real dist = -std::log(1 - std::max(0.f, rand() - 0.1f)) / sigma_t[channel];
+    real u = rand();
+    real dist = mSigmaT[channel] > 0
+        ? -std::log1p(-u) / mSigmaT[channel]
+        : std::numeric_limits<real>::infinity();
     real t = std::min(dist / ray.mDir.Length(), ray.mTmax);
     bool sampledMedium = t < ray.mTmax;
     if (sampledMedium)

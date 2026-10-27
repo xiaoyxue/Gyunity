@@ -38,7 +38,8 @@ public:
 			return false;
 		}
 		*pdfPos = 1 / area;
-		*pdfDir = std::max(real(0), Dot(point.mNormal, dir)) * INV_PI;
+		// Emission is tied to the oriented geometric surface, independent of shading normals.
+		*pdfDir = std::max(real(0), Dot(point.mGeometryNormal, dir)) * INV_PI;
 		return true;
 	}
 
@@ -49,7 +50,7 @@ public:
 
 	Vec3 Emission(const Intersection &isect, const Vec3 &w) const override 
 	{
-		if (Dot(isect.mNormal, w) > 0) return mLemit;
+		if (Dot(isect.mGeometryNormal, w) > 0) return mLemit;
 		else return Vec3(0, 0, 0);
 
 	}
@@ -75,10 +76,10 @@ public:
 		//cos importance sampling
 		*isect = mShape->Sample(pdfPos, u);
 		Vec3 ss, ts;
-		CoordinateSystem(isect->mNormal, &ss, &ts);
+		CoordinateSystem(isect->mGeometryNormal, &ss, &ts);
 		Vec3 dirLocal = CosineSampleHemisphere(v);
 		real cosTheta = dirLocal.z;
-		*dir = (ss * dirLocal.x + ts * dirLocal.y + isect->mNormal * dirLocal.z).Norm();
+		*dir = (ss * dirLocal.x + ts * dirLocal.y + isect->mGeometryNormal * dirLocal.z).Norm();
 		*pdfDir = CosineHemispherePdf(cosTheta);
 
 		//*isect = mShape->Sample(pdfPos, u);

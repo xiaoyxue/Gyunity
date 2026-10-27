@@ -70,7 +70,7 @@ bool EnvironmentLight::PdfLight(const Intersection& point, const Vec3& dir, real
 
 Vec3 EnvironmentLight::Power() const 
 {
-	return mEnvMap->LookupRadiance(0.5, 0.5) * PI * mRadius * mRadius;
+	return mEnvMap->RadianceIntegral() * PI * mRadius * mRadius;
 }
 
 

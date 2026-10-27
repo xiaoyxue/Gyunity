@@ -13,7 +13,37 @@
     <ClCompile Include="tests\BsdfTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\PlasticTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\MixedBsdfIntegratorTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\PathTracingTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\EnvironmentAccumulationTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\PathVolumeAuditTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\LightProbabilityTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\SphereLightPdfTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\LightTracingEmissionTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\LTTransportAuditTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\EnvironmentMapPdfTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\EnvironmentImportanceAuditTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\BDPTPathTest.cpp">
@@ -32,6 +62,12 @@
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\VCMPhotonMapTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\BDPTShadingNormalTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\ToneMapTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\BDPTConnectionTest.cpp">
@@ -58,10 +94,19 @@
     <ClCompile Include="tests\BoundaryScatteringTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\BoundaryTransmittanceTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\MainExamplesTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\MatrixTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\CameraBasisTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\FrameIoAuditTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\SceneBuilderTest.cpp">
@@ -76,8 +121,32 @@
     <ClCompile Include="tests\VectorTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\ArrayTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp">
       <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GyunityApp\SceneRenderer.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GyunityApp\Examples.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GyunityApp\NativeScene.cpp">
+      <Filter>GyunityApp</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\NativeSceneTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\MaterialPreviewTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VeachMisSceneTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VeachBidirSceneTest.cpp">
+      <Filter>tests</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
