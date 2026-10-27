@@ -108,6 +108,37 @@ they are **not additive components** of a Combined image. Continuous
 ConnectionOnly weights share BDPT's common domain; singular VCM weights follow
 the report convention and need not equal legacy BDPT weights.
 
+## Code map
+
+The renderer follows the structure of Yuanming Hu's Taichi `VCMRenderer`
+(`render_stage`, `trace_light_path`, hash grid, `trace_eye_path`, `connect`,
+`vertex_merge`) while reusing BDPT's path builders and `EvaluateConnection`.
+Names keep Gyunity's `s`/`t` prefix counts.
+
+| Responsibility | Where |
+|---|---|
+| Validate settings, camera, scene and budgets; allocate tiles, the light batch and progress | `VCM.cpp` `ValidateRender`, `PrepareRender` |
+| One iteration: radius, then the three stages below | `RenderIteration` |
+| One attempted light path per pixel (`GenerateLightPath`) | `TraceLightPaths` |
+| Index the batch's continuous light vertices (skipped in ConnectionOnly) | `BuildPhotonMap` |
+| One camera path per pixel; for every prefix `t`, connect then merge | `TraceCameraPaths`, `RenderPixel` |
+| Connections `(s, t)`: `EvaluateConnection` times the VCM weight; `t = 1` splats | `Connect` |
+| Merges at prefix `t`: `GatherMerging` (weighted and normalized per pair) | `Merge` |
+| Clear borrowed references before resetting arenas; recompute statistics | `ReleaseIteration`, `CollectStatistics` |
+| Which strategies a mode uses (MergingOnly keeps `L S* E` connections only) | `VCMPath.cpp` `IsStrategyEnabled` |
+| Vertex densities on the joined path | `VertexDensity`, classified as delta event, cached reverse, sampled, merge-adjacent or recomputed |
+| One strategy's density: light prefix times camera prefix (report Eq. 10) | `StrategyLogPdf` |
+| Balance weights over every strategy of the same physical depth | `ComputeMisWeight` |
+| One merge pair; gathered photons reuse the camera-prefix check | `MergeContribution`, `MergePair`, `MergeGatheredPhoton`, `GatherMerging` |
+| Broad-phase candidates, then exact disk and oriented-normal acceptance | `VCMPhotonMap.cpp` `PhotonMap::Query` |
+
+Inside one MIS weight the joined-path context is validated once, and every vertex
+density, which depends only on that context, is evaluated at most once in first-use
+order and then reused across all competing strategies. Enumeration stays explicit
+(no recursive `dVCM/dVC/dVM` quantities), and results are bit-identical to
+evaluating each strategy from scratch. The public `ComputePathPdf` still validates
+its context on every call.
+
 Requirements: initialized surface scene, valid pinhole camera/film storage, finite
 positive radius, positive iterations, `0<alpha<1`, a sampler-supported depth,
 concurrency `-1` or positive, and distinct non-null sampler clones returning

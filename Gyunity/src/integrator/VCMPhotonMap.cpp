@@ -13,8 +13,10 @@ namespace {
 // A physical radius-one neighborhood therefore lies strictly inside the
 // radius-two broad phase. Its cell width is exactly four; all backend cells
 // are nonnegative and < 2^20, safely below its int casts/loop increments.
+// BroadPhaseRadius is a conservative cell-insertion radius in those units,
+// never the physical kernel radius used by Query's acceptance test.
 constexpr double CoordinateLimit = 1048576;
-constexpr real BroadRadius = 2;
+constexpr real BroadPhaseRadius = 2;
 
 bool Fail(const char* message) {
 	GetDefaultLogger()->Error(message, false);
@@ -67,6 +69,27 @@ double Coordinate(real value, real origin, real radius) {
 	return (double(value) - double(origin)) / double(radius);
 }
 
+// Physical acceptance after the broad phase, on world-space values in double precision:
+// an exact disk of the kernel radius and an oriented geometric-normal test.
+constexpr double MinimumNormalCosine = 0.9;
+
+double SquaredDistance(const Vec3& a, const Vec3& b) {
+	double distance2 = 0;
+	for (int axis = 0; axis < 3; ++axis) {
+		const double delta = double(a[axis]) - double(b[axis]);
+		distance2 += delta * delta;
+	}
+	return distance2;
+}
+
+double NormalCosine(const Vec3& a, const Vec3& b) {
+	const double aLength = std::sqrt(Length2(a)), bLength = std::sqrt(Length2(b));
+	double cosine = 0;
+	for (int axis = 0; axis < 3; ++axis)
+		cosine += (double(a[axis]) / aLength) * (double(b[axis]) / bLength);
+	return cosine;
+}
+
 }
 
 void PhotonMap::Clear() {
@@ -116,7 +139,7 @@ bool PhotonMap::Build(const std::vector<std::vector<PathVertex>>& lightPaths, re
 		}
 	}
 
-	mGrid.Initialize(BroadRadius);
+	mGrid.Initialize(BroadPhaseRadius);
 	for (size_t pathIndex = 0; pathIndex < lightPaths.size(); ++pathIndex) {
 		const auto& path = lightPaths[pathIndex];
 		for (size_t vertexIndex = 0; vertexIndex < path.size(); ++vertexIndex) {
@@ -125,12 +148,12 @@ bool PhotonMap::Build(const std::vector<std::vector<PathVertex>>& lightPaths, re
 			Vec3 local;
 			for (int axis = 0; axis < 3; ++axis)
 				local[axis] = real(Coordinate(vertex.mIsect.mPos[axis], origin[axis], radius));
-			mGrid.AddPoint({ local, { pathIndex, vertexIndex } }, BroadRadius);
-			mGridBounds.Fit(local - BroadRadius);
-			mGridBounds.Fit(local + BroadRadius);
+			mGrid.AddPoint({ local, { pathIndex, vertexIndex } }, BroadPhaseRadius);
+			mGridBounds.Fit(local - BroadPhaseRadius);
+			mGridBounds.Fit(local + BroadPhaseRadius);
 		}
 	}
-	if (count) mGrid.BuildHashGrid(BroadRadius);
+	if (count) mGrid.BuildHashGrid(BroadPhaseRadius);
 	mOrigin = origin;
 	mRadius = radius;
 	mRecordCount = count;
@@ -157,23 +180,17 @@ bool PhotonMap::Query(const Vec3& position, const Vec3& geometricNormal,
 			return Fail("VCM photon map query has an unrepresentable relative coordinate.");
 		local[axis] = real(coordinate);
 	}
+	// Broad phase: every record in the query's grid cell, deduplicated in (path, vertex) order.
 	const auto& bucket = mGrid.GetGrid(local);
 	result.assign(bucket.begin(), bucket.end());
 	std::sort(result.begin(), result.end());
 	result.erase(std::unique(result.begin(), result.end()), result.end());
+	// Physical acceptance: keep a candidate only inside the exact disk with a compatible normal.
 	const double radius2 = double(mRadius) * mRadius;
-	const double queryLength = std::sqrt(Length2(geometricNormal));
 	result.erase(std::remove_if(result.begin(), result.end(), [&](const PhotonRecord& record) {
 		const auto& hit = (*mLightPaths)[record.mLightPathIndex][record.mVertexIndex].mIsect;
-		double distance2 = 0, cosine = 0;
-		const double photonLength = std::sqrt(Length2(hit.mGeometryNormal));
-		for (int axis = 0; axis < 3; ++axis) {
-			const double delta = double(position[axis]) - double(hit.mPos[axis]);
-			distance2 += delta * delta;
-			cosine += (double(geometricNormal[axis]) / queryLength) *
-				(double(hit.mGeometryNormal[axis]) / photonLength);
-		}
-		return distance2 > radius2 || cosine < 0.9;
+		return SquaredDistance(position, hit.mPos) > radius2 ||
+			NormalCosine(geometricNormal, hit.mGeometryNormal) < MinimumNormalCosine;
 	}), result.end());
 	return true;
 }
