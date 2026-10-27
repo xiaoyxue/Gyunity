@@ -22,6 +22,9 @@
     <ClCompile Include="tests\PathTracingTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\PathVolumeAuditTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\LightProbabilityTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>

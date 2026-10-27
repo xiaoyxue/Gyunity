@@ -44,6 +44,25 @@ photons per stage. PT/BDPT use `--spp`. Native JSON defaults apply unless an
 explicit flag overrides them. `--accel bvh|kd` selects the accelerator.
 Output supports `.png`, `.bmp`, `.hdr` and Float32 `.exr`.
 
+PT and VPT count **scattering events** in `maxDepth`, including medium phase
+scattering. Null medium boundaries do not consume depth. Emission directly
+visible to the camera or reached after the last delta scattering is credited
+before stopping; no further scattering or next-event estimate is taken at the
+limit. The C++ integrators support depth zero for directly visible emission
+(attenuated through media in VPT); this does not change CLI budget validation.
+Continuous BSDF/phase continuations do not add emission a second time: their
+direct illumination estimator already accounts for it.
+
+VPT's C++ `equalAngular` option uses the existing equi-angular estimator only
+when every scene light is a concrete `AreaLight` or `PointLight`. With any
+environment or other light implementation (including subclasses), the **whole
+scene** uses free-flight sampling and the standard direct-illumination estimator,
+exactly as with `equalAngular=false`. Choosing this fallback separately for a
+selected light would incorrectly mix a conditional light estimate with an
+all-lights estimate. Point PDFs are initialized and checked before division.
+The existing supported-light equi-angular segment-length limitation (#165 L6)
+is unchanged; this fallback is not a general correction of that estimator.
+
 For already-generated native JSON, use
 `--scene-file ..\resources\scenes\native-demo\scene.json` instead of `--scene`.
 The renderer does not execute Python.
