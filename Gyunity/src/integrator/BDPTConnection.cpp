@@ -347,12 +347,14 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	double sumRatios = 0, ratio = 1;
 	for (int i = t - 1; i > 0; --i) {
 		if (!AdvanceMisRatio(cameraMis, i, &ratio)) return false;
-		if (ValidConnection(&cameraPath[i], cameraPath[i - 1], count - i, i)) sumRatios += ratio;
+		if (!cameraMis[i].delta && !cameraMis[i - 1].delta &&
+			ValidConnection(&cameraPath[i], cameraPath[i - 1], count - i, i)) sumRatios += ratio;
 	}
 	ratio = 1;
 	for (int i = s - 1; i >= 0; --i) {
 		if (!AdvanceMisRatio(lightMis, i, &ratio)) return false;
-		if (ValidConnection(i > 0 ? &lightPath[i - 1] : nullptr, lightPath[i], i, count - i)) sumRatios += ratio;
+		if (!lightMis[i].delta && !(i > 0 && lightMis[i - 1].delta) &&
+			ValidConnection(i > 0 ? &lightPath[i - 1] : nullptr, lightPath[i], i, count - i)) sumRatios += ratio;
 	}
 	if (!std::isfinite(sumRatios)) return Fail("BDPT MIS ratio sum overflowed.");
 	*weight = static_cast<real>(1 / (1 + sumRatios));

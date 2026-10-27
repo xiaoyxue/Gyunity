@@ -25,6 +25,12 @@
     <ClCompile Include="tests\LightProbabilityTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\LightTracingEmissionTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\LTTransportAuditTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\EnvironmentMapPdfTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
