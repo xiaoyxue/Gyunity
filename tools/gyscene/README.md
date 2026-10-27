@@ -189,6 +189,17 @@ attached to a shape independently of its material. One `Environment` light
 may reference a linear RGB HDR/EXR map, positive scale and orthonormal
 direction-only transform. Native longitude zero points +X; the Mitsuba adapter
 converts its -Z convention by a matrix, without resampling the image.
+Environment radiance remains bilinearly filtered, with wrapped longitude and
+clamped latitude. Importance weights integrate that bilinear footprint over
+each UV cell (then weight by the cell-center sine of the polar angle), so bright
+texels retain sampling support across adjacent cells, seams and polar bands.
+Sample and queried PDFs use the continuous solid-angle Jacobian; exact poles
+have zero density. An entirely black map uses a normalized latitude proposal
+with zero radiance, not an epsilon radiance floor. Light-selection power is
+`pi * scene_radius^2 * integral_sphere L_RGB(direction) dOmega`: the RGB integral
+of the bilinear map is cached analytically, scaled once and invariant under
+direction rotations. Luminance is taken only when constructing the scene's
+light-selection PMF.
 Checkerboard periods have four alternating quadrants per unit UV square,
 with explicit UV scale. Volumes, arbitrary image material textures and other
 external plugins remain outside this bounded version.

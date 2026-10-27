@@ -31,6 +31,12 @@
     <ClCompile Include="tests\LTTransportAuditTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\EnvironmentMapPdfTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\EnvironmentImportanceAuditTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\BDPTPathTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>

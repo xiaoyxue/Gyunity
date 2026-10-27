@@ -46,6 +46,7 @@
     <ClCompile Include="tests\CameraBasisTest.cpp" />
     <ClCompile Include="tests\SceneBuilderTest.cpp" />
     <ClCompile Include="tests\EnvironmentMapPdfTest.cpp" />
+    <ClCompile Include="tests\EnvironmentImportanceAuditTest.cpp" />
     <ClCompile Include="tests\SceneRegistryTest.cpp" />
     <ClCompile Include="tests\SphereLightPdfTest.cpp" />
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
