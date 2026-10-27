@@ -48,6 +48,11 @@ bool ComputePathPdf(const Scene& scene, const PathContext& path,
 bool ComputeMisWeight(const Scene& scene, const PathContext& path,
 	const Strategy& current, real* weight);
 
+// Whether path.mode uses this strategy at all; MergingOnly keeps only connections that
+// see emission through zero or more delta surfaces (L S* E). Unchecked: the strategy's
+// prefixes must lie within the paths. Renderers filter with it before evaluating.
+bool IsStrategyEnabled(const PathContext& path, const Strategy& strategy);
+
 // Validate a complete generated subpath even when no estimator consumes it.
 // Empty light attempts are valid; sampled terminal delta events are checked too.
 bool ValidateSubpath(const Scene& scene, const std::vector<PathVertex>& path, bool camera);

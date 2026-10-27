@@ -1610,6 +1610,37 @@ TEST(VCMPath, SpecularEmissionIgnoresEmitterAndUnusedContinuationFlags) {
 	EXPECT_FALSE(pdf.feasible);
 }
 
+TEST(VCMPath, StrategyEnabledPredicateMatchesModeMasks) {
+	Fixture fixture(4, true);
+	const Vec3 positions[] = { Vec3(-2, 0, 2), Vec3(-1, 0, 0), Vec3(1, 0, 2), Vec3(2, 0, 0) };
+	for (int i = 0; i < 4; ++i) fixture.full[i].mIsect.mPos = positions[i];
+	for (int i : { 1, 2 }) {
+		SetLobe(fixture, i, (OracleDirection(fixture.full[i], fixture.full[i - 1]) +
+			OracleDirection(fixture.full[i], fixture.full[i + 1])).Norm(), 1);
+	}
+	fixture.Refresh();
+	std::vector<PathVertex> light, eye;
+	fixture.Split(0, false, light, eye);
+	const Vcm::Strategy emission{ Technique::Connection, 0, 4 };
+	const Vcm::Strategy connection{ Technique::Connection, 1, 3 };
+	const Vcm::Strategy merge{ Technique::Merging, 2, 3 };
+	for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+		const Vcm::PathContext path(light, eye, emission, 0.2, 16, mode);
+		// L S S E: camera-visible emission through two delta surfaces is used in every mode.
+		EXPECT_TRUE(Vcm::IsStrategyEnabled(path, emission));
+		EXPECT_EQ(Vcm::IsStrategyEnabled(path, connection), mode != Mode::MergingOnly);
+		EXPECT_EQ(Vcm::IsStrategyEnabled(path, merge), mode != Mode::ConnectionOnly);
+	}
+	// One continuous event in the prefix removes the MergingOnly L S* E exemption.
+	SetLobe(fixture, 2, fixture.full[2].mIsect.mNormal, 0);
+	fixture.Refresh();
+	fixture.Split(0, false, light, eye);
+	for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
+		const Vcm::PathContext path(light, eye, emission, 0.2, 16, mode);
+		EXPECT_EQ(Vcm::IsStrategyEnabled(path, emission), mode != Mode::MergingOnly);
+	}
+}
+
 TEST_F(VCMEnvironment, InvalidOriginsRotationBoundsAndMetadataFailExplicitly) {
 	for (int variant = 0; variant < 9; ++variant) {
 		SCOPED_TRACE(variant);

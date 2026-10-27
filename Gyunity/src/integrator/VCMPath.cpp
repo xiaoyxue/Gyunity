@@ -32,18 +32,23 @@ bool ValidTechnique(Technique technique) {
 	return technique == Technique::Connection || technique == Technique::Merging;
 }
 
+// Joined-path notation (technical report Sec. 3). Vertex i is numbered from the light origin
+// (i = 0) to the camera (i = n - 1). A connection joins light[0, s) with camera[t - 1 .. 0], so
+// n = s + t. A merge keeps two physical vertices at the shared index s - 1, the photon
+// y = light[s - 1] and the query x = camera[t - 1], so n = s + t - 1.
 int VertexCount(const PathContext& path) {
 	return path.selected.s + path.selected.t - (path.selected.technique == Technique::Merging ? 1 : 0);
 }
 
-// At a separated merge there is no universal geometric vertex at index s-1.
-// Reverse walks on the light side retain y; forward walks on the eye side retain x.
-const PathVertex& Vertex(const PathContext& path, int i, bool lightSide) {
+// Which physical vertex stands at a merge's shared index. Elsewhere both choices agree.
+enum class MergeEnd { Photon, Query };
+
+const PathVertex& Vertex(const PathContext& path, int i, MergeEnd end) {
 	const int split = path.selected.s;
 	if (path.selected.technique == Technique::Connection) {
 		return i < split ? path.light[i] : path.camera[VertexCount(path) - 1 - i];
 	}
-	return i < split - 1 || (i == split - 1 && lightSide) ?
+	return i < split - 1 || (i == split - 1 && end == MergeEnd::Photon) ?
 		path.light[i] : path.camera[VertexCount(path) - 1 - i];
 }
 
@@ -138,7 +143,7 @@ bool Validate(const Scene& scene, const PathContext& path) {
 		if (!ValidateVertex(path.camera[i], selected.s == 0 && i == selected.t - 1, i == 0,
 			i + 1 < selected.t)) return false;
 	}
-	const PathVertex& origin = Vertex(path, 0, true);
+	const PathVertex& origin = Vertex(path, 0, MergeEnd::Photon);
 	if (!origin.mLight) return Fail("VCM path has no light origin.");
 	real selection = 0;
 	bool registered = false;
@@ -160,7 +165,7 @@ bool Validate(const Scene& scene, const PathContext& path) {
 	if (!registered || !ValidPdf(selection)) return Fail("VCM origin requires a registered light-selection probability.");
 	if (!origin.mLight->IsAreaLight()) {
 		Vec3 emitted;
-		if (!Bidirectional::Direction(origin, Vertex(path, 1, true), &emitted)) return false;
+		if (!Bidirectional::Direction(origin, Vertex(path, 1, MergeEnd::Photon), &emitted)) return false;
 		real position, direction;
 		if (!origin.mLight->PdfLight(origin.mIsect, emitted, &position, &direction)) return false;
 		if (!ValidPdf(position) || position <= 0 || !ValidPdf(direction) ||
@@ -204,84 +209,188 @@ bool Validate(const Scene& scene, const PathContext& path) {
 	return true;
 }
 
+// Whether `mode` uses this strategy. MergingOnly keeps a connection only for camera-visible
+// emission through zero or more delta surfaces (L S* E), which no merge can estimate.
 bool Enabled(const PathContext& path, const Strategy& strategy) {
 	if (strategy.technique == Technique::Merging) return path.mode != Mode::ConnectionOnly;
 	if (path.mode != Mode::MergingOnly) return true;
 	if (strategy.s != 0) return false;
 	for (int i = 1; i + 1 < VertexCount(path); ++i) {
-		if (!Delta(Vertex(path, i, true))) return false;
+		if (!Delta(Vertex(path, i, MergeEnd::Photon))) return false;
 	}
 	return true; // Camera-visible LS*E emission, including the empty S* prefix.
 }
 
+// Whether the strategy can generate this joined path at all: connections and merges need
+// continuous endpoints, and an emitter hit (s = 0) cannot reach a delta light.
 bool Feasible(const PathContext& path, const Strategy& strategy) {
 	const int n = VertexCount(path), s = strategy.s;
 	if (strategy.technique == Technique::Merging) {
-		return s >= 2 && s < n && Continuous(Vertex(path, s - 1, true)) &&
-			Continuous(Vertex(path, s - 1, false));
+		return s >= 2 && s < n && Continuous(Vertex(path, s - 1, MergeEnd::Photon)) &&
+			Continuous(Vertex(path, s - 1, MergeEnd::Query));
 	}
 	if (strategy.t == 0 || (s == 1 && strategy.t == 1)) return false;
-	if (s == 0) return !Vertex(path, 0, true).mLight->IsDeltaLight();
-	return (s == 1 || Continuous(Vertex(path, s - 1, true))) &&
-		(s == n - 1 || Continuous(Vertex(path, s, false)));
+	if (s == 0) return !Vertex(path, 0, MergeEnd::Photon).mLight->IsDeltaLight();
+	return (s == 1 || Continuous(Vertex(path, s - 1, MergeEnd::Photon))) &&
+		(s == n - 1 || Continuous(Vertex(path, s, MergeEnd::Query)));
 }
 
-bool Density(const Scene& scene, const PathContext& path, int i, bool forward, real* pdf) {
-	const int n = VertexCount(path), s = path.selected.s;
-	const int source = i + (forward ? -1 : 1);
-	if (source > 0 && source < n - 1 && Delta(Vertex(path, source, true))) {
+// Which subpath generates joined vertex i: the light subpath walks i - 1 -> i and the camera
+// subpath walks i + 1 -> i. A strategy multiplies light-generated densities over its light
+// prefix and camera-generated densities over its camera prefix (report Eq. 10).
+enum class Generator { Light, Camera };
+
+// How the density of vertex i under one generator is obtained, tested in this order.
+enum class DensitySource {
+	DeltaEvent,    // the generating source vertex scattered through a delta lobe
+	CachedReverse, // a reverse density stored while tracing, still valid inside its prefix
+	Sampled,       // the density the generating subpath actually sampled
+	MergeAdjacent, // the vertex just beyond a merge (report Sec. 4.3)
+	Recomputed,    // re-evaluated across the connection on the joined path
+};
+
+DensitySource ClassifyDensity(const PathContext& path, int i, Generator by) {
+	const int n = VertexCount(path), s = path.selected.s, t = path.selected.t;
+	const bool light = by == Generator::Light;
+	const int source = light ? i - 1 : i + 1;
+	if (source > 0 && source < n - 1 && Delta(Vertex(path, source, MergeEnd::Photon)))
+		return DensitySource::DeltaEvent;
+	// A reverse event is unchanged only when its source AND sampled successor remain in the
+	// selected prefix. Its cached PDF retains the actual offset-ray directions;
+	// reconstructing them from hit positions changes the event.
+	if (!light && i < s - 2) return DensitySource::CachedReverse;
+	if (light && n - 1 - i < t - 2) return DensitySource::CachedReverse;
+	// Each subpath sampled its own prefix: the light prefix ends at s - 1 (the photon for a
+	// merge); the camera prefix ends at s, or at the query x = s - 1 for a merge.
+	const bool merge = path.selected.technique == Technique::Merging;
+	if (light && i <= s - 1) return DensitySource::Sampled;
+	if (!light && i >= (merge ? s - 1 : s)) return DensitySource::Sampled;
+	if (merge && i == (light ? s : s - 2)) return DensitySource::MergeAdjacent;
+	return DensitySource::Recomputed;
+}
+
+bool VertexDensity(const Scene& scene, const PathContext& path, int i, Generator by, real* pdf) {
+	const int n = VertexCount(path), s = path.selected.s, t = path.selected.t;
+	const bool light = by == Generator::Light;
+	const int source = light ? i - 1 : i + 1;
+	switch (ClassifyDensity(path, i, by)) {
+	case DensitySource::DeltaEvent: {
+		// The event belongs to the subpath that traced the source vertex.
 		const bool lightOwned = source < s;
 		const int index = lightOwned ? source : n - 1 - source;
-		if (index + 1 >= (lightOwned ? s : path.selected.t)) {
+		if (index + 1 >= (lightOwned ? s : t)) {
 			return Fail("VCM cannot invent a delta event across an unsampled connection.");
 		}
 		const PathVertex& vertex = lightOwned ? path.light[index] : path.camera[index];
-		const real mass = forward == lightOwned ? vertex.mDeltaPdf : vertex.mDeltaReversePdf;
+		// The owner's walking direction uses the forward mass; the other side the reverse mass.
+		const real mass = light == lightOwned ? vertex.mDeltaPdf : vertex.mDeltaReversePdf;
 		// Report (52): remove only the shared singular distribution, not its
 		// discrete component mass or geometric conversion. Never remap Pdf()==0.
-		return ConvertDensity(mass, vertex, Vertex(path, i, lightOwned), pdf);
+		return ConvertDensity(mass, vertex, Vertex(path, i, lightOwned ? MergeEnd::Photon : MergeEnd::Query), pdf);
 	}
-	// A reverse event is unchanged only when its source AND sampled successor
-	// remain in the selected prefix. Its cached PDF retains the actual offset-ray
-	// directions; reconstructing them from hit positions changes the event.
-	if (!forward && i < s - 2) {
-		*pdf = path.light[i].mPdfPrev;
+	case DensitySource::CachedReverse:
+		*pdf = light ? path.camera[n - 1 - i].mPdfPrev : path.light[i].mPdfPrev;
 		return true;
-	}
-	const int eyeIndex = n - 1 - i;
-	if (forward && eyeIndex < path.selected.t - 2) {
-		*pdf = path.camera[eyeIndex].mPdfPrev;
+	case DensitySource::Sampled:
+		*pdf = light ? path.light[i].mPdfFwd : path.camera[n - 1 - i].mPdfFwd;
 		return true;
+	case DensitySource::MergeAdjacent: {
+		const PathVertex& y = path.light[s - 1];
+		const PathVertex& x = path.camera[t - 1];
+		// Report 4.3 / Fig. 3: scatter at x with the ORIGINAL eye/photon
+		// directions, but convert along the sampled edge on that side.
+		// There is no x-y edge, and neither x->a nor y->b is a sampled edge.
+		const real pdfDir = light ? x.mIsect.mBsdf->Pdf(y.mIsect.mOutDir, x.mIsect.mOutDir) :
+			x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, y.mIsect.mOutDir);
+		return ConvertDensity(pdfDir, light ? x : y, Vertex(path, i, light ? MergeEnd::Query : MergeEnd::Photon), pdf);
 	}
-	if (path.selected.technique == Technique::Merging) {
-		const int j = s - 1;
-		if (forward && i <= j) { *pdf = path.light[i].mPdfFwd; return true; }
-		if (!forward && i >= j) { *pdf = path.camera[n - 1 - i].mPdfFwd; return true; }
-		if (i == (forward ? j + 1 : j - 1)) {
-			const PathVertex& y = path.light[j];
-			const PathVertex& x = path.camera[path.selected.t - 1];
-			// Report 4.3 / Fig. 3: scatter at x with the ORIGINAL eye/photon
-			// directions, but convert along the sampled edge on that side.
-			// There is no x-y edge, and neither x->a nor y->b is a sampled edge.
-			const real pdfDir = forward ? x.mIsect.mBsdf->Pdf(y.mIsect.mOutDir, x.mIsect.mOutDir) :
-				x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, y.mIsect.mOutDir);
-			return ConvertDensity(pdfDir, forward ? x : y, Vertex(path, i, !forward), pdf);
+	case DensitySource::Recomputed: {
+		// A light-side walk past a merge continues on the camera prefix (x); a camera-side
+		// walk continues on the light prefix (y).
+		const MergeEnd end = light ? MergeEnd::Query : MergeEnd::Photon;
+		if (light && i == 0) {
+			return Bidirectional::LightOriginPdf(scene, Vertex(path, 0, end), Vertex(path, 1, end), pdf);
 		}
+		const int previous = light ? i - 2 : i + 2;
+		return Bidirectional::PdfToward(Vertex(path, source, end),
+			previous >= 0 && previous < n ? &Vertex(path, previous, end) : nullptr,
+			Vertex(path, i, end), pdf);
 	}
-	else {
-		if (forward && i < s) { *pdf = path.light[i].mPdfFwd; return true; }
-		if (!forward && i >= s) { *pdf = path.camera[n - 1 - i].mPdfFwd; return true; }
 	}
-	const bool lightSide = !forward;
-	if (forward && i == 0) {
-		return Bidirectional::LightOriginPdf(scene, Vertex(path, 0, lightSide), Vertex(path, 1, lightSide), pdf);
-	}
-	const int previous = i + (forward ? -2 : 2);
-	return Bidirectional::PdfToward(Vertex(path, source, lightSide),
-		previous >= 0 && previous < n ? &Vertex(path, previous, lightSide) : nullptr,
-		Vertex(path, i, lightSide), pdf);
+	return Fail("VCM encountered an unknown vertex density source.");
 }
 
+// Densities depend only on the selected joined path, never on the strategy being scored, so
+// one evaluation computes each (vertex, generator) density at most once, on first use and in
+// the same order as an uncached evaluation. Failures are never cached; they end evaluation.
+class VertexDensities {
+public:
+	VertexDensities(const Scene& scene, const PathContext& path)
+		: mScene(scene), mPath(path), mLight(VertexCount(path)), mCamera(VertexCount(path)) {}
+
+	bool Get(int i, Generator by, real* pdf) {
+		Entry& entry = (by == Generator::Light ? mLight : mCamera)[i];
+		if (!entry.known) {
+			if (!VertexDensity(mScene, mPath, i, by, &entry.pdf)) return false;
+			entry.known = true;
+		}
+		*pdf = entry.pdf;
+		return true;
+	}
+
+private:
+	struct Entry {
+		real pdf = 0;
+		bool known = false;
+	};
+	const Scene& mScene;
+	const PathContext& mPath;
+	std::vector<Entry> mLight, mCamera;
+};
+
+bool HasSelectedDepth(const PathContext& path, const Strategy& strategy) {
+	return ValidTechnique(strategy.technique) && strategy.s >= 0 && strategy.t >= 0 &&
+		int64(strategy.s) + strategy.t - (strategy.technique == Technique::Merging ? 1 : 0) == VertexCount(path);
+}
+
+// Report Eq. (10): one strategy's density multiplies its light prefix, generated by the light
+// subpath, with its camera prefix, generated by the camera subpath. A merge's prefixes share
+// index s - 1, so the photon landing and the query each contribute a density (one density is
+// duplicated, not one position), and the acceptance disk pi r^2 is applied once. The sample
+// count (N_L for merges) is left to the MIS weight. The context must already be validated.
+bool StrategyLogPdf(VertexDensities& densities, const PathContext& path,
+	const Strategy& strategy, StrategyPdf* result) {
+	*result = {};
+	if (!Enabled(path, strategy) || !Feasible(path, strategy)) return true;
+	double logPdf = 0;
+	bool positive = true;
+	const auto multiply = [&](int i, Generator by) {
+		real pdf;
+		if (!densities.Get(i, by, &pdf)) return false;
+		if (!ValidPdf(pdf)) return Fail("VCM evaluated a nonfinite or negative density.");
+		if (pdf == 0) positive = false;
+		else logPdf += std::log(double(pdf));
+		return true;
+	};
+	const bool merge = strategy.technique == Technique::Merging;
+	for (int i = 0; i < strategy.s; ++i) {
+		if (!multiply(i, Generator::Light)) return false;
+	}
+	for (int i = strategy.s - (merge ? 1 : 0); i < VertexCount(path); ++i) {
+		if (!multiply(i, Generator::Camera)) return false;
+	}
+	if (!positive) return true;
+	if (merge) logPdf += std::log(std::acos(-1.0) * path.radius * path.radius);
+	if (!std::isfinite(logPdf)) return Fail("VCM path log density is not finite.");
+	result->feasible = true;
+	result->logPdf = logPdf;
+	return true;
+}
+
+}
+
+bool IsStrategyEnabled(const PathContext& path, const Strategy& strategy) {
+	return Enabled(path, strategy);
 }
 
 bool ComputePathPdf(const Scene& scene, const PathContext& path,
@@ -289,46 +398,35 @@ bool ComputePathPdf(const Scene& scene, const PathContext& path,
 	if (!result) return Fail("VCM PDF output is null.");
 	*result = {};
 	if (!Validate(scene, path)) return false;
-	if (!ValidTechnique(strategy.technique) || strategy.s < 0 || strategy.t < 0 ||
-		int64(strategy.s) + strategy.t - (strategy.technique == Technique::Merging ? 1 : 0) != VertexCount(path)) {
+	if (!HasSelectedDepth(path, strategy)) {
 		return Fail("VCM alternative must have valid counts at the selected physical depth.");
 	}
-	if (!Enabled(path, strategy) || !Feasible(path, strategy)) return true;
-
-	double logPdf = 0;
-	bool positive = true;
-	// Eq. (10): independently multiply the two prefixes of THIS strategy.
-	// At a merge the forward prefix includes its landing; the reverse prefix
-	// includes its query, duplicating one density, not one geometric position.
-	const int reverseStart = strategy.s - (strategy.technique == Technique::Merging ? 1 : 0);
-	for (int side = 0; side < 2; ++side) {
-		for (int i = side == 0 ? 0 : reverseStart; i < (side == 0 ? strategy.s : VertexCount(path)); ++i) {
-			real pdf;
-			if (!Density(scene, path, i, side == 0, &pdf)) return false;
-			if (!ValidPdf(pdf)) return Fail("VCM evaluated a nonfinite or negative density.");
-			if (pdf == 0) positive = false;
-			else logPdf += std::log(double(pdf));
-		}
-	}
-	if (!positive) return true;
-	if (strategy.technique == Technique::Merging) {
-		logPdf += std::log(std::acos(-1.0) * path.radius * path.radius);
-	}
-	if (!std::isfinite(logPdf)) return Fail("VCM path log density is not finite.");
-	result->feasible = true;
-	result->logPdf = logPdf;
-	return true;
+	VertexDensities densities(scene, path);
+	return StrategyLogPdf(densities, path, strategy, result);
 }
 
 bool ComputeMisWeight(const Scene& scene, const PathContext& path,
 	const Strategy& current, real* weight) {
 	if (!weight) return Fail("VCM weight output is null.");
 	*weight = 0;
+	// Every strategy below scores the same immutable joined path; validate it once.
+	if (!Validate(scene, path)) return false;
+	if (!HasSelectedDepth(path, current)) {
+		return Fail("VCM alternative must have valid counts at the selected physical depth.");
+	}
+	VertexDensities densities(scene, path);
 	StrategyPdf currentPdf;
-	if (!ComputePathPdf(scene, path, current, &currentPdf)) return false;
+	if (!StrategyLogPdf(densities, path, current, &currentPdf)) return false;
 	if (!currentPdf.feasible) return Fail("VCM current strategy has zero support or is disabled.");
+
+	// Balance heuristic in the log domain: w_i = c_i p_i / sum_j c_j p_j, with sample count
+	// c = 1 for a connection and N_L for a merge. Every strategy of the same physical depth
+	// competes: connections s = 0..n-1 (t = n - s) and merges s = 2..n-1 (t = n - s + 1).
 	const double logCount = std::log(double(path.lightPathCount));
-	const double currentScore = currentPdf.logPdf + (current.technique == Technique::Merging ? logCount : 0);
+	const auto score = [&](const Strategy& strategy, const StrategyPdf& pdf) {
+		return pdf.logPdf + (strategy.technique == Technique::Merging ? logCount : 0);
+	};
+	const double currentScore = score(current, currentPdf);
 	std::vector<double> scores;
 	double maximum = -std::numeric_limits<double>::infinity();
 	const int n = VertexCount(path);
@@ -336,15 +434,14 @@ bool ComputeMisWeight(const Scene& scene, const PathContext& path,
 		for (int s = technique == Technique::Connection ? 0 : 2; s < n; ++s) {
 			const Strategy strategy{ technique, s, n - s + (technique == Technique::Merging ? 1 : 0) };
 			StrategyPdf pdf;
-			if (!ComputePathPdf(scene, path, strategy, &pdf)) return false;
+			if (!StrategyLogPdf(densities, path, strategy, &pdf)) return false;
 			if (!pdf.feasible) continue;
-			const double score = pdf.logPdf + (technique == Technique::Merging ? logCount : 0);
-			scores.push_back(score);
-			maximum = std::max(maximum, score);
+			scores.push_back(score(strategy, pdf));
+			maximum = std::max(maximum, scores.back());
 		}
 	}
 	double sum = 0;
-	for (double score : scores) sum += std::exp(score - maximum);
+	for (double value : scores) sum += std::exp(value - maximum);
 	const double normalized = std::exp(currentScore - maximum) / sum;
 	if (!std::isfinite(normalized) || normalized < 0 || normalized > 1) return Fail("VCM normalized weight is invalid.");
 	*weight = static_cast<real>(normalized);
@@ -410,11 +507,10 @@ bool StoreContribution(const double value[3], Vec3* contribution) {
 	return true;
 }
 
-bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
-	if (path.selected.s < 2 || path.selected.t < 2)
-		return Fail("VCM merging requires valid light and camera surface prefixes.");
-	if (!ValidLocalPrefix(path.light, path.selected.s, false) ||
-		!ValidLocalPrefix(path.camera, path.selected.t, true)) return false;
+// The merge contribution of photon y at query x, with both selected prefixes already checked:
+// wVM * betaE * f_x(eyeOut, ORIGINAL photonOut) * betaL / (N_L * pi * r^2). MIS and the
+// density normalization are applied here, once per pair.
+bool MergeContribution(const Scene& scene, const PathContext& path, double value[3]) {
 	const auto& y = path.light[path.selected.s - 1];
 	const auto& x = path.camera[path.selected.t - 1];
 	if (!Continuous(x) || !Continuous(y))
@@ -445,6 +541,26 @@ bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
 			return Fail("VCM merging evaluated a nonfinite normalized pair.");
 	}
 	return true;
+}
+
+bool HasMergePrefixes(const PathContext& path) {
+	return (path.selected.s >= 2 && path.selected.t >= 2) ||
+		Fail("VCM merging requires valid light and camera surface prefixes.");
+}
+
+// One selected pair: checks both prefixes, then evaluates.
+bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
+	return HasMergePrefixes(path) &&
+		ValidLocalPrefix(path.light, path.selected.s, false) &&
+		ValidLocalPrefix(path.camera, path.selected.t, true) &&
+		MergeContribution(scene, path, value);
+}
+
+// One gathered photon: the caller already checked the camera prefix shared by every photon.
+bool MergeGatheredPhoton(const Scene& scene, const PathContext& path, double value[3]) {
+	return HasMergePrefixes(path) &&
+		ValidLocalPrefix(path.light, path.selected.s, false) &&
+		MergeContribution(scene, path, value);
 }
 
 }
@@ -525,6 +641,8 @@ bool GatherMerging(const Scene& scene, const PhotonMap& map,
 			return Fail("VCM merging camera escape requires a registered endpoint.");
 	}
 	if (cameraPrefixCount == 1 || !Continuous(x)) return true;
+	// Candidates come from the map; each accepted photon y is one merge strategy
+	// (s = vertex + 1, t = cameraPrefixCount) of physical depth s + t - 3.
 	std::vector<PhotonRecord> photons;
 	if (!map.Query(x.mIsect.mPos, x.mIsect.mGeometryNormal, photons)) return false;
 	double sum[3] = {};
@@ -538,7 +656,7 @@ bool GatherMerging(const Scene& scene, const PhotonMap& map,
 		const PathContext path(lightPaths[photon.mLightPathIndex], cameraPath,
 			{ Technique::Merging, s, cameraPrefixCount }, map.Radius(), count, mode);
 		double value[3];
-		if (!MergePair(scene, path, value)) return false;
+		if (!MergeGatheredPhoton(scene, path, value)) return false;
 		for (int axis = 0; axis < 3; ++axis) {
 			sum[axis] += value[axis];
 			if (!std::isfinite(sum[axis])) return Fail("VCM merging gather sum is nonfinite.");
