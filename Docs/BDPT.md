@@ -110,6 +110,17 @@ and predecessor references and the two ratio walks follow PBRT's ordering. Ordin
 zero-density events are distinct from delta-event markers. Point-light camera-hit
 strategies, specular connections, `(1,1)` and `t=0` are excluded.
 
+Mixed materials remain connectible through their continuous lobes, but an
+alternative split adjacent to an **internally sampled delta event** cannot
+reproduce that path and is excluded from the MIS denominator in both walks.
+This tests the sampled-event flags, not just material capabilities. The actual
+connection endpoints' unused delta selections are still cleared in the local
+snapshots; density-ratio advancement and light-endpoint admissibility are unchanged.
+`BDPTConnectionTest.cpp` checks internal camera/light mixed events against
+independent strategy products, all-continuous controls, and a reflected emitter
+whose only supported strategy is camera-hit emission. Its small Plastic highlight
+render also checks PT and BDPT against independent dielectric Fresnel radiance.
+
 The implementation reuses generated endpoints, so its conditional endpoint PDFs
 are not copied from PBRT's endpoint-resampling branch. Environment connections use
 the stored map direction and its selection-weighted directional PDF, not the
