@@ -8,13 +8,10 @@ GYT_NAMESPACE_BEGIN
 namespace Vcm {
 namespace {
 
-// HashGrid operates in radius-relative coordinates, not world coordinates.
-// At this bound float rounding is <= 1/8 even for a query two units outside.
-// A physical radius-one neighborhood therefore lies strictly inside the
-// radius-two broad phase. Its cell width is exactly four; all backend cells
-// are nonnegative and < 2^20, safely below its int casts/loop increments.
-constexpr double CoordinateLimit = 1048576;
-constexpr real BroadRadius = 2;
+// In radius-relative coordinates, rounding within this extent is <= 1/8.
+// The radius-two broad phase conservatively contains the physical radius-one disk.
+constexpr double MaxGridCoordinate = 1048576;
+constexpr real GridRadius = 2;
 
 bool Fail(const char* message) {
 	GetDefaultLogger()->Error(message, false);
@@ -63,8 +60,60 @@ bool ValidSurface(const PathVertex& vertex) {
 	return true;
 }
 
-double Coordinate(real value, real origin, real radius) {
+double RadiusCoordinate(real value, real origin, real radius) {
 	return (double(value) - double(origin)) / double(radius);
+}
+
+bool CollectPhotons(const std::vector<std::vector<PathVertex>>& lightPaths, real radius,
+	Vec3& origin, std::vector<PhotonRecord>& photons) {
+	// Each indexed photon can occupy at most 27 backend cells.
+	const size_t maximumCount = std::min(size_t((std::numeric_limits<int>::max)()),
+		std::vector<std::pair<Vec3, PhotonRecord>>().max_size() / 27);
+	for (size_t p = 0; p < lightPaths.size(); ++p) {
+		const auto& path = lightPaths[p];
+		for (size_t i = 0; i < path.size(); ++i) {
+			const auto& vertex = path[i];
+			switch (vertex.mType) {
+			case PathVertexType::Camera:
+			case PathVertexType::Light:
+			case PathVertexType::Environment:
+				continue;
+			case PathVertexType::Surface:
+				break;
+			default:
+				return Fail("VCM photon map encountered an unknown vertex type.");
+			}
+			if (!ValidSurface(vertex)) return false;
+			if (vertex.mIsect.mBsdf->IsDelta()) continue;
+			if (photons.empty()) origin = vertex.mIsect.mPos;
+			if (photons.size() == maximumCount)
+				return Fail("VCM photon map record count exceeds backend integer or allocation ranges.");
+			for (int axis = 0; axis < 3; ++axis) {
+				const double local = RadiusCoordinate(vertex.mIsect.mPos[axis], origin[axis], radius);
+				if (!std::isfinite(local) || std::abs(local) > MaxGridCoordinate)
+					return Fail("VCM photon map extent exceeds 2^20 radii from its first photon.");
+			}
+			photons.push_back({ p, i });
+		}
+	}
+	return true;
+}
+
+bool WithinRadius(const Vec3& x, const Vec3& y, double radius2) {
+	double distance2 = 0;
+	for (int axis = 0; axis < 3; ++axis) {
+		const double delta = double(x[axis]) - double(y[axis]);
+		distance2 += delta * delta;
+	}
+	return distance2 <= radius2;
+}
+
+bool CompatibleNormals(const Vec3& x, const Vec3& y, double xLength) {
+	const double yLength = std::sqrt(Length2(y));
+	double cosine = 0;
+	for (int axis = 0; axis < 3; ++axis)
+		cosine += (double(x[axis]) / xLength) * (double(y[axis]) / yLength);
+	return cosine >= 0.9;
 }
 
 }
@@ -85,55 +134,23 @@ bool PhotonMap::Build(const std::vector<std::vector<PathVertex>>& lightPaths, re
 	if (!std::isfinite(radius) || radius <= 0 || !std::isnormal(radius2))
 		return Fail("VCM photon map radius must be finite, positive and have a representable normal double square.");
 
-	size_t count = 0;
 	Vec3 origin;
-	// Also bound vector element counts on narrower size_t implementations. Each
-	// point reaches at most 27 cells, including all duplicate bucket identities.
-	const size_t maximumCount = std::min(size_t((std::numeric_limits<int>::max)()),
-		std::vector<std::pair<Vec3, PhotonRecord>>().max_size() / 27);
-	// Validate the entire generation before backend allocations or float->int casts.
-	for (const auto& path : lightPaths) for (const auto& vertex : path) {
-		switch (vertex.mType) {
-		case PathVertexType::Camera:
-		case PathVertexType::Light:
-		case PathVertexType::Environment:
-			continue;
-		case PathVertexType::Surface:
-			break;
-		default:
-			return Fail("VCM photon map encountered an unknown vertex type.");
-		}
-		if (!ValidSurface(vertex)) return false;
-		if (vertex.mIsect.mBsdf->IsDelta()) continue;
-		if (count == 0) origin = vertex.mIsect.mPos;
-		if (count == maximumCount)
-			return Fail("VCM photon map record count exceeds backend integer or allocation ranges.");
-		++count;
-		for (int axis = 0; axis < 3; ++axis) {
-			const double local = Coordinate(vertex.mIsect.mPos[axis], origin[axis], radius);
-			if (!std::isfinite(local) || std::abs(local) > CoordinateLimit)
-				return Fail("VCM photon map extent exceeds 2^20 radii from its first photon.");
-		}
+	std::vector<PhotonRecord> photons;
+	if (!CollectPhotons(lightPaths, radius, origin, photons)) return false;
+	mGrid.Initialize(GridRadius);
+	for (const auto& photon : photons) {
+		const auto& position = lightPaths[photon.mLightPathIndex][photon.mVertexIndex].mIsect.mPos;
+		Vec3 local;
+		for (int axis = 0; axis < 3; ++axis)
+			local[axis] = real(RadiusCoordinate(position[axis], origin[axis], radius));
+		mGrid.AddPoint({ local, photon }, GridRadius);
+		mGridBounds.Fit(local - GridRadius);
+		mGridBounds.Fit(local + GridRadius);
 	}
-
-	mGrid.Initialize(BroadRadius);
-	for (size_t pathIndex = 0; pathIndex < lightPaths.size(); ++pathIndex) {
-		const auto& path = lightPaths[pathIndex];
-		for (size_t vertexIndex = 0; vertexIndex < path.size(); ++vertexIndex) {
-			const auto& vertex = path[vertexIndex];
-			if (vertex.mType != PathVertexType::Surface || vertex.mIsect.mBsdf->IsDelta()) continue;
-			Vec3 local;
-			for (int axis = 0; axis < 3; ++axis)
-				local[axis] = real(Coordinate(vertex.mIsect.mPos[axis], origin[axis], radius));
-			mGrid.AddPoint({ local, { pathIndex, vertexIndex } }, BroadRadius);
-			mGridBounds.Fit(local - BroadRadius);
-			mGridBounds.Fit(local + BroadRadius);
-		}
-	}
-	if (count) mGrid.BuildHashGrid(BroadRadius);
+	if (!photons.empty()) mGrid.BuildHashGrid(GridRadius);
 	mOrigin = origin;
 	mRadius = radius;
-	mRecordCount = count;
+	mRecordCount = photons.size();
 	mLightPaths = &lightPaths;
 	mBuilt = true;
 	return true;
@@ -149,7 +166,7 @@ bool PhotonMap::Query(const Vec3& position, const Vec3& geometricNormal,
 
 	Vec3 local;
 	for (int axis = 0; axis < 3; ++axis) {
-		const double coordinate = Coordinate(position[axis], mOrigin[axis], mRadius);
+		const double coordinate = RadiusCoordinate(position[axis], mOrigin[axis], mRadius);
 		// Compare in double BEFORE casting or invoking HashGrid. These deliberately
 		// loose bounds include every exact-radius candidate, even at rounded edges.
 		if (coordinate < mGridBounds.minPoint[axis] || coordinate > mGridBounds.maxPoint[axis]) return true;
@@ -165,15 +182,8 @@ bool PhotonMap::Query(const Vec3& position, const Vec3& geometricNormal,
 	const double queryLength = std::sqrt(Length2(geometricNormal));
 	result.erase(std::remove_if(result.begin(), result.end(), [&](const PhotonRecord& record) {
 		const auto& hit = (*mLightPaths)[record.mLightPathIndex][record.mVertexIndex].mIsect;
-		double distance2 = 0, cosine = 0;
-		const double photonLength = std::sqrt(Length2(hit.mGeometryNormal));
-		for (int axis = 0; axis < 3; ++axis) {
-			const double delta = double(position[axis]) - double(hit.mPos[axis]);
-			distance2 += delta * delta;
-			cosine += (double(geometricNormal[axis]) / queryLength) *
-				(double(hit.mGeometryNormal[axis]) / photonLength);
-		}
-		return distance2 > radius2 || cosine < 0.9;
+		return !WithinRadius(position, hit.mPos, radius2) ||
+			!CompatibleNormals(geometricNormal, hit.mGeometryNormal, queryLength);
 	}), result.end());
 	return true;
 }

@@ -61,6 +61,19 @@ public:
 	const Statistics& GetStatistics() const { return mStatistics; }
 
 private:
+	struct Tile;
+	struct RenderState;
+
+	bool Prepare(RenderState& state) const;
+	bool RenderIteration(RenderState& state, ProgressReporter& progress);
+	ThreadedTaskManager::Status TraceLightPaths(RenderState& state, Tile& tile,
+		const ThreadedTaskManager::Context& context);
+	ThreadedTaskManager::Status TraceCameraPaths(RenderState& state, Tile& tile,
+		const ThreadedTaskManager::Context& context);
+	bool Connect(const std::vector<PathVertex>& light, int t,
+		const RenderState& state, Tile& tile, double sum[3]) const;
+	bool Merge(int t, const RenderState& state, Tile& tile, double sum[3]) const;
+
 	std::shared_ptr<Sampler> mSampler;
 	int mMaxDepth, mIterations;
 	real mInitialRadius, mAlpha;
