@@ -7,6 +7,21 @@
 
 GYT_NAMESPACE_BEGIN
 
+void VolPathTracing::Render(const Scene& scene, const Camera& camera) {
+	RenderChecked(scene, camera);
+}
+
+bool VolPathTracing::RenderChecked(const Scene& scene, const Camera& camera) {
+	mSamplingFailed = false;
+	TiledIntegrator::Render(scene, camera);
+	return !mSamplingFailed;
+}
+
+void VolPathTracing::ReportSamplingFailure(const char* message) const {
+	if (!mSamplingFailed.exchange(true))
+		GetDefaultLogger()->Error(message, false);
+}
+
 Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, MemoryPool& arena) const 
 {
 	Ray ray = r;
@@ -37,10 +52,13 @@ Vec3 VolPathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, M
 		}
 		else if (useEquiAngular) {
 			const Light* light = scene.SampleOneLight(&eqLightProb, rand());
-			if (!light || !std::isfinite(eqLightProb) || eqLightProb <= 0) break;
+			if (!light || !std::isfinite(eqLightProb) || eqLightProb <= 0) {
+				ReportSamplingFailure("Equi-angular light selection requires a light and a positive finite probability.");
+				break;
+			}
 			eqLightLe = light->SampleOnePoint(&eqLightPoint, &eqLightPdf, Vec2(rand(), rand()));
 			if (!std::isfinite(eqLightPdf) || eqLightPdf <= 0) {
-				GetDefaultLogger()->Error("Equi-angular light sampling requires a positive finite point PDF.", false);
+				ReportSamplingFailure("Equi-angular light sampling requires a positive finite point PDF.");
 				break;
 			}
 			if (ray.mMedium) throughput *= ray.mMedium->EquiAngularSampling(ray, rand, arena, eqLightPoint, &mi);

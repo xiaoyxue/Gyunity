@@ -60,6 +60,11 @@ scene** uses free-flight sampling and the standard direct-illumination estimator
 exactly as with `equalAngular=false`. Choosing this fallback separately for a
 selected light would incorrectly mix a conditional light estimate with an
 all-lights estimate. Point PDFs are initialized and checked before division.
+Malformed equi-angular light selections or point PDFs fail VPT's
+`RenderChecked`; the application propagates that failure without saving a
+partial/black image. Unsupported light types are not errors: they use the
+whole-scene fallback above. C++ callers that need a success status should use
+`RenderChecked` rather than the legacy `void Render` entry point.
 The existing supported-light equi-angular segment-length limitation (#165 L6)
 is unchanged; this fallback is not a general correction of that estimator.
 

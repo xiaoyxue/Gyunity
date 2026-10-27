@@ -13,8 +13,11 @@
 #include "sampler/SamplerEnum.h"
 #include "texture/ConstantTexture.h"
 #include "volume/Homogeneous.h"
+#include "../../GyunityApp/SceneRenderer.h"
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <limits>
 
 using namespace Gyunity;
 
@@ -79,6 +82,53 @@ public:
 	}
 	mutable int sampleCalls = 0;
 };
+
+class AuditPointDensityShape : public Triangle {
+public:
+	explicit AuditPointDensityShape(real density) : Triangle(Transform(), Transform(),
+		Vec3(-2, -2, 0), Vec3(2, -2, 0), Vec3(0, 2, 0), Vec3(0, 0, -1)), mDensity(density) {}
+	Intersection Sample(real* pdf, const Vec2& u) const override {
+		Intersection result = Triangle::Sample(pdf, u);
+		*pdf = mDensity;
+		return result;
+	}
+private:
+	real mDensity;
+};
+
+class AuditSelectionSampler : public Sampler {
+public:
+	explicit AuditSelectionSampler(real selection) : mSelection(selection) {}
+	real Sample(unsigned int dimension, unsigned long long) override {
+		return dimension == 2 ? mSelection : 0.3f;
+	}
+	std::shared_ptr<Sampler> Clone(uint32) override {
+		return std::make_shared<AuditSelectionSampler>(mSelection);
+	}
+private:
+	real mSelection;
+};
+
+SceneRenderOptions AuditCheckedOptions(const std::shared_ptr<Scene>& scene, const std::string& output) {
+	SceneRenderOptions options;
+	options.width = options.height = 4;
+	options.spp = options.maxDepth = 1;
+	options.output = output;
+	options.nativeScene = std::make_shared<NativeScene>();
+	options.nativeScene->scene = scene;
+	options.nativeScene->fovY = 30;
+	options.nativeScene->cameraToWorld = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, -1, 0, 0, 0, 1 };
+	return options;
+}
+
+void AuditExpectRejectedOutput(const SceneRenderOptions& options, Integrator& integrator) {
+	std::error_code error;
+	std::filesystem::remove(options.output, error);
+	ASSERT_FALSE(error);
+	EXPECT_FALSE(RenderScene(options, integrator));
+	EXPECT_FALSE(std::filesystem::exists(options.output, error));
+	EXPECT_FALSE(error);
+}
 
 std::shared_ptr<Material> AuditDiffuse(real reflectance) {
 	return std::make_shared<DiffuseMaterial>(std::make_shared<ConstantTexture<Vec3>>(Vec3(reflectance)));
@@ -373,4 +423,66 @@ TEST(PathVolumeAudit, RenderMixedFallbackAndSupportedPointControl) {
 			AuditExpect(AuditMean(images[0]), AuditMean(images[1]), 0.002f);
 		}
 	}
+
+}
+
+TEST(PathVolumeAudit, CheckedRenderRejectsInvalidAreaPointDensities) {
+	const char* output = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY");
+	ASSERT_NE(output, nullptr);
+	int index = 0;
+	for (real density : { 0.f, -1.f, std::numeric_limits<real>::infinity(),
+		std::numeric_limits<real>::quiet_NaN() }) {
+		auto scene = std::make_shared<Scene>();
+		auto shape = std::make_shared<AuditPointDensityShape>(density);
+		auto light = std::make_shared<AreaLight>(shape, Vec3(1));
+		scene->AddPrimitive(std::make_shared<Primitive>(shape, AuditDiffuse(0), light));
+		scene->AddLight(light);
+		for (const char* extension : { ".exr", ".png" }) {
+			VolPathTracing integrator(1, 1, std::make_shared<AuditSelectionSampler>(0.3f),
+				std::make_shared<SamplerEnum>(4, 4), true);
+			const auto options = AuditCheckedOptions(scene,
+				std::string(output) + "\\invalid-point-density-" + std::to_string(index) + extension);
+			AuditExpectRejectedOutput(options, integrator);
+		}
+		++index;
+	}
+}
+
+TEST(PathVolumeAudit, CheckedRenderRejectsFailedConcretePointLightSelection) {
+	const char* output = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY");
+	ASSERT_NE(output, nullptr);
+	auto scene = std::make_shared<Scene>();
+	scene->AddPrimitive(std::make_shared<Primitive>(AuditPlane(0, -1), AuditDiffuse(0)));
+	scene->AddLight(std::make_shared<PointLight>(Vec3(0, 1, -1), Vec3(1)));
+	int index = 0;
+	for (real selection : { -0.5f, std::numeric_limits<real>::quiet_NaN() }) {
+		VolPathTracing integrator(1, 1, std::make_shared<AuditSelectionSampler>(selection),
+			std::make_shared<SamplerEnum>(4, 4), true);
+		const auto options = AuditCheckedOptions(scene,
+			std::string(output) + "\\invalid-light-selection-" + std::to_string(index++) + ".exr");
+		AuditExpectRejectedOutput(options, integrator);
+	}
+}
+
+TEST(PathVolumeAudit, CheckedRenderResetsFailureAndAcceptsUnsupportedLightFallback) {
+	const char* output = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY");
+	ASSERT_NE(output, nullptr);
+	auto malformed = std::make_shared<Scene>();
+	auto shape = std::make_shared<AuditPointDensityShape>(0);
+	auto light = std::make_shared<AreaLight>(shape, Vec3(1));
+	malformed->AddPrimitive(std::make_shared<Primitive>(shape, AuditDiffuse(0), light));
+	malformed->AddLight(light);
+	VolPathTracing integrator(1, 1, std::make_shared<AuditSelectionSampler>(0.3f),
+		std::make_shared<SamplerEnum>(4, 4), true);
+	AuditExpectRejectedOutput(AuditCheckedOptions(malformed, std::string(output) + "\\failed-before-reuse.exr"), integrator);
+	auto valid = std::make_shared<Scene>();
+	valid->AddPrimitive(std::make_shared<Primitive>(AuditPlane(-2, 1), AuditDiffuse(0)));
+	valid->AddLight(std::make_shared<AuditEnvironment>());
+	const auto options = AuditCheckedOptions(valid, std::string(output) + "\\checked-fallback-after-failure.exr");
+	ASSERT_TRUE(RenderScene(options, integrator));
+	std::vector<Vec3> pixels;
+	int width = 0, height = 0;
+	ASSERT_TRUE(ImageIO::LoadImage(options.output, pixels, width, height));
+	ASSERT_EQ(pixels.size(), 16);
+	for (const Vec3& pixel : pixels) AuditExpect(pixel, Vec3(1));
 }
