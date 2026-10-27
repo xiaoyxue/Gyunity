@@ -3,6 +3,38 @@
 
 GYT_NAMESPACE_BEGIN
 
+real BeckmannDistribution::D(const Vec3& normal) const {
+	if (normal.z <= 0) return 0;
+	const real cos2 = normal.z * normal.z;
+	const real slope2 = (normal.x * normal.x / (mAlphaX * mAlphaX) +
+		normal.y * normal.y / (mAlphaY * mAlphaY)) / cos2;
+	return std::exp(-slope2) / (PI * mAlphaX * mAlphaY * cos2 * cos2);
+}
+
+real BeckmannDistribution::Lambda(const Vec3& direction) const {
+	if (direction.z == 0) return std::numeric_limits<real>::infinity();
+	const double slope2 = (double(mAlphaX) * mAlphaX * direction.x * direction.x +
+		double(mAlphaY) * mAlphaY * direction.y * direction.y) / (double(direction.z) * direction.z);
+	if (slope2 == 0) return 0;
+	const double a = 1 / std::sqrt(slope2);
+	return static_cast<real>(std::max(0.0, (std::erf(a) - 1) * 0.5 + std::exp(-a * a) / (2 * std::sqrt(double(PI)) * a)));
+}
+
+real BeckmannDistribution::G1(const Vec3& direction, const Vec3& normal) const {
+	if (Dot(direction, normal) * direction.z <= 0) return 0;
+	return 1 / (1 + Lambda(direction));
+}
+
+real BeckmannDistribution::G(const Vec3& wo, const Vec3& wi, const Vec3& normal) const {
+	return G1(wo, normal) * G1(wi, normal);
+}
+
+Vec3 BeckmannDistribution::SampleWh(const Vec3&, const Vec2& sample) const {
+	const real radius = std::sqrt(-std::log1p(-std::min(sample.x, ONE_MINUS_EPSILON)));
+	const real phi = 2 * PI * sample.y;
+	return Vec3(-mAlphaX * radius * std::cos(phi), -mAlphaY * radius * std::sin(phi), 1).Norm();
+}
+
 static void TrowbridgeReitzSample11(real cosTheta, real U1, real U2,
 	real* slopeX, real* slope_y) {
 	// special case (normal incidence)
@@ -276,30 +308,19 @@ Vec3 GGXDistribution::SampleWh(const Vec3& wo, const Vec2& u) const {
 			wh = SphericalDirection(sinTheta, cosTheta, phi);
 		}
 		else {
-			real tanPhi = mAlphay / mAlphax * std::tan(2 * PI * u[1]);
-			real phi;
-			if (u[1] >= 0 && u[1] <= 0.25) {
-				phi = std::atan(tanPhi);
-			}
-			else if (u[1] > 0.25 && u[1] < 0.75) {
-				phi = std::atan(tanPhi) + PI;
-			}
-			else {
-				phi = std::atan(tanPhi) + 2 * PI;
-			}
+			real azimuth = 2 * PI * u[1];
+			real phi = std::atan2(mAlphay * std::sin(azimuth), mAlphax * std::cos(azimuth));
 			real cosPhi = std::cos(phi);
 			real cos2Phi = cosPhi * cosPhi;
 			real sinPhi = std::sin(phi);
 			real sin2Phi = sinPhi * sinPhi;
 			real alphax2 = mAlphax * mAlphax;
 			real alphay2 = mAlphay * mAlphay;
-			real tanTheta = u[0] / ((1 - u[0]) * (cos2Phi / alphax2 + sin2Phi / alphay2));
-			real theta = std::atan(tanTheta);
-			real cosTheta = std::cos(theta);
-			real sinTheta = std::cos(theta);
+			real tan2Theta = u[0] / ((1 - u[0]) * (cos2Phi / alphax2 + sin2Phi / alphay2));
+			real cosTheta = 1.f / std::sqrt(1 + tan2Theta);
+			real sinTheta = std::sqrt(std::max(real(0), 1 - cosTheta * cosTheta));
 			wh = SphericalDirection(sinTheta, cosTheta, phi);
 		}
-		if (!SameHemisphere(wo, wh)) wh = -wh;
 		return wh;
 	}
 	else {
@@ -317,7 +338,8 @@ Vec3 GGXDistribution::SampleWh(const Vec3& wo, const Vec2& u) const {
 //https://hal.archives-ouvertes.fr/hal-01509746
 Vec3 GGXDistribution::SampleGGXVNDF(const Vec3& v_, const Vec2& u) const {
 	//stretch view
-	Vec3 v = Vec3(mAlphax * v_.x, mAlphay * v_.y, v_.z).Norm();
+	const Vec3 view = v_.z < 0 ? -v_ : v_;
+	Vec3 v = Vec3(mAlphax * view.x, mAlphay * view.y, view.z).Norm();
 
 	//orthonormal basis
 	Vec3 T1 = (v.z < 0.9999) ? Cross(v, Vec3(0, 0, 1)).Norm() : Vec3(1, 0, 0);
@@ -373,6 +395,8 @@ real GGXDistribution::SmithG1(const Vec3& v, const Vec3& m) const {
 }
 
 real GGXDistribution::Pdf(const Vec3& wo, const Vec3& wh) const {
+	if (!mSampleVisibleArea)
+		return MicrofacetDistribution::Pdf(wo, wh);
 	if (BSDFCoordinate::CosTheta(wo) == 0)
 		return 0.0f;
 	return SmithG1(wo, wh) * std::abs(Dot(wo, wh)) * D(wh) / std::abs(BSDFCoordinate::CosTheta(wo));

@@ -38,6 +38,8 @@ bool ValidNormal(const Vec3& normal) {
 
 bool ValidSurface(const PathVertex& vertex) {
 	const auto& hit = vertex.mIsect;
+	if (vertex.mNormalMode != SurfaceNormalMode::Geometric)
+		return Fail("VCM photon map only supports geometric-normal transport.");
 	if (!ValidVector(hit.mPos) || !ValidNormal(hit.mGeometryNormal) ||
 		!ValidVector(hit.mNormal) || !ValidVector(hit.mOutDir) ||
 		std::abs(Length2(hit.mOutDir) - 1) > 1e-4 ||

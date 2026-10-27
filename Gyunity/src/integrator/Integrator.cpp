@@ -10,6 +10,7 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 	real uLight, const Vec2& u, const Vec3& v, StateSequence& rand, bool handleMedia) 
 {
 	Vec3 L;
+	const auto nonDeltaFlags = SurfaceEventClassifier::NonDeltaFlags();
 	//Sample light
 	real lightSamplingPdf;
 	real weight1 = 1, weight2 = 1;
@@ -27,8 +28,8 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 			VisibilityTester visibilityTester(isect, lightPoint);
 			if (isect.IsSurfaceScatter()) {
 				BSDF* bsdf = isect.mBsdf;
-				scatteringPdf = bsdf->Pdf(isect.mOutDir, wi);
-				f = bsdf->Evaluate(isect.mOutDir, wi);
+				scatteringPdf = bsdf->Pdf(isect.mOutDir, wi, nonDeltaFlags);
+				f = bsdf->Evaluate(isect.mOutDir, wi, nonDeltaFlags);
 				cosTheta = std::abs(isect.mNormal.Dot(wi));
 			}
 			else {
@@ -64,7 +65,7 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 		real cosTheta = 1;
 		if (isect.IsSurfaceScatter()) {
 			BSDF* bsdf = isect.mBsdf;
-			f = bsdf->Sample(isect.mOutDir, &wi, &pdf, v);
+			f = bsdf->Sample(isect.mOutDir, &wi, &pdf, v, nonDeltaFlags);
 			cosTheta = std::abs(isect.mNormal.Dot(wi));
 		}
 		else {
@@ -78,25 +79,19 @@ Vec3 Integrator::DirectIllumination(const Scene& scene, const Intersection& isec
 
 		if (pdf != 0 && f != Vec3()) {
 			real lightPdf = light->PdfLi(isect, wi);
-			if (lightPdf == 0) {
-				weight2 = 0;
+			weight2 = lightPdf == 0 ? 1 : PowerHeuristic(1, pdf, 1, lightPdf);
+			Ray ray = isect.SpawnRay(wi);
+			Vec3 Tr(1.f);
+			bool surfaceIntersection = handleMedia ? scene.IntersectTr(ray, rand, &intersection, &Tr) : scene.Intersect(ray, &intersection);
+			if (surfaceIntersection) {
+				if (intersection.mPrimitive->IsLight() && intersection.mPrimitive->GetLight() == light) {
+					scene.QueryIntersectionInfo(ray, &intersection);
+					const Light* emitter = intersection.mPrimitive->GetLight();
+					L2 = emitter->Emission(intersection, -wi) * f * Tr * cosTheta / pdf;
+				}
 			}
-			else {
-				weight2 = PowerHeuristic(1, pdf, 1, lightPdf);
-				Ray ray = isect.SpawnRay(wi);
-				Vec3 Tr(1.f);
-				bool surfaceIntersection = handleMedia ? scene.IntersectTr(ray, rand, &intersection, &Tr) : scene.Intersect(ray, &intersection);
-				if (surfaceIntersection) {
-					if (intersection.mPrimitive->IsLight() && intersection.mPrimitive->GetLight() == light) {
-						//std::cout << lightPdf << std::endl;
-						scene.QueryIntersectionInfo(ray, &intersection);
-						const Light* emitter = intersection.mPrimitive->GetLight();
-						L2 = emitter->Emission(intersection, -wi) * f * Tr * cosTheta / pdf;
-					}
-				}
-				else if (scene.GetEnvironmentLight() == light) {
-					L2 = light->Emission(wi) * f * Tr * cosTheta / pdf;
-				}
+			else if (scene.GetEnvironmentLight() == light) {
+				L2 = light->Emission(wi) * f * Tr * cosTheta / pdf;
 			}
 		}
 		

@@ -1,6 +1,4 @@
 #include "BDPTPath.h"
-#include "light/PointLight.h"
-#include "light/EnvLight.h"
 #include <cmath>
 
 GYT_NAMESPACE_BEGIN
@@ -34,7 +32,7 @@ bool ValidRay(const Ray& ray) {
 }
 
 int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, Vec3 throughput,
-	real pdfFwd, int maxVertices, TransportMode mode, std::vector<PathVertex>& path) {
+	real pdfFwd, int maxVertices, TransportMode mode, SurfaceNormalMode normalMode, std::vector<PathVertex>& path) {
 	while (static_cast<int>(path.size()) < maxVertices) {
 		Intersection isect;
 		if (!scene.Intersect(ray, &isect)) {
@@ -58,33 +56,35 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 			Fail("BDPT surface has an invalid geometric normal.");
 			return -1;
 		}
-		// This initial BDPT path builder explicitly uses geometric-normal shading only.
-		isect.mNormal = isect.mGeometryNormal.Norm();
-		CoordinateSystem(isect.mNormal, &isect.mShadingDpDu, &isect.mShadingDpDv);
+		if (!Bidirectional::PrepareSurfaceFrame(&isect, normalMode)) return -1;
 		isect.ComputeScatteringFunction(arena, mode);
 		if (!isect.mBsdf) {
 			Fail("Surface BDPT requires a material at every surface vertex.");
-			return -1;
-		}
-		if (isect.mBsdf->HasMixedDeltaLobes()) {
-			Fail("BDPT does not yet support mixed delta and continuous BSDF lobes.");
 			return -1;
 		}
 		PathVertex vertex;
 		vertex.mIsect = isect;
 		vertex.mLight = isect.mPrimitive->GetLight();
 		vertex.mThroughput = throughput;
+		vertex.mNormalMode = normalMode;
 		if (!ConvertDensity(pdfFwd, path.back(), vertex, &vertex.mPdfFwd)) return -1;
+		// Rounded endpoints can lose continuous area support; delta zeros remain valid markers.
+		if (vertex.mPdfFwd == 0 && !path.back().mIsDelta) break;
 		path.push_back(vertex);
 		if (static_cast<int>(path.size()) == maxVertices) break;
 
 		PathVertex& current = path.back();
 		PathVertex& previous = path[path.size() - 2];
 		const Vec3 wo = -ray.mDir;
+		// An incoming direction outside the shading support is a null event: the vertex stays
+		// available as a connection endpoint, but the walk cannot continue from it.
+		if (normalMode == SurfaceNormalMode::Shading && !Bidirectional::ShadingSupport(isect, wo)) break;
 		Vec3 wi;
 		real pdf = 0, reverseDeltaMass = -1;
 		const real u0 = rand(), u1 = rand(), u2 = rand();
-		const Vec3 f = isect.mBsdf->Sample(wo, &wi, &pdf, Vec3(u0, u1, u2), BSDF_ALL, &reverseDeltaMass);
+		ScatterEventType sampledType = ScatterEventType(0);
+		const Vec3 f = isect.mBsdf->Sample(wo, &wi, &pdf, Vec3(u0, u1, u2), BSDF_ALL,
+			&sampledType, nullptr, &reverseDeltaMass);
 		if (!ValidPdf(pdf) || !Finite(f)) {
 			Fail("BDPT encountered a nonfinite or negative BSDF density/contribution.");
 			return -1;
@@ -94,12 +94,10 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 			Fail("BDPT BSDF sampling returned an invalid direction.");
 			return -1;
 		}
-		throughput *= f * std::abs(Dot(isect.mNormal, wi)) / pdf;
-		if (!Finite(throughput)) {
-			Fail("BDPT path throughput is not finite.");
-			return -1;
-		}
-		current.mIsDelta = isect.mBsdf->IsDelta();
+		const auto scatter = Bidirectional::ScatterThroughput(current, mode, wo, wi, f, pdf, &throughput);
+		if (scatter == Bidirectional::ScatterStatus::Invalid) return -1;
+		if (scatter == Bidirectional::ScatterStatus::Null) break;
+		current.mIsDelta = SurfaceEventClassifier::IsDelta(sampledType);
 		if (current.mIsDelta) {
 			current.mDeltaPdf = pdf;
 			current.mDeltaReversePdf = reverseDeltaMass;
@@ -111,125 +109,6 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 		ray = isect.SpawnRay(wi);
 	}
 	return static_cast<int>(path.size());
-}
-
-}
-
-namespace Bidirectional {
-
-bool ValidateScene(const Scene& scene) {
-	int environments = 0;
-	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
-		const auto& light = scene.GetLights()[i];
-		if (!light || (!light->IsAreaLight() && !light->IsEnvironmentLight() && !dynamic_cast<const PointLight*>(light.get()))) {
-			return Fail("BDPT supports area lights, point lights and an environment light.");
-		}
-		if (light->IsEnvironmentLight()) {
-			++environments;
-			const auto* environment = dynamic_cast<const EnvironmentLight*>(light.get());
-			if (environment && environment->GetRotation() != 0) {
-				return Fail("BDPT currently supports environment maps with zero rotation only.");
-			}
-		}
-		for (size_t j = 0; j < i; ++j) {
-			if (scene.GetLights()[j] == light) return Fail("BDPT requires each light to be registered once.");
-		}
-	}
-	if (environments > 1) return Fail("BDPT currently supports one environment light per scene.");
-	if (environments == 1) {
-		Vec3 center;
-		real radius;
-		scene.GetBoundingSphere(&center, &radius);
-		if (!Finite(center) || !std::isfinite(radius) || radius <= 0) {
-			return Fail("Environment BDPT requires finite nonempty scene bounds.");
-		}
-	}
-	for (const auto& primitive : scene.GetPrimitives()) {
-		if (!primitive || !primitive->GetMaterial() || primitive->mMediumInterface.inside || primitive->mMediumInterface.outside) {
-			return Fail("Surface BDPT requires materials without participating media.");
-		}
-	}
-	return true;
-}
-
-bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
-	if (from.mType == PathVertexType::Environment || to.mType == PathVertexType::Environment) {
-		if (from.mType == PathVertexType::Environment && to.mType == PathVertexType::Environment) {
-			return Fail("BDPT cannot connect two environment endpoints.");
-		}
-		*dir = from.mType == PathVertexType::Environment ? -from.mDirection : to.mDirection;
-		if (!Finite(*dir) || std::abs(dir->Length2() - 1) > 1e-4f) {
-			return Fail("BDPT environment endpoint requires a unit map direction.");
-		}
-		return true;
-	}
-	const Vec3 offset = to.mIsect.mPos - from.mIsect.mPos;
-	const real length2 = offset.Length2();
-	if (!std::isfinite(length2) || length2 <= 0) return Fail("BDPT connection endpoints must be distinct and finite.");
-	*dir = offset / std::sqrt(length2);
-	return true;
-}
-
-bool Connectible(const PathVertex& vertex) {
-	return vertex.mType == PathVertexType::Camera ||
-		(vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf &&
-			!vertex.mIsect.mBsdf->IsDelta());
-}
-
-bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVertex& next, real* pdf) {
-	*pdf = 0;
-	if (!light.mLight) return Fail("BDPT emitter has no light reference.");
-	Vec3 dir;
-	if (!Direction(light, next, &dir)) return false;
-	real positionPdf, directionPdf;
-	if (!light.mLight->PdfLight(light.mIsect, dir, &positionPdf, &directionPdf)) return false;
-	real selectionPdf = 0;
-	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
-		if (scene.GetLights()[i].get() == light.mLight) {
-			real slotPdf;
-			if (!scene.LightSelectionPdf(i, &slotPdf)) return false;
-			selectionPdf += slotPdf;
-		}
-	}
-	*pdf = selectionPdf * (light.mType == PathVertexType::Environment ? directionPdf : positionPdf);
-	return true;
-}
-
-bool PdfToward(const PathVertex& vertex, const PathVertex* previous, const PathVertex& next, real* pdf) {
-	Vec3 wi;
-	if (!Direction(vertex, next, &wi)) return false;
-	real directionalPdf = 0;
-	if (vertex.mType == PathVertexType::Environment) {
-		if (!vertex.mLight) return Fail("BDPT environment endpoint has no light reference.");
-		real positionPdf, emissionPdf;
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &emissionPdf)) return false;
-		return ConvertDensity(positionPdf, vertex, next, pdf);
-	}
-	if (vertex.mType == PathVertexType::Light || (!previous && vertex.mLight)) {
-		real positionPdf;
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &directionalPdf)) return false;
-	}
-	else if (vertex.mType == PathVertexType::Camera) {
-		if (!vertex.mCamera) return Fail("BDPT camera endpoint has no camera reference.");
-		directionalPdf = vertex.mCamera->PdfDir(Ray(vertex.mIsect.mPos, wi));
-	}
-	else {
-		if (!previous || !vertex.mIsect.mBsdf) return Fail("BDPT surface PDF requires a predecessor and BSDF.");
-		Vec3 wo;
-		if (!Direction(vertex, *previous, &wo)) return false;
-		directionalPdf = vertex.mIsect.mBsdf->IsDelta() ? 0 : vertex.mIsect.mBsdf->Pdf(wo, wi);
-	}
-	return ConvertDensity(directionalPdf, vertex, next, pdf);
-}
-
-bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, size_t s, size_t t) {
-	if (t == 0 || s + t < 2) return false;
-	if (s == 0) return cameraEnd.mLight &&
-		(cameraEnd.mLight->IsAreaLight() || cameraEnd.mType == PathVertexType::Environment);
-	if (cameraEnd.mType == PathVertexType::Environment) return false;
-	if (s == 1 && t == 1) return false;
-	if (s == 1) return lightEnd && lightEnd->mLight && Connectible(cameraEnd);
-	return lightEnd && Connectible(*lightEnd) && Connectible(cameraEnd);
 }
 
 }
@@ -268,13 +147,14 @@ bool ConvertDensity(real pdf, const PathVertex& vertex, const PathVertex& next, 
 }
 
 int GenerateCameraPath(const Scene& scene, const Camera& camera, StateSequence& rand, MemoryPool& arena,
-	const Ray& cameraRay, int maxVertices, std::vector<PathVertex>& cameraPath) {
+	const Ray& cameraRay, int maxVertices, SurfaceNormalMode normalMode, std::vector<PathVertex>& cameraPath) {
 	cameraPath.clear();
 	if (maxVertices < 0) { Fail("BDPT maximum vertex count must be nonnegative."); return -1; }
 	if (maxVertices == 0) return 0;
 	if (!ValidRay(cameraRay)) return -1;
 	PathVertex endpoint;
 	endpoint.mType = PathVertexType::Camera;
+	endpoint.mNormalMode = normalMode;
 	endpoint.mCamera = &camera;
 	endpoint.mIsect.mPos = cameraRay.mOrig;
 	endpoint.mThroughput = Vec3(1);
@@ -288,11 +168,11 @@ int GenerateCameraPath(const Scene& scene, const Camera& camera, StateSequence& 
 	}
 	cameraPath.push_back(endpoint);
 	return Trace(scene, rand, arena, cameraRay, Vec3(1), endpoint.mPdfDir,
-		maxVertices, TransportMode::Radiance, cameraPath);
+		maxVertices, TransportMode::Radiance, normalMode, cameraPath);
 }
 
 int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena,
-	int maxVertices, std::vector<PathVertex>& lightPath) {
+	int maxVertices, SurfaceNormalMode normalMode, std::vector<PathVertex>& lightPath) {
 	lightPath.clear();
 	if (maxVertices < 0) { Fail("BDPT maximum vertex count must be nonnegative."); return -1; }
 	if (maxVertices == 0 || scene.GetLights().empty()) return 0;
@@ -317,7 +197,12 @@ int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena
 	if (endpoint.mPdfPos == 0 || endpoint.mPdfDir == 0) return 0;
 	endpoint.mLight = light;
 	endpoint.mType = light->IsEnvironmentLight() ? PathVertexType::Environment : PathVertexType::Light;
-	if (light->IsAreaLight()) endpoint.mIsect.mGeometryNormal = endpoint.mIsect.mNormal;
+	endpoint.mNormalMode = normalMode;
+	// Emission is tied to the oriented geometric surface; shapes populate it when sampled.
+	if (light->IsAreaLight() && !Bidirectional::UnitDirection(endpoint.mIsect.mGeometryNormal)) {
+		Fail("BDPT area-light sample has no valid geometric normal.");
+		return -1;
+	}
 	endpoint.mDirection = -dir;
 	endpoint.mThroughput = radiance;
 	endpoint.mPdfFwd = endpoint.mLightSelectionPdf *
@@ -326,12 +211,12 @@ int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena
 	if (!ValidRay(ray)) return -1;
 	lightPath.push_back(endpoint);
 	if (radiance == Vec3(0) || maxVertices == 1) return 1;
-	const real cosine = light->IsAreaLight() ? std::abs(Dot(endpoint.mIsect.mNormal, dir)) : 1;
+	const real cosine = light->IsAreaLight() ? std::abs(Dot(endpoint.mIsect.mGeometryNormal, dir)) : 1;
 	const Vec3 throughput = radiance * cosine / endpoint.mLightSelectionPdf / endpoint.mPdfPos / endpoint.mPdfDir;
 	if (!Finite(throughput)) { Fail("BDPT emitted path throughput is not finite."); return -1; }
 	return Trace(scene, rand, arena, ray, throughput,
 		light->IsEnvironmentLight() ? endpoint.mPdfPos : endpoint.mPdfDir,
-		maxVertices, TransportMode::Importance, lightPath);
+		maxVertices, TransportMode::Importance, normalMode, lightPath);
 }
 
 GYT_NAMESPACE_END

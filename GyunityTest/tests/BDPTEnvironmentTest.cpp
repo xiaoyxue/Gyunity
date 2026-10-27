@@ -114,7 +114,9 @@ protected:
 		const std::string filename = output + '\\' + name + ".hdr";
 		film->SetFileName(filename);
 		if (!film->SaveImage()) { ADD_FAILURE() << "Cannot save BDPT numerical render."; return -1; }
-		const auto image = ImageIO::LoadImage(filename, 16, 16);
+		std::vector<Vec3> image;
+		int width = 0, height = 0;
+		if (!ImageIO::LoadImage(filename, image, width, height)) { ADD_FAILURE() << "Cannot load numerical render."; return -1; }
 		double sum = 0;
 		for (const auto& pixel : image) {
 			if (!std::isfinite(pixel.x)) { ADD_FAILURE() << "Nonfinite radiance."; return -1; }

@@ -35,22 +35,37 @@
   <PropertyGroup Label="UserMacros" />
   <ItemGroup>
     <ClCompile Include="tests\BsdfTest.cpp" />
+    <ClCompile Include="tests\PlasticTest.cpp" />
+    <ClCompile Include="tests\MixedBsdfIntegratorTest.cpp" />
+    <ClCompile Include="tests\PathTracingTest.cpp" />
+    <ClCompile Include="tests\PathVolumeAuditTest.cpp" />
     <ClCompile Include="tests\EnvironmentAccumulationTest.cpp" />
     <ClCompile Include="tests\ConfigTest.cpp" />
     <ClCompile Include="tests\BoundaryScatteringTest.cpp" />
     <ClCompile Include="tests\MainExamplesTest.cpp" />
     <ClCompile Include="tests\MatrixTest.cpp" />
     <ClCompile Include="tests\CameraBasisTest.cpp" />
+    <ClCompile Include="tests\FrameIoAuditTest.cpp" />
     <ClCompile Include="tests\SceneBuilderTest.cpp" />
     <ClCompile Include="tests\EnvironmentMapPdfTest.cpp" />
+    <ClCompile Include="tests\EnvironmentImportanceAuditTest.cpp" />
     <ClCompile Include="tests\SceneRegistryTest.cpp" />
     <ClCompile Include="tests\SphereLightPdfTest.cpp" />
     <ClCompile Include="..\GyunityApp\SceneCommandLine.cpp" />
+    <ClCompile Include="..\GyunityApp\SceneRenderer.cpp" />
+    <ClCompile Include="..\GyunityApp\Examples.cpp" />
+    <ClCompile Include="..\GyunityApp\NativeScene.cpp" />
+    <ClCompile Include="tests\NativeSceneTest.cpp" />
+    <ClCompile Include="tests\MaterialPreviewTest.cpp" />
+    <ClCompile Include="tests\VeachMisSceneTest.cpp" />
+    <ClCompile Include="tests\VeachBidirSceneTest.cpp" />
     <ClCompile Include="test.cpp" />
     <ClCompile Include="tests\TransformTest.cpp" />
     <ClCompile Include="tests\BoundaryTransmittanceTest.cpp" />
     <ClCompile Include="tests\VectorTest.cpp" />
+    <ClCompile Include="tests\ArrayTest.cpp" />
     <ClCompile Include="tests\LightTracingEmissionTest.cpp" />
+    <ClCompile Include="tests\LTTransportAuditTest.cpp" />
     <ClCompile Include="tests\LightProbabilityTest.cpp" />
     <ClCompile Include="tests\BDPTPathTest.cpp" />
     <ClCompile Include="tests\VCMPathTest.cpp" />
@@ -58,6 +73,8 @@
     <ClCompile Include="tests\VCMRendererTest.cpp" />
     <ClCompile Include="tests\HashGridTest.cpp" />
     <ClCompile Include="tests\VCMPhotonMapTest.cpp" />
+    <ClCompile Include="tests\BDPTShadingNormalTest.cpp" />
+    <ClCompile Include="tests\ToneMapTest.cpp" />
     <ClCompile Include="tests\BDPTConnectionTest.cpp" />
     <ClCompile Include="tests\BDPTEnvironmentTest.cpp" />
     <ClCompile Include="tests\PixelDebugTest.cpp" />
@@ -65,10 +82,15 @@
     <ClCompile Include="tests\ThreadedTaskManagerTest.cpp" />
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp" />
   </ItemGroup>
-  <ItemDefinitionGroup />
   <ItemGroup>
     <ClInclude Include="tests\VCMReference.h" />
   </ItemGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="..\external\openexr.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

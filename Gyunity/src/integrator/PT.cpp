@@ -13,7 +13,7 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 	bool specularBounce = false;
 	Vec3 throughput = Vec3(1, 1, 1);
 	Vec3 L;
-	for (int i = 0; i < mMaxDepth; ++i) {
+	for (int i = 0; ; ++i) {
 		Intersection isect;
 		if (!scene.Intersect(ray, &isect)) {
 			if ((i == 0 || specularBounce) && scene.GetEnvironmentLight()) {
@@ -34,7 +34,13 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 			const Light* emitter = isect.mPrimitive->GetLight();
 			L += throughput * emitter->Emission(isect, isect.mOutDir);
 		}
-		else if (!bsdf->IsDelta()) {
+		if (!bsdf) {
+			ray = isect.SpawnRay(ray.mDir);
+			--i;
+			continue;
+		}
+		if (i >= mMaxDepth) break;
+		if (bsdf->HasNonDeltaLobes()) {
 			L += throughput * DirectIllumination(scene, isect, rand(), Vec2(rand(), rand()), Vec3(rand(), rand(), rand()), rand);
 
 		}
@@ -44,10 +50,11 @@ Vec3 PathTracing::Li(const Ray& r, const Scene& scene, StateSequence& rand, Memo
 		}
 		Vec3 wi;
 		real pdf;
-		Vec3 f = bsdf->Sample(-ray.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()));
+		ScatterEventType sampledType = ScatterEventType(0);
+		Vec3 f = bsdf->Sample(-ray.mDir, &wi, &pdf, Vec3(rand(), rand(), rand()), BSDF_ALL, &sampledType);
 		if (f == Vec3() || pdf == 0) break;
 		Vec3 estimation = f * std::abs(Dot(isect.mNormal, wi)) / pdf;
-		specularBounce = bsdf->IsDelta();
+		specularBounce = SurfaceEventClassifier::IsDelta(sampledType);
 
 		real survivalProb = std::min((real)1.0, (estimation * throughput).Y() / throughput.Y());
 		if (survivalProb < 1 && i > 5) {

@@ -300,8 +300,29 @@ GYT_FORCE_INLINE Intersection Transform::operator()(const Intersection& isect) c
 	ret.mDpDu = this->TransformVector(isect.mDpDu).Norm();
 	ret.mDpDv = this->TransformVector(isect.mDpDv).Norm();
 	ret.mGeometryNormal = this->TransformNormal(isect.mGeometryNormal).Norm();
-	ret.mShadingDpDu = this->TransformVector(isect.mShadingDpDu).Norm();
-	ret.mShadingDpDv = this->TransformVector(isect.mShadingDpDv).Norm();
+	const Vec3 du = this->TransformVector(isect.mShadingDpDu);
+	const Vec3 dv = this->TransformVector(isect.mShadingDpDv);
+	// Scale before projecting, so tangent magnitude does not set the degeneracy threshold.
+	const auto project = [&ret](const Vec3& tangent, Vec3* unit) {
+		if (!std::isfinite(tangent.x) || !std::isfinite(tangent.y) || !std::isfinite(tangent.z))
+			return false;
+		const real scale = std::max(std::abs(tangent.x), std::max(std::abs(tangent.y), std::abs(tangent.z)));
+		if (!(scale > 0)) return false;
+		const Vec3 scaled = tangent / scale;
+		const Vec3 projected = scaled - ret.mNormal * Dot(ret.mNormal, scaled);
+		if (!(projected.Length2() > 1e-12f * scaled.Length2())) return false;
+		*unit = projected.Norm();
+		return true;
+	};
+	Vec3 projectedV;
+	const bool hasV = project(dv, &projectedV);
+	if (!project(du, &ret.mShadingDpDu)) {
+		if (hasV) ret.mShadingDpDu = Cross(projectedV, ret.mNormal).Norm();
+		else CoordinateSystem(ret.mNormal, &ret.mShadingDpDu, &ret.mShadingDpDv);
+	}
+	ret.mShadingDpDv = Cross(ret.mNormal, ret.mShadingDpDu).Norm();
+	// Preserve the transformed parameterization, including a mirrored (left-handed) frame.
+	if (hasV && Dot(ret.mShadingDpDv, projectedV) < 0) ret.mShadingDpDv = -ret.mShadingDpDv;
 	return ret;
 }
 

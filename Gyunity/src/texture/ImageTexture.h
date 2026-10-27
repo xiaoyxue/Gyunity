@@ -7,7 +7,7 @@
 GYT_NAMESPACE_BEGIN
 
 enum class WrapMode {
-	REPEAT, BLACK, CLAMP
+	REPEAT, BLACK, CLAMP, REPEAT_U
 };
 
 enum class FilterMode {
@@ -22,17 +22,26 @@ public:
 	Array2D<T> mTexture;
 	const WrapMode mWrapMode;
 	const FilterMode mFilterMode;
+	bool mValid = false;
 public:
 	ImageTexture(const Array2D<T>& image, WrapMode wrapMode = WrapMode::CLAMP, FilterMode filterMode = FilterMode::BILINEAR) :
 		mTexture(image), mWrapMode(wrapMode), mFilterMode(filterMode) {
+		mValid = mTexture.mRes[0] > 0 && mTexture.mRes[1] > 0;
+		if (!mValid) GetDefaultLogger()->Error("Cannot create an image texture from an empty image.", false);
 	}
 
 	ImageTexture(const std::string& filename, WrapMode wrapMode = WrapMode::CLAMP, FilterMode filterMode = FilterMode::BILINEAR) :
 		mWrapMode(wrapMode), mFilterMode(filterMode) {
-		mTexture = ImageIO::LoadTexture(filename);
+		mValid = ImageIO::LoadTexture(filename, mTexture);
 	}
 
+	bool IsValid() const { return mValid; }
+
 	T Sample(const Vec2& coord) const override {
+		if (!mValid) {
+			GetDefaultLogger()->Error("Attempted to sample an invalid image texture; check IsValid after loading.", false);
+			std::abort();
+		}
 		int resX = mTexture.mRes[1];
 		int resY = mTexture.mRes[0];
 		if (mFilterMode == FilterMode::BILINEAR) {
@@ -50,6 +59,10 @@ public:
 	T Texel(int u, int v) const {
 		if (mWrapMode == WrapMode::CLAMP) {
 			u = Clamp(u, 0, mTexture.mRes[1] - 1);
+			v = Clamp(v, 0, mTexture.mRes[0] - 1);
+		}
+		else if (mWrapMode == WrapMode::REPEAT_U) {
+			u = (u % mTexture.mRes[1] + mTexture.mRes[1]) % mTexture.mRes[1];
 			v = Clamp(v, 0, mTexture.mRes[0] - 1);
 		}
 		return mTexture[v][u];
@@ -76,11 +89,11 @@ public:
 	}
 
 	int Height() const {
-		return mTexture.mRes[0];
+		return mValid ? mTexture.mRes[0] : 0;
 	}
 
 	int Width() const {
-		return mTexture.mRes[1];
+		return mValid ? mTexture.mRes[1] : 0;
 	}
 
 	Vec3 ElementAt(int i, int j) const {

@@ -196,7 +196,10 @@ TEST_F(BDPTAcceptance, CameraOnlySplatsDoNotScaleWithSamplesPerPixel) {
 		film->SetFileName(filename);
 		ASSERT_TRUE(film->SaveImage());
 		double sum = 0;
-		for (const auto& pixel : ImageIO::LoadImage(filename, 16, 16)) {
+		std::vector<Vec3> image;
+		int width = 0, height = 0;
+		ASSERT_TRUE(ImageIO::LoadImage(filename, image, width, height));
+		for (const auto& pixel : image) {
 			ASSERT_TRUE(std::isfinite(pixel.x));
 			sum += pixel.x;
 		}
@@ -229,7 +232,10 @@ TEST_F(BDPTAcceptance, ExpandedLaunchDiskDoesNotDimConstantEnvironment) {
 		film->SetFileName(filename);
 		ASSERT_TRUE(film->SaveImage());
 		double sum = 0;
-		for (const auto& pixel : ImageIO::LoadImage(filename, 16, 16)) {
+		std::vector<Vec3> image;
+		int width = 0, height = 0;
+		ASSERT_TRUE(ImageIO::LoadImage(filename, image, width, height));
+		for (const auto& pixel : image) {
 			ASSERT_TRUE(std::isfinite(pixel.x));
 			sum += pixel.x;
 		}

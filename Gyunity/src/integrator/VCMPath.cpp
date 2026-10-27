@@ -57,6 +57,8 @@ bool Continuous(const PathVertex& vertex) {
 }
 
 bool ValidateVertex(const PathVertex& vertex, bool lightOrigin, bool cameraOrigin, bool continued) {
+	if (vertex.mNormalMode != SurfaceNormalMode::Geometric)
+		return Fail("VCM path evaluation only supports geometric-normal transport.");
 	if (!ValidPdf(vertex.mPdfFwd) || !ValidPdf(vertex.mPdfPrev) ||
 		!ValidPdf(vertex.mPdfPos) || !ValidPdf(vertex.mPdfDir) ||
 		!ValidPdf(vertex.mLightSelectionPdf)) return Fail("VCM path contains an invalid density.");
@@ -476,8 +478,14 @@ bool ValidateSubpath(const Scene& scene, const std::vector<PathVertex>& path, bo
 		};
 		if (!same(origin.mPdfPos, position) || !same(origin.mPdfDir, direction) ||
 			!same(origin.mLightSelectionPdf, pmf) ||
-			!same(origin.mPdfFwd, pmf * (origin.mType == PathVertexType::Environment ? direction : position)))
-			return Fail("VCM generated light endpoint probabilities do not match their sampling metadata.");
+			!same(origin.mPdfFwd, pmf * (origin.mType == PathVertexType::Environment ? direction : position))) {
+			const auto message = fmt::format(
+				"VCM generated light endpoint probabilities do not match their sampling metadata: "
+				"position {} / {}, direction {} / {}, selection {} / {}, map direction ({}, {}, {}).",
+				origin.mPdfPos, position, origin.mPdfDir, direction, origin.mLightSelectionPdf, pmf,
+				origin.mDirection.x, origin.mDirection.y, origin.mDirection.z);
+			return Fail(message.c_str());
+		}
 	}
 	return true;
 }

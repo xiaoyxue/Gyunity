@@ -142,9 +142,13 @@ Intersection Triangle::Sample(real* pdf, const Vec2& rand) const {
 	Vec2 b = UniformSampleTriangle(rand);
 	Intersection isect;
 	isect.mPos = b[0] * mP0 + b[1] * mP1 + (1 - b[0] - b[1]) * mP2;
-	isect.mGeometryNormal = mFaceNormal;
-	isect.mAbsNormal = mFaceNormal;
-	isect.mNormal = b[0] * mN0 + b[1] * mN1 + (1 - b[0] - b[1]) * mN2;
+	// Same orientation rule as ray intersections: the geometric normal faces the
+	// interpolated shading normal, and both are unit vectors.
+	Vec3 ns = b[0] * mN0 + b[1] * mN1 + (1 - b[0] - b[1]) * mN2;
+	ns = ns.Length2() > 0 ? ns.Norm() : mFaceNormal;
+	isect.mNormal = ns;
+	isect.mGeometryNormal = (Dot(mFaceNormal, ns) < 0) ? -mFaceNormal : mFaceNormal;
+	isect.mAbsNormal = isect.mGeometryNormal;
 
 	Vec3 pAbsSum =
 		Abs(b[0] * mP0) + Abs(b[1] * mP1) + Abs((1 - b[0] - b[1]) * mP2);

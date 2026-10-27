@@ -48,10 +48,11 @@ public:
 
 	VertexConnectionMerging(std::shared_ptr<Sampler> sampler, int maxDepth, int iterations,
 		real initialRadius, real alpha = real(2.0 / 3.0), Vcm::Mode mode = Vcm::Mode::Combined,
-		int concurrency = ThreadedTaskManager::DefaultConcurrency())
+		int concurrency = ThreadedTaskManager::DefaultConcurrency(), bool useShadingNormals = false)
 		: mSampler(sampler), mMaxDepth(maxDepth), mIterations(iterations), mInitialRadius(initialRadius),
-		mAlpha(alpha), mMode(mode), mConcurrency(concurrency) {}
+		mAlpha(alpha), mMode(mode), mConcurrency(concurrency), mUseShadingNormals(useShadingNormals) {}
 
+	// Only geometric-normal VCM is implemented; requesting shading normals fails.
 	void Render(const Scene& scene, const Camera& camera) override;
 	bool RenderChecked(const Scene& scene, const Camera& camera) override;
 	// Cooperative cancellation of an active render. All tasks drain before return.
@@ -65,6 +66,7 @@ private:
 	real mInitialRadius, mAlpha;
 	Vcm::Mode mMode;
 	int mConcurrency;
+	bool mUseShadingNormals;
 	std::atomic<bool> mCancelled{ false };
 	Statistics mStatistics;
 };

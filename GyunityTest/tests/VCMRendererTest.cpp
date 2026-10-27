@@ -200,6 +200,34 @@ TEST_F(VCMRenderer, BlackAndVisibleEmissionAllModesAndPartialTiles) {
 	}
 }
 
+TEST_F(VCMRenderer, ExplicitFalseMatchesDefaultAndTrueFailsBeforeTracing) {
+	Scene scene{};
+	// Imported shading normals differ from ng; false must still use geometric transport.
+	auto surface = std::make_shared<Triangle>(Transform(), Transform(),
+		Vec3(-10, -10, 0), Vec3(10, -10, 0), Vec3(0, 10, 0), Vec3(0.6f, 0, 0.8f));
+	scene.AddPrimitive(std::make_shared<Primitive>(surface, Diffuse(0.5f)));
+	scene.AddLight(std::make_shared<FixedLight>());
+	Initialize(scene);
+	for (Mode mode : Modes) {
+		auto defaultCamera = CameraFor(4, 4), falseCamera = CameraFor(4, 4), rejectedCamera = CameraFor(4, 4);
+		Renderer defaults(std::make_shared<FixedSampler>(), 2, 2, 1, real(2.0 / 3), mode, 1);
+		Renderer geometric(std::make_shared<FixedSampler>(), 2, 2, 1, real(2.0 / 3), mode, 1, false);
+		ASSERT_TRUE(defaults.RenderChecked(scene, *defaultCamera));
+		ASSERT_TRUE(geometric.RenderChecked(scene, *falseCamera));
+		const auto suffix = std::to_string(int(mode));
+		EXPECT_EQ(Image(*defaultCamera, "normal-default-" + suffix), Image(*falseCamera, "normal-false-" + suffix));
+		EXPECT_EQ(defaults.GetStatistics().mCameraConnectionSum, geometric.GetStatistics().mCameraConnectionSum);
+		EXPECT_EQ(defaults.GetStatistics().mCameraMergingSum, geometric.GetStatistics().mCameraMergingSum);
+		EXPECT_EQ(defaults.GetStatistics().mSplatConnectionSum, geometric.GetStatistics().mSplatConnectionSum);
+		Renderer shading(std::make_shared<FixedSampler>(), 2, 2, 1, real(2.0 / 3), mode, 1, true);
+		EXPECT_FALSE(shading.RenderChecked(scene, *rejectedCamera));
+		EXPECT_FALSE(shading.GetStatistics().mSucceeded);
+		EXPECT_EQ(shading.GetStatistics().mLightAttempts, 0);
+		EXPECT_EQ(shading.GetStatistics().mCameraSamples, 0);
+		EXPECT_EQ(shading.GetStatistics().mLightPhases, 0u);
+	}
+}
+
 TEST_F(VCMRenderer, FrozenRadiusAndAttemptNormalizationAreUsedByActualGather) {
 	// Deterministic repeated samples, not an unbiased scene-radiance oracle.
 	// All P light attempts land inside every query disk. Sole VM weight = 1.
@@ -382,6 +410,28 @@ TEST_F(VCMRenderer, ConstantEnvironmentDiffuseRadianceHasBoundedFiniteRadiusBias
 		const double mean = Mean(Image(*camera, name));
 		EXPECT_NEAR(mean, 1, 0.18); // Finite disk boundary bias + bounded Monte Carlo variance, not PDF tolerance.
 		Summary(render, name, mean);
+	}
+}
+
+TEST_F(VCMRenderer, GeneratedEnvironmentSampleAndEndpointPdfAgreeNearPoles) {
+	Scene scene{};
+	scene.AddPrimitive(std::make_shared<Primitive>(Plane(0, 3), Diffuse(0.5f)));
+	auto environment = Environment();
+	scene.AddLight(environment);
+	Initialize(scene);
+	RandomSampler samples(0);
+	for (int i = 0; i < 67 * 256; ++i) {
+		std::array<real, 5> u{};
+		for (int d = 0; d < 5; ++d) u[d] = samples.Sample(d, 2 * i);
+		Intersection origin;
+		Vec3 direction;
+		real pdfPos, pdfDir, queriedPos, queriedDir;
+		environment->SampleLight(&origin, &direction, &pdfPos, &pdfDir, Vec2(u[1], u[2]), Vec2(u[3], u[4]));
+		ASSERT_TRUE(environment->PdfLight(origin, direction, &queriedPos, &queriedDir));
+		EXPECT_EQ(pdfPos, queriedPos);
+		ASSERT_NEAR(pdfDir, queriedDir, 1e-4 * queriedDir)
+			<< std::setprecision(17) << "sample " << i << " u=" << u[1] << "," << u[2]
+			<< " direction=" << direction;
 	}
 }
 

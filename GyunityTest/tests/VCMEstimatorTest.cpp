@@ -413,7 +413,7 @@ TEST_F(VCMEstimator, ActualRoughTransmissionUsesRadianceModeCameraBsdf) {
 		Vec3(3, -3, 0), Vec3(0, 3, 0), Up);
 	scene.AddPrimitive(std::make_shared<Primitive>(floor, material));
 	scene.Initialize();
-	ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(Up, -Up), 2, eye), 2);
+	ASSERT_EQ(GenerateCameraPath(scene, camera, samples, arena, Ray(Up, -Up), 2, SurfaceNormalMode::Geometric, eye), 2);
 	EXPECT_EQ(material->observed, TransportMode::Radiance);
 	ASSERT_FALSE(eye[1].mIsect.mBsdf->IsDelta());
 	const auto before = Snapshot(eye);
@@ -748,7 +748,8 @@ TEST(VCMEstimatorGenerated, MixedOriginsAndSpecularTransportMatchIndependentRepo
 	scene.SetAccelerator(std::make_shared<BruteForce>(scene.GetPrimitives()));
 	scene.Initialize();
 	PinHoleCamera camera(std::make_shared<Film>(8, 8), Vec3(0), Up, Vec3(0, 1, 0), 120, 1);
-	constexpr int count = 64, maxDepth = 6;
+	// Preserve coverage gates under main's corrected environment power/selection PMF.
+	constexpr int count = 256, maxDepth = 6;
 	constexpr real radius = 1.5f;
 	MemoryPool lightArena;
 	Paths paths(count);
@@ -769,7 +770,7 @@ TEST(VCMEstimatorGenerated, MixedOriginsAndSpecularTransportMatchIndependentRepo
 	};
 	for (int p = 0; p < count; ++p) {
 		Samples samples(0x3920u + p);
-		ASSERT_GE(GenerateLightPath(scene, samples, lightArena, maxDepth + 1, paths[p]), 1);
+		ASSERT_GE(GenerateLightPath(scene, samples, lightArena, maxDepth + 1, SurfaceNormalMode::Geometric, paths[p]), 1);
 		beforeLight.push_back(Snapshot(paths[p]));
 		const auto& origin = paths[p][0];
 		++attempts[origin.mType == PathVertexType::Environment ? 2 : origin.mLight->IsDeltaLight() ? 1 : 0];
@@ -786,7 +787,7 @@ TEST(VCMEstimatorGenerated, MixedOriginsAndSpecularTransportMatchIndependentRepo
 		Samples samples(0x7392u + sample);
 		std::vector<PathVertex> eye;
 		ASSERT_GE(GenerateCameraPath(scene, camera, samples, eyeArena,
-			camera.GenerateRay(sample % 8, sample / 8, Vec2(0.37f, 0.61f), 0), maxDepth + 2, eye), 2);
+			camera.GenerateRay(sample % 8, (sample / 8) % 8, Vec2(0.37f, 0.61f), 0), maxDepth + 2, SurfaceNormalMode::Geometric, eye), 2);
 		const auto beforeEye = Snapshot(eye);
 		checkOriginal(eye);
 		for (int t = 1; t <= int(eye.size()); ++t) {
