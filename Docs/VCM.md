@@ -1,5 +1,39 @@
 # Progressive surface VCM (opt-in)
 
+## Reading the implementation
+
+`RenderChecked` prepares one render-local `RenderState`, runs `RenderIteration`,
+then clears each iteration's paths only after its task groups have joined.
+The state owns the complete light-path batch, map and tile arenas; it is not a
+new shared renderer base or mutable state retained between renders.
+
+`RenderIteration` shows the three synchronous phases directly: `TraceLightPaths`,
+`PhotonMap::Build`, and `TraceCameraPaths`. The camera loop generates one path,
+then walks `t` in order, calling `Connect` followed by `Merge`. `Connect` walks
+`s` and reuses BDPT's `EvaluateConnection`; `Merge` adds the already-normalized
+`GatherMerging` result. There is no second BDPT tracer or primary estimator.
+Counters and storage accounting are kept outside the contribution equations.
+
+In `VCMPath.cpp`, `ForwardDensity` and `ReverseDensity` follow the light and
+camera sampling directions explicitly. `LightVertex` and `CameraVertex` retain
+the different physical endpoints of a finite-radius merge. `StrategyDensity`
+forms the two prefix products in their original order. Each public PDF/MIS
+entry validates its selected immutable context once; the alternatives reuse
+that validation without evaluating unused densities or suffixes. Complete-path,
+selected-prefix and map-surface validation retain their different contracts.
+
+`PhotonMap::Build` first collects and validates lightweight `(path, vertex)` IDs,
+then inserts their radius-relative positions into the hash grid. This temporary
+ID vector is released after building; paths/BSDFs are never copied. Querying
+sorts and deduplicates candidate IDs before `WithinRadius` and `CompatibleNormals`
+apply the physical acceptance rule. The checked broad phase is not the kernel.
+
+The existing `s`, `t`, `light`/`eye` and member naming conventions are retained.
+BDPT's classes, rendering loop, MIS, BSDFs and public interfaces are unchanged
+by this readability refactor.
+
+## Renderer and example
+
 `integrator\VCM.h` adds the opt-in checked renderer:
 
 ```cpp
@@ -171,6 +205,18 @@ Cancellation or failure in that phase joins and cleans up without starting eye
 work or reporting overall 100%.
 `mMapPhases` counts invoked groups; `mMapBuilds` counts successful constructions,
 including a finished map discarded when cancellation is observed after building.
+
+After each successful iteration, stderr also reports its physical radius, current
+photon count, light/map/camera phase durations, total elapsed time and estimated
+remaining time. Elapsed time includes preparation and iteration cleanup; ETA uses
+the average completed-iteration time and is approximate as radius/workload change.
+Failed or cancelled iterations do not print a completion summary. ConnectionOnly
+reports zero photons and zero map time. Overall 100% still appears only after
+the entire render succeeds, after the final iteration summary:
+
+```text
+VCM iteration 64/64: radius 0.00308965, 3804768 photons, light 0.1s, map 1.2s, camera 3.6s; elapsed 0:06:54, remaining ~0:00:00
+```
 
 `VCMRenderer.*` exercises actual emission/black/environment/specular renders,
 camera/splat normalization, radius-dependent gather arithmetic, persistent RNG

@@ -19,35 +19,25 @@ struct PhotonRecord {
 	}
 };
 
-// Spatial index only: no estimator, MIS, photon-count or kernel-area normalization.
-// Borrows complete paths, their BSDF arenas, and referenced scene objects. All must
-// remain alive and immutable from Build through the last Query; do not reset an
-// arena or move/resize the paths. IDs belong to that generation, not a later build.
-// Build/Clear/destruction require exclusive ownership and must never race queries.
+// Spatial index borrowing immutable light paths and their BSDF arenas.
+// Keep them alive through the last query; Build/Clear must not race readers.
 class PhotonMap {
 public:
-	// Every rebuild first clears the old generation. Failure leaves IsBuilt false,
-	// Radius/RecordCount zero and queries failing; a valid empty build is distinct.
-	// Radius must be finite/positive with a normal finite double square. Indexed
-	// positions must be within 2^20 radii per axis of the first eligible photon.
-	// These are checked backend limits, never a clamp of the physical radius.
+	// Rebuild clears old IDs. Failure leaves an unbuilt empty map; empty success is valid.
+	// Checked grid limits and numerical details are documented in Docs/VCM.md.
 	bool Build(const std::vector<std::vector<PathVertex>>& lightPaths, real radius);
 	void Clear();
 
-	// Caller-owned output is also the deduplication scratch; use a separate vector
-	// per concurrent reader. Clears output even on failure. Returns unique IDs in
-	// (path, vertex) order, retaining distinct coincident photons.
-	// Acceptance: double-precision squared distance <= radius^2 and dot of
-	// normalized geometric normals >= 0.9 (oriented, not absolute). No primitive
-	// identity, visibility ray, geometry term, BSDF evaluation or path mutation.
+	// Clears output and returns unique IDs in (path, vertex) order; distinct photons stay distinct.
+	// Physical acceptance is distance^2 <= radius^2 and oriented normal cosine >= .9.
+	// Each concurrent reader supplies its own output/scratch vector.
 	bool Query(const Vec3& position, const Vec3& geometricNormal,
 		std::vector<PhotonRecord>& result) const;
 
 	bool IsBuilt() const { return mBuilt; }
 	size_t RecordCount() const { return mRecordCount; }
 	real Radius() const { return mRadius; }
-	// Identity, not a content comparison. The immutable-borrow contract still
-	// applies: mutating/replacing a generation in place is not supported.
+	// Batch identity, not a content comparison.
 	bool References(const std::vector<std::vector<PathVertex>>& lightPaths) const {
 		return mBuilt && mLightPaths == &lightPaths;
 	}

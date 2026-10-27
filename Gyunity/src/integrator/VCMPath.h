@@ -35,11 +35,9 @@ struct StrategyPdf {
 	double logPdf = 0; // Common reduced-measure density; excludes the strategy sample count.
 };
 
-// Surface area/point/one zero-rotation environment, pinhole and pure mirror/glass
-// chains. NOT a VCM renderer. Singular factors follow report (51)-(55), not the
-// legacy BDPT zero-marker convention; sampled masses and geometry are retained.
-// false means invalid/unsupported input; true + !feasible means ordinary zero
-// support or a disabled strategy. Only selected prefixes are inspected.
+// Only selected prefixes are inspected. Invalid/unsupported input fails;
+// ordinary zero support or a disabled strategy succeeds with !feasible.
+// Singular factors retain sampled masses and geometry, per report (51)-(55).
 bool ComputePathPdf(const Scene& scene, const PathContext& path,
 	const Strategy& strategy, StrategyPdf* result);
 
@@ -54,37 +52,23 @@ bool ValidateSubpath(const Scene& scene, const std::vector<PathVertex>& path, bo
 
 class PhotonMap;
 
-// Checked LOCAL estimator, not a render loop. The selected technique must be
-// Merging. Active calls require two continuous surface endpoints, in-radius and
-// normal-compatible as in PhotonMap::Query, and valid selected prefixes. The
-// caller supplies the true attempted light-path count and enforces its depth
-// budget. The camera BSDF must be the path builder's radiance-mode instance.
-//
-// Returns sum-ready wVM * betaE * f_camera(eyeOut, ORIGINAL photonOut) * betaL /
-// (lightPathCount * pi * radius^2). MIS and density normalization are applied
-// HERE, once per pair. Do not normalize the result or a sum of results again.
+// Sum-ready wVM * betaE * f_camera(eyeOut, ORIGINAL photonOut) * betaL /
+// (lightPathCount * pi * radius^2). Selected technique must be Merging.
+// Validates both prefixes, radius and normal compatibility. MIS/kernel normalization
+// is applied once here; the caller enforces depth and must not renormalize.
 bool EvaluateMerging(const Scene& scene, const PathContext& path, Vec3* contribution);
 
-// Gathers at camera[cameraPrefixCount-1], not just the first visible hit. Active
-// calls require a built map borrowing THIS complete per-attempt batch (including
-// empty/missed paths). N_L is exactly lightPaths.size(), never RecordCount/hits.
-// The batch must contain a positive, int64-representable number of attempts.
-// Filters s=record.vertex+1, t=cameraPrefixCount by physical depth s+t-3.
-// A valid empty map, camera origin/escape or pure-delta query returns zero.
-// Camera prefixes are validated even with no hits; unselected suffixes are not
-// consumed. Build validates the batch's surface records; candidate prefixes are
-// validated by MIS. No visibility test is made across the finite-radius disk.
+// Gather at camera[t-1], filtering s+t-3 <= maxDepth. The map must borrow THIS
+// immutable batch; N_L is lightPaths.size(), including empty/missed attempts.
+// Empty maps and nonmergeable queries return zero after validating the camera prefix.
 bool GatherMerging(const Scene& scene, const PhotonMap& map,
 	const std::vector<std::vector<PathVertex>>& lightPaths,
-	const std::vector<PathVertex>& cameraPath, int cameraPrefixCount,
+	const std::vector<PathVertex>& cameraPath, int t,
 	int maxDepth, Mode mode, Vec3* contribution);
 
-// Both estimator calls clear output on entry/failure; false logs Error(...,false)
-// for malformed/unsupported active input or nonfinite/out-of-real-range results.
-// Products, normalization and gather sums use double before conversion to real.
-// Outputs must not alias paths. Scene, immutable paths and BSDF arenas must
-// outlive all calls. ConnectionOnly returns zero without inspecting paths/maps;
-// mode/output (and selected technique or gather maxDepth) still must be valid.
+// Estimators clear output on failure and use double products/sums before a checked real store.
+// Outputs must not alias paths. Keep scene, paths and BSDF arenas alive through all calls.
+// ConnectionOnly returns zero without consuming paths/maps. Full contracts: Docs/VCM.md.
 
 }
 
