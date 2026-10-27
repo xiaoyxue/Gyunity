@@ -44,6 +44,7 @@
     <ClCompile Include="tests\MainExamplesTest.cpp" />
     <ClCompile Include="tests\MatrixTest.cpp" />
     <ClCompile Include="tests\CameraBasisTest.cpp" />
+    <ClCompile Include="tests\FrameIoAuditTest.cpp" />
     <ClCompile Include="tests\SceneBuilderTest.cpp" />
     <ClCompile Include="tests\EnvironmentMapPdfTest.cpp" />
     <ClCompile Include="tests\EnvironmentImportanceAuditTest.cpp" />

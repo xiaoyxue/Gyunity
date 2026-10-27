@@ -7,6 +7,12 @@ GYT_NAMESPACE_BEGIN
 class PinHoleCamera : public ProjectiveCamera 
 {
 public:
+	static std::shared_ptr<PinHoleCamera> Create(std::shared_ptr<Film> film, const Vec3& pos,
+		const Vec3& lookAt, const Vec3& up, real fovy, real dis) {
+		auto camera = std::make_shared<PinHoleCamera>(film, pos, lookAt, up, fovy, dis);
+		return camera->IsValid() ? camera : nullptr;
+	}
+
 	PinHoleCamera(std::shared_ptr<Film> film, const Vec3 &pos, const Vec3 &cz, const Vec3 &cx, const Vec3 &cy, real fovy, real dis) 
 		: ProjectiveCamera(film, pos, cz, cx, cy, fovy, dis) 
 	{
@@ -21,7 +27,7 @@ public:
 
 	Ray GenerateRay(int pixelX, int pixelY, const Vec2 &u, real offset) const override 
 	{
-
+		if (!IsValid()) return Ray(Vec3(), Vec3(), 0);
 		Vec3 sampledPos = mRasterToWorld(Vec3(pixelX + u.x, pixelY + u.y, -1));
 
 		Vec3 dir = (sampledPos - mPos).Norm();
@@ -30,6 +36,7 @@ public:
 
 	Vec3 We(const Ray& ray) const override
 	{
+		if (!IsValid()) return Vec3();
 		real pdfPos = 1.0; // for pinhole camera
 		real area = mFilm->mArea;
 		real cosTheta = mCz.Dot(ray.mDir);
@@ -40,6 +47,7 @@ public:
 
 	Vec3 SampleWi(const Intersection &isect, real *pdfDir, Vec3 *wi, Vec3 u) const override 
 	{
+		if (!IsValid()) { *pdfDir = 0; *wi = Vec3(); return Vec3(); }
 		*wi = (mPos - isect.mPos);
 		real distance = wi->Length();
 		*wi = wi->Norm();
@@ -51,11 +59,12 @@ public:
 
 	GYT_FORCE_INLINE real PdfPos() const override 
 	{
-		return 1.0;
+		return IsValid() ? 1.0 : 0.0;
 	}
 
 	real PdfDir(const Ray& cameraRay) const override 
 	{
+		if (!IsValid()) return 0;
 		real filmArea = mFilm->Area();
 		real cosTheta = std::abs(mCz.Dot(cameraRay.mDir));
 		real cos2Theta = cosTheta * cosTheta;
