@@ -22,10 +22,16 @@
     <ClCompile Include="tests\PathTracingTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\EnvironmentAccumulationTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\PathVolumeAuditTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\LightProbabilityTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\SphereLightPdfTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\LightTracingEmissionTest.cpp">
@@ -68,6 +74,9 @@
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\BoundaryScatteringTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\BoundaryTransmittanceTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\MainExamplesTest.cpp">
