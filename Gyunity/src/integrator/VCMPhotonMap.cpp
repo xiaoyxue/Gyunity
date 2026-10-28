@@ -87,7 +87,7 @@ void PhotonMap::Query(const Vec3& position, const Vec3& geometricNormal, std::ve
 		if (coordinate < mGridBounds.minPoint[axis] || coordinate > mGridBounds.maxPoint[axis]) return;
 		local[axis] = real(coordinate);
 	}
-	// Grid cells are candidates only: deduplicate them, then apply the exact radius and normal tests.
+	// Grid cells are candidates only: deduplicate them, then apply Eq. (12), the exact radius and normal tests.
 	const auto& bucket = mGrid.GetGrid(local);
 	result.assign(bucket.begin(), bucket.end());
 	std::sort(result.begin(), result.end());

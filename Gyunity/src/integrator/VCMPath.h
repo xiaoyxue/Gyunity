@@ -4,6 +4,7 @@
 
 GYT_NAMESPACE_BEGIN
 
+// Equation numbers, e.g. Eq. (9), refer to Docs/VCM.md.
 namespace Vcm {
 
 enum class Technique { Connection, Merging };
@@ -36,15 +37,15 @@ struct PathContext {
 // Whether the mode samples a strategy. MergingOnly keeps camera-visible LS*E emission.
 bool IsStrategyEnabled(const PathContext& path, const Strategy& strategy);
 
-// Log of pdfPath for a strategy of the selected physical path; -infinity when the strategy
+// Eqs. (7) and (8): log of pdfPath for a strategy of the selected physical path; -infinity when the strategy
 // is disabled or has zero support. A VM density includes pi*radius^2 but no sample count.
 bool ComputePathPdf(const Scene& scene, const PathContext& path, const Strategy& strategy, double* logPdf);
 
-// Balance heuristic over all VC (count 1) and VM (count lightPathCount) strategies of the
+// Eq. (9): balance heuristic over all VC (count 1) and VM (count lightPathCount) strategies of the
 // same physical path. The current strategy must be enabled and have positive density.
 bool ComputeMisWeight(const Scene& scene, const PathContext& path, const Strategy& current, real* weight);
 
-// Primary VM estimate before MIS and 1/nVm: betaE * f_x(wo, original photon wi) * betaL / (pi*radius^2).
+// Eq. (3): primary VM estimate before MIS and 1/nVm: betaE * f_x(wo, original photon wi) * betaL / (pi*radius^2).
 Vector3d MergeEstimate(const PathContext& path);
 
 // Vector3d scalar operators take real; keep double factors double by passing them as Vector3d.

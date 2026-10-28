@@ -47,12 +47,12 @@ bool Feasible(const PathContext& path, const Strategy& strategy) {
 		(s == n - 1 || Continuous(CameraVertex(path, s)));
 }
 
-// Density of vertex i sampled from vertex i-1 (light-to-camera direction).
+// Eq. (6): pdfFwd[i], the density of vertex i sampled from vertex i-1 (light-to-camera direction).
 bool ForwardDensity(const Scene& scene, const PathContext& path, int i, real* pdf) {
 	const int n = VertexCount(path), s = path.selected.s;
 	const int source = i - 1;
 	if (source > 0 && source < n - 1 && Delta(LightVertex(path, source))) {
-		// Keep the sampled delta mass and geometry; only the singular distribution is removed.
+		// Eq. (11): keep the sampled delta mass and geometry; only the singular distribution is removed.
 		if (source < s) return ConvertDensity(path.light[source].mDeltaPdf, path.light[source], LightVertex(path, i), pdf);
 		const auto& vertex = path.camera[n - 1 - source];
 		return ConvertDensity(vertex.mDeltaReversePdf, vertex, CameraVertex(path, i), pdf);
@@ -68,7 +68,7 @@ bool ForwardDensity(const Scene& scene, const PathContext& path, int i, real* pd
 		return true;
 	}
 	if (path.selected.technique == Technique::Merging && i == s) {
-		// Report Fig. 3: scatter at x with the original directions, convert along x's sampled edge.
+		// Eq. (10): scatter at x with the original directions, convert along x's sampled edge.
 		const auto& y = path.light[s - 1];
 		const auto& x = path.camera[path.selected.t - 1];
 		return ConvertDensity(x.mIsect.mBsdf->Pdf(y.mIsect.mOutDir, x.mIsect.mOutDir), x, CameraVertex(path, i), pdf);
@@ -78,7 +78,7 @@ bool ForwardDensity(const Scene& scene, const PathContext& path, int i, real* pd
 		i >= 2 ? &CameraVertex(path, i - 2) : nullptr, CameraVertex(path, i), pdf);
 }
 
-// Density of vertex i sampled from vertex i+1 (camera-to-light direction).
+// Eq. (6): pdfPrev[i], the density of vertex i sampled from vertex i+1 (camera-to-light direction).
 bool ReverseDensity(const PathContext& path, int i, real* pdf) {
 	const int n = VertexCount(path), s = path.selected.s;
 	const bool merging = path.selected.technique == Technique::Merging;
@@ -97,7 +97,7 @@ bool ReverseDensity(const PathContext& path, int i, real* pdf) {
 		return true;
 	}
 	if (merging && i == s - 2) {
-		// The reverse merge scatters at x but converts along y's original light edge.
+		// Eq. (10): the reverse merge scatters at x but converts along y's original light edge.
 		const auto& y = path.light[s - 1];
 		const auto& x = path.camera[path.selected.t - 1];
 		return ConvertDensity(x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, y.mIsect.mOutDir), y, LightVertex(path, i), pdf);
@@ -118,7 +118,7 @@ bool PathDensities(const Scene& scene, const PathContext& path, std::vector<real
 	return true;
 }
 
-// Eq. (10): light prefix pdfFwd[0, s), then camera prefix pdfPrev[s, n). A merge samples
+// Eqs. (7) and (8): light prefix pdfFwd[0, s), then camera prefix pdfPrev[s, n). A merge samples
 // its vertex from both sides, so the camera prefix starts at s-1, and adds pi*radius^2.
 double LogPdf(const PathContext& path, const std::vector<real>& pdfFwd, const std::vector<real>& pdfPrev,
 	const Strategy& strategy) {
@@ -168,7 +168,7 @@ bool ComputeMisWeight(const Scene& scene, const PathContext& path, const Strateg
 	if (currentLogPdf == Infeasible) return Fail("VCM current strategy has zero support or is disabled.");
 	const double currentScore = currentLogPdf + (current.technique == Technique::Merging ? logNVm : logNVc);
 
-	// Scores are nStrategy * pdfPath in the log domain; normalize against their maximum.
+	// Eq. (9): scores are nStrategy * pdfPath in the log domain; normalize against their maximum.
 	std::vector<double> scores;
 	double maximum = Infeasible;
 	const auto addScore = [&](const Strategy& strategy, double logCount) {
@@ -194,7 +194,7 @@ bool ComputeMisWeight(const Scene& scene, const PathContext& path, const Strateg
 Vector3d MergeEstimate(const PathContext& path) {
 	const auto& y = path.light[path.selected.s - 1];
 	const auto& x = path.camera[path.selected.t - 1];
-	// Throughputs already include sampling compensation. There is no x-y edge, photon BSDF,
+	// Eq. (3). Throughputs already include sampling compensation. There is no x-y edge, photon BSDF,
 	// extra cosine, or division by a full path pdf.
 	const Vec3 scattering = x.mIsect.mBsdf->Evaluate(x.mIsect.mOutDir, y.mIsect.mOutDir);
 	const double area = std::acos(-1.0) * path.radius * path.radius;

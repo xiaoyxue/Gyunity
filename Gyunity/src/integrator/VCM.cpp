@@ -132,7 +132,7 @@ bool VertexConnectionMerging::Prepare(RenderState& state) const {
 }
 
 bool VertexConnectionMerging::RenderIteration(RenderState& state) {
-	// Progressive radius r_i = r_0 * (i + 1)^((alpha - 1) / 2).
+	// Eq. (1): progressive radius r_i = r_0 * (i + 1)^((alpha - 1) / 2).
 	state.radius = real(double(mInitialRadius) * std::pow(double(state.iteration) + 1, -(1 - double(mAlpha)) / 2));
 	mStatistics.mLastRadius = state.radius;
 	if (!TraceLightPaths(state)) return false;
@@ -199,7 +199,7 @@ bool VertexConnectionMerging::RenderPixel(RenderState& state, int64 pixel, Worke
 	return true;
 }
 
-// Vertex connection of camera prefix t with every light prefix s, using BDPT's estimator.
+// Eq. (2): vertex connection of camera prefix t with every light prefix s, using BDPT's estimator.
 bool VertexConnectionMerging::Connect(const RenderState& state, const std::vector<PathVertex>& lightPath,
 	const std::vector<PathVertex>& cameraPath, int t, Vcm::PathContribution& connection) const {
 	for (int s = 0; s <= int(lightPath.size()); ++s) {
@@ -224,7 +224,7 @@ bool VertexConnectionMerging::Connect(const RenderState& state, const std::vecto
 	return true;
 }
 
-// Vertex merging of camera vertex t-1 with every photon of this iteration within the radius.
+// Eq. (4): vertex merging of camera vertex t-1 with every photon of this iteration within the radius.
 bool VertexConnectionMerging::Merge(const RenderState& state, const std::vector<PathVertex>& cameraPath, int t,
 	Worker& worker, Vcm::PathContribution& merging) const {
 	const PathVertex& x = cameraPath[t - 1];
@@ -245,7 +245,7 @@ bool VertexConnectionMerging::Merge(const RenderState& state, const std::vector<
 	return true;
 }
 
-// Splats go to the film directly; the camera-pixel estimates form one sample, VC sum plus VM sum.
+// Eq. (5): splats go to the film directly; the camera-pixel estimates form one sample, VC sum plus VM sum.
 void VertexConnectionMerging::WritePathContribution(RenderState& state, const Vec2& raster,
 	const Vcm::PathContribution& connection, const Vcm::PathContribution& merging) const {
 	Vector3d pixelVc(0), pixelVm(0);
