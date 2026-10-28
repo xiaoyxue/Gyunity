@@ -158,9 +158,6 @@ TEST_F(BDPTAcceptance, EverySupportedFiniteStrategyProducesAContribution) {
 		Vec3 independentPrimary;
 		ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, s, 4 - s, &independentPrimary, &raster));
 		EXPECT_EQ(independentPrimary, primary);
-		contribution = Vec3(7);
-		EXPECT_FALSE(ConnectPaths(*scene, *camera, light, eye, s, 4 - s, &contribution, &raster));
-		EXPECT_EQ(contribution, Vec3(0));
 		EXPECT_EQ(raster.x, primaryRaster.x);
 		EXPECT_EQ(raster.y, primaryRaster.y);
 		expectUnchanged();

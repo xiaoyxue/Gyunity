@@ -16,6 +16,10 @@ bool Fail(const char* message) {
 	return false;
 }
 
+bool Finite(const Vec3& value) {
+	return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
 }
 
 namespace Bidirectional {
@@ -109,6 +113,12 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 							Vec2 raster;
 							if (!ConnectPaths(scene, camera, lightPath, cameraPath, s, t, &contribution, &raster)) {
 								success = false;
+								break;
+							}
+							// The one output check: internal stages trust their components, so a
+							// faulty BSDF, light or camera surfaces here instead of in the film.
+							if (!Finite(contribution)) {
+								success = Fail("BDPT produced a nonfinite path contribution.");
 								break;
 							}
 							if (t == 1) camera.GetFilm()->AddSplat(raster.x, raster.y, contribution / real(mSpp));

@@ -1,41 +1,16 @@
 #include "BDPT.h"
 #include <cmath>
 #include <initializer_list>
-#include <limits>
 
 GYT_NAMESPACE_BEGIN
 
-namespace {
-
-bool Fail(const char* message) {
-	GetDefaultLogger()->Error(message, false);
-	return false;
-}
-
-bool Finite(const Vec3& value) {
-	return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-}
-
-}
-
 namespace Bidirectional {
 
-bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
-	if (from.mType == PathVertexType::Environment || to.mType == PathVertexType::Environment) {
-		if (from.mType == PathVertexType::Environment && to.mType == PathVertexType::Environment) {
-			return Fail("BDPT cannot connect two environment endpoints.");
-		}
-		*dir = from.mType == PathVertexType::Environment ? -from.mDirection : to.mDirection;
-		if (!Finite(*dir) || std::abs(dir->Length2() - 1) > 1e-4f) {
-			return Fail("BDPT environment endpoint requires a unit map direction.");
-		}
-		return true;
-	}
+Vec3 DirectionTo(const PathVertex& from, const PathVertex& to) {
+	if (from.mType == PathVertexType::Environment) return -from.mDirection;
+	if (to.mType == PathVertexType::Environment) return to.mDirection;
 	const Vec3 offset = to.mIsect.mPos - from.mIsect.mPos;
-	const real length2 = offset.Length2();
-	if (!std::isfinite(length2) || length2 <= 0) return Fail("BDPT connection endpoints must be distinct and finite.");
-	*dir = offset / std::sqrt(length2);
-	return true;
+	return offset / std::sqrt(offset.Length2());
 }
 
 bool Connectible(const PathVertex& vertex) {
@@ -46,56 +21,43 @@ bool Connectible(const PathVertex& vertex) {
 
 bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVertex& next, real* pdf) {
 	*pdf = 0;
-	if (!light.mLight) return Fail("BDPT emitter has no light reference.");
-	Vec3 dir;
-	if (!Direction(light, next, &dir)) return false;
-	real positionPdf, directionPdf;
-	if (!light.mLight->PdfLight(light.mIsect, dir, &positionPdf, &directionPdf)) return false;
+	real pdfPos, pdfDir;
+	if (!light.mLight->PdfLight(light.mIsect, DirectionTo(light, next), &pdfPos, &pdfDir)) return false;
+	// ValidateScene registers each light once.
 	real selectionPdf = 0;
-	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
-		if (scene.GetLights()[i].get() == light.mLight) {
-			real slotPdf;
-			if (!scene.LightSelectionPdf(i, &slotPdf)) return false;
-			selectionPdf += slotPdf;
-		}
+	const auto& lights = scene.GetLights();
+	for (size_t i = 0; i < lights.size(); ++i) {
+		if (lights[i].get() != light.mLight) continue;
+		if (!scene.LightSelectionPdf(i, &selectionPdf)) return false;
+		break;
 	}
-	*pdf = selectionPdf * (light.mType == PathVertexType::Environment ? directionPdf : positionPdf);
+	*pdf = selectionPdf * (light.mType == PathVertexType::Environment ? pdfDir : pdfPos);
 	return true;
 }
 
-bool PdfToward(const PathVertex& vertex, const PathVertex* previous, const PathVertex& next, real* pdf) {
-	Vec3 wi;
-	if (!Direction(vertex, next, &wi)) return false;
-	real directionalPdf = 0;
+bool PdfArea(const PathVertex& vertex, const PathVertex* previous, const PathVertex& next, real* pdfArea) {
+	const Vec3 wi = DirectionTo(vertex, next);
+	real pdfPos, pdfDir = 0;
 	if (vertex.mType == PathVertexType::Environment) {
-		if (!vertex.mLight) return Fail("BDPT environment endpoint has no light reference.");
-		real positionPdf, emissionPdf;
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &emissionPdf)) return false;
-		return ConvertDensity(positionPdf, vertex, next, pdf);
+		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &pdfPos, &pdfDir)) return false;
+		*pdfArea = DirectionToArea(pdfPos, vertex, next);
+		return true;
 	}
 	if (vertex.mType == PathVertexType::Light || (!previous && vertex.mLight)) {
-		real positionPdf;
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &positionPdf, &directionalPdf)) return false;
+		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &pdfPos, &pdfDir)) return false;
 	}
 	else if (vertex.mType == PathVertexType::Camera) {
-		if (!vertex.mCamera) return Fail("BDPT camera endpoint has no camera reference.");
-		directionalPdf = vertex.mCamera->PdfDir(Ray(vertex.mIsect.mPos, wi));
+		pdfDir = vertex.mCamera->PdfDir(Ray(vertex.mIsect.mPos, wi));
 	}
 	else {
-		if (!previous || !vertex.mIsect.mBsdf) return Fail("BDPT surface PDF requires a predecessor and BSDF.");
-		Vec3 wo;
-		if (!Direction(vertex, *previous, &wo)) return false;
-		if (vertex.mNormalMode == SurfaceNormalMode::Shading) {
-			// Radiance mode only queries the symmetric support mask; its cosine never enters a density.
-			double support;
-			if (!Bidirectional::ScatteringCosine(vertex.mIsect, wo, wi, TransportMode::Radiance, &support)) return false;
-			directionalPdf = support == 0 || vertex.mIsect.mBsdf->IsDelta() ? 0 : vertex.mIsect.mBsdf->Pdf(wo, wi);
-		}
-		else {
-			directionalPdf = vertex.mIsect.mBsdf->IsDelta() ? 0 : vertex.mIsect.mBsdf->Pdf(wo, wi);
-		}
+		const Vec3 wo = DirectionTo(vertex, *previous);
+		// Shading normals only mask the support; their cosine never enters a density.
+		const bool supported = vertex.mNormalMode == SurfaceNormalMode::Geometric ||
+			(ShadingSupport(vertex.mIsect, wo) && ShadingSupport(vertex.mIsect, wi));
+		pdfDir = supported && !vertex.mIsect.mBsdf->IsDelta() ? vertex.mIsect.mBsdf->Pdf(wo, wi) : 0;
 	}
-	return ConvertDensity(directionalPdf, vertex, next, pdf);
+	*pdfArea = DirectionToArea(pdfDir, vertex, next);
+	return true;
 }
 
 bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, size_t s, size_t t) {
@@ -112,20 +74,16 @@ bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, si
 
 namespace {
 
-using Bidirectional::Direction;
+using Bidirectional::DirectionTo;
 using Bidirectional::Connectible;
 using Bidirectional::LightOriginPdf;
-using Bidirectional::PdfToward;
+using Bidirectional::PdfArea;
+using Bidirectional::ScatteringCosine;
 using Bidirectional::ValidConnection;
 
 bool Surface(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Surface ||
 		(vertex.mLight && vertex.mLight->IsAreaLight());
-}
-
-bool Counts(const std::vector<PathVertex>& light, const std::vector<PathVertex>& camera, int s, int t) {
-	return s >= 0 && t >= 1 && static_cast<size_t>(s) <= light.size() &&
-		static_cast<size_t>(t) <= camera.size();
 }
 
 struct MisVertex {
@@ -146,189 +104,128 @@ std::vector<MisVertex> CopyMisState(const std::vector<PathVertex>& path, int cou
 	return state;
 }
 
-bool ValidateMisState(const std::vector<MisVertex>& path) {
-	for (size_t i = 0; i < path.size(); ++i) {
-		const MisVertex& vertex = path[i];
-		if (!std::isfinite(vertex.pdfFwd) || vertex.pdfFwd < 0 ||
-			!std::isfinite(vertex.pdfPrev) || vertex.pdfPrev < 0) {
-			return Fail("BDPT MIS encountered an invalid density.");
-		}
-		if (vertex.pdfFwd == 0 && !(i > 0 && path[i - 1].delta)) {
-			return Fail("BDPT current strategy has zero probability.");
-		}
-	}
-	return true;
-}
-
-bool AdvanceMisRatio(const std::vector<MisVertex>& path, size_t i, double* ratio) {
+// pdfPrev / pdfFwd at vertex i. Only delta-generated edge markers are remapped to 1;
+// ordinary zero support stays zero.
+double MisRatio(const std::vector<MisVertex>& path, size_t i) {
 	const MisVertex& vertex = path[i];
-	// Only delta-generated edge markers are remapped; ordinary zero support stays zero.
 	const double pdfFwd = vertex.pdfFwd == 0 && i > 0 && path[i - 1].delta ? 1 : vertex.pdfFwd;
 	const double pdfPrev = vertex.pdfPrev == 0 && i + 1 < path.size() && path[i + 1].delta ? 1 : vertex.pdfPrev;
-	*ratio *= pdfPrev / pdfFwd;
-	return std::isfinite(*ratio) || Fail("BDPT MIS density ratio overflowed.");
+	return pdfPrev / pdfFwd;
 }
 
 bool WorldToScreen(const Camera& camera, const Vec3& point, Vec2* raster) {
 	if (Dot(camera.mCz, point - camera.mPos) <= 0) return false;
 	const Vec3 projected = (camera.mCameraToRaster * camera.mWorldToCamera)(point);
-	if (!Finite(projected) || projected.x < 0 || projected.y < 0 ||
+	if (projected.x < 0 || projected.y < 0 ||
 		projected.x >= camera.GetFilm()->mResX || projected.y >= camera.GetFilm()->mResY) return false;
 	*raster = Vec2(projected.x, projected.y);
 	return true;
 }
 
-// Channelwise product of the factors times scale, kept in double until the checked real store.
-bool ScaledProduct(std::initializer_list<Vec3> factors, double scale, Vec3* result) {
+// Channelwise product of the factors times scale, kept in double until the real store.
+Vec3 ScaledProduct(std::initializer_list<Vec3> factors, double scale) {
+	Vec3 result;
 	for (int channel = 0; channel < 3; ++channel) {
 		double value = scale;
 		for (const Vec3& factor : factors) value *= double(factor[channel]);
-		if (!std::isfinite(value) || std::abs(value) > double((std::numeric_limits<real>::max)())) {
-			return Fail("BDPT connection contribution is not representable.");
-		}
-		(*result)[channel] = static_cast<real>(value);
+		result[channel] = static_cast<real>(value);
 	}
-	return true;
+	return result;
 }
 
 // Emitter-side connection factor for shading-normal mode: distance falloff and the area
 // emitter's geometric cosine. The receiver's scattering cosine is carried by its K instead.
-bool EmitterConnectionFactor(const PathVertex& emitter, const PathVertex& receiver, double* value) {
-	*value = 0;
-	Vec3 dir;
-	if (!Direction(emitter, receiver, &dir)) return false;
-	if (emitter.mType == PathVertexType::Environment) {
-		*value = 1;
-		return true;
-	}
+double EmitterConnectionFactor(const PathVertex& emitter, const PathVertex& receiver) {
+	if (emitter.mType == PathVertexType::Environment) return 1;
 	const double dx = double(receiver.mIsect.mPos.x) - double(emitter.mIsect.mPos.x);
 	const double dy = double(receiver.mIsect.mPos.y) - double(emitter.mIsect.mPos.y);
 	const double dz = double(receiver.mIsect.mPos.z) - double(emitter.mIsect.mPos.z);
-	const double distance2 = dx * dx + dy * dy + dz * dz;
-	if (!std::isfinite(distance2) || distance2 <= 0) return Fail("BDPT connection distance is invalid.");
-	*value = 1 / distance2;
+	double value = 1 / (dx * dx + dy * dy + dz * dz);
 	// Only an emission endpoint contributes its geometric cosine; a scattering vertex that lies
 	// on an emissive surface carries its cosine in K.
 	if (emitter.mType == PathVertexType::Light && emitter.mLight && emitter.mLight->IsAreaLight()) {
-		*value *= std::abs(double(Dot(emitter.mIsect.mGeometryNormal, dir)));
+		value *= std::abs(double(Dot(emitter.mIsect.mGeometryNormal, DirectionTo(emitter, receiver))));
 	}
-	return std::isfinite(*value) || Fail("BDPT emitter connection factor is not finite.");
+	return value;
 }
 
-bool EvaluateEmission(const std::vector<PathVertex>& cameraPath, int t, Vec3* contribution) {
+Vec3 EvaluateEmission(const std::vector<PathVertex>& cameraPath, int t) {
 	const PathVertex& pt = cameraPath[t - 1];
-	if (!pt.mLight) return true;
-	if (pt.mType == PathVertexType::Environment) {
-		*contribution = pt.mThroughput * pt.mLight->Emission(pt.mDirection);
-	}
-	else {
-		if (!pt.mLight->IsAreaLight()) return true;
-		Vec3 dir;
-		if (!Direction(pt, cameraPath[t - 2], &dir)) return false;
-		*contribution = pt.mThroughput * pt.mLight->Emission(pt.mIsect, dir);
-	}
-	return true;
+	if (!pt.mLight) return Vec3(0);
+	if (pt.mType == PathVertexType::Environment) return pt.mThroughput * pt.mLight->Emission(pt.mDirection);
+	if (!pt.mLight->IsAreaLight()) return Vec3(0);
+	return pt.mThroughput * pt.mLight->Emission(pt.mIsect, DirectionTo(pt, cameraPath[t - 2]));
 }
 
-bool ConnectCamera(const Camera& camera, const PathVertex& qs, Vec3* contribution, Vec2* raster) {
-	if (!Connectible(qs) || !WorldToScreen(camera, qs.mIsect.mPos, raster)) return true;
+Vec3 ConnectCamera(const Camera& camera, const PathVertex& qs, Vec2* raster) {
+	if (!Connectible(qs) || !WorldToScreen(camera, qs.mIsect.mPos, raster)) return Vec3(0);
 	Vec3 wi;
 	real pdf;
 	const Vec3 importance = camera.SampleWi(qs.mIsect, &pdf, &wi, Vec3(0.5f));
-	if (!std::isfinite(pdf) || pdf < 0) return Fail("BDPT camera connection PDF is invalid.");
-	if (pdf == 0) return true;
+	if (pdf == 0) return Vec3(0);
 	// SampleWi supplies the camera-end geometry through importance / pdf.
+	const Vec3 f = qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi);
 	if (qs.mNormalMode == SurfaceNormalMode::Shading) {
-		double lightCosine;
-		if (!Bidirectional::ScatteringCosine(qs.mIsect, qs.mIsect.mOutDir, wi, TransportMode::Importance, &lightCosine)) return false;
-		if (lightCosine == 0) return true;
-		const Vec3 f = qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi);
-		return ScaledProduct({ qs.mThroughput, f, importance }, lightCosine / double(pdf), contribution);
+		const double lightCosine = ScatteringCosine(qs.mIsect, qs.mIsect.mOutDir, wi, TransportMode::Importance);
+		return lightCosine == 0 ? Vec3(0) : ScaledProduct({ qs.mThroughput, f, importance }, lightCosine / double(pdf));
 	}
-	*contribution = qs.mThroughput * qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi) *
-		importance * std::abs(Dot(qs.mIsect.mNormal, wi)) / pdf;
-	return true;
+	return qs.mThroughput * f * importance * std::abs(Dot(qs.mIsect.mNormal, wi)) / pdf;
 }
 
 bool ConnectEmitter(const Scene& scene, const PathVertex& qs, const PathVertex& pt, Vec3* contribution) {
 	if (!Connectible(pt) || !qs.mLight) return true;
-	Vec3 toCamera;
-	if (!Direction(qs, pt, &toCamera)) return false;
 	real originPdf;
 	if (!LightOriginPdf(scene, qs, pt, &originPdf)) return false;
 	if (originPdf <= 0) return true;
+	const Vec3 toCamera = DirectionTo(qs, pt);
 	const Vec3 emission = qs.mType == PathVertexType::Environment ?
 		qs.mLight->Emission(qs.mDirection) : qs.mLight->IsAreaLight() ?
 		qs.mLight->Emission(qs.mIsect, toCamera) : qs.mLight->Emission();
+	const Vec3 f = pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -toCamera);
 	// Reuse the sampled light origin, compensating its selection and origin density once.
 	if (pt.mNormalMode == SurfaceNormalMode::Shading) {
-		double cameraCosine, falloff;
-		if (!Bidirectional::ScatteringCosine(pt.mIsect, pt.mIsect.mOutDir, -toCamera, TransportMode::Radiance, &cameraCosine)) return false;
-		if (cameraCosine == 0) return true;
-		if (!EmitterConnectionFactor(qs, pt, &falloff)) return false;
-		const Vec3 f = pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -toCamera);
-		return ScaledProduct({ emission, pt.mThroughput, f }, cameraCosine * falloff / double(originPdf), contribution);
+		const double cameraCosine = ScatteringCosine(pt.mIsect, pt.mIsect.mOutDir, -toCamera, TransportMode::Radiance);
+		if (cameraCosine != 0) {
+			*contribution = ScaledProduct({ emission, pt.mThroughput, f },
+				cameraCosine * EmitterConnectionFactor(qs, pt) / double(originPdf));
+		}
+		return true;
 	}
-	real geometry;
-	if (!GeometryTerm(qs, pt, &geometry)) return false;
-	*contribution = emission / originPdf * pt.mThroughput *
-		pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -toCamera) * geometry;
+	*contribution = emission / originPdf * pt.mThroughput * f * GeometryTerm(qs, pt);
 	return true;
 }
 
-bool ConnectSurfaces(const PathVertex& qs, const PathVertex& pt, Vec3* contribution) {
-	if (!Connectible(qs) || !Connectible(pt)) return true;
-	Vec3 wi;
-	if (!Direction(qs, pt, &wi)) return false;
+Vec3 ConnectSurfaces(const PathVertex& qs, const PathVertex& pt) {
+	if (!Connectible(qs) || !Connectible(pt)) return Vec3(0);
+	const Vec3 wi = DirectionTo(qs, pt);
+	const Vec3 fq = qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi);
+	const Vec3 fp = pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -wi);
 	if (pt.mNormalMode == SurfaceNormalMode::Shading) {
 		// Each K carries its scattering cosine; only distance falloff remains.
-		double lightCosine, cameraCosine, falloff;
-		if (!Bidirectional::ScatteringCosine(qs.mIsect, qs.mIsect.mOutDir, wi, TransportMode::Importance, &lightCosine) ||
-			!Bidirectional::ScatteringCosine(pt.mIsect, pt.mIsect.mOutDir, -wi, TransportMode::Radiance, &cameraCosine)) return false;
-		if (lightCosine == 0 || cameraCosine == 0) return true;
-		if (!EmitterConnectionFactor(qs, pt, &falloff)) return false;
-		const Vec3 fq = qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi);
-		const Vec3 fp = pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -wi);
-		if (!Finite(fq) || !Finite(fp)) return Fail("BDPT connection BSDF is not finite.");
-		return ScaledProduct({ qs.mThroughput, pt.mThroughput, fq, fp }, lightCosine * cameraCosine * falloff, contribution);
+		const double lightCosine = ScatteringCosine(qs.mIsect, qs.mIsect.mOutDir, wi, TransportMode::Importance);
+		const double cameraCosine = ScatteringCosine(pt.mIsect, pt.mIsect.mOutDir, -wi, TransportMode::Radiance);
+		if (lightCosine == 0 || cameraCosine == 0) return Vec3(0);
+		return ScaledProduct({ qs.mThroughput, pt.mThroughput, fq, fp },
+			lightCosine * cameraCosine * EmitterConnectionFactor(qs, pt));
 	}
-	real geometry;
-	if (!GeometryTerm(qs, pt, &geometry)) return false;
-	*contribution = qs.mThroughput * pt.mThroughput * geometry *
-		qs.mIsect.mBsdf->Evaluate(qs.mIsect.mOutDir, wi) *
-		pt.mIsect.mBsdf->Evaluate(pt.mIsect.mOutDir, -wi);
-	return true;
+	return qs.mThroughput * pt.mThroughput * GeometryTerm(qs, pt) * fq * fp;
 }
 
 }
 
-bool GeometryTerm(const PathVertex& first, const PathVertex& second, real* value) {
-	*value = 0;
-	Vec3 dir;
-	if (!Direction(first, second, &dir)) return false;
-	*value = first.mType == PathVertexType::Environment || second.mType == PathVertexType::Environment
+real GeometryTerm(const PathVertex& first, const PathVertex& second) {
+	const Vec3 dir = DirectionTo(first, second);
+	real value = first.mType == PathVertexType::Environment || second.mType == PathVertexType::Environment
 		? 1 : 1 / (second.mIsect.mPos - first.mIsect.mPos).Length2();
-	if (Surface(first)) *value *= std::abs(Dot(first.mIsect.mGeometryNormal, dir));
-	if (Surface(second)) *value *= std::abs(Dot(second.mIsect.mGeometryNormal, dir));
-	return std::isfinite(*value) || Fail("BDPT geometry factor is not finite.");
+	if (Surface(first)) value *= std::abs(Dot(first.mIsect.mGeometryNormal, dir));
+	if (Surface(second)) value *= std::abs(Dot(second.mIsect.mGeometryNormal, dir));
+	return value;
 }
 
 bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	const std::vector<PathVertex>& cameraPath, int s, int t, real* weight) {
 	*weight = 0;
-	if (!Counts(lightPath, cameraPath, s, t)) return Fail("BDPT MIS received invalid vertex counts.");
 	const size_t count = static_cast<size_t>(s) + t;
-	for (int i = 0; i < s; ++i) {
-		if (lightPath[i].mType == PathVertexType::Environment && i != 0) {
-			return Fail("An environment can only be the light subpath origin.");
-		}
-	}
-	for (int i = 0; i < t; ++i) {
-		if (cameraPath[i].mType == PathVertexType::Environment && i != t - 1) {
-			return Fail("An environment can only be the camera subpath endpoint.");
-		}
-	}
-
 	const PathVertex* lightEnd = s > 0 ? &lightPath[s - 1] : nullptr;
 	const PathVertex* lightPrevious = s > 1 ? &lightPath[s - 2] : nullptr;
 	const PathVertex& cameraEnd = cameraPath[t - 1];
@@ -343,34 +240,32 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	// Recompute the camera-side connection densities.
 	if (s == 0) {
 		if (!LightOriginPdf(scene, cameraEnd, *cameraPrevious, &cameraMis[t - 1].pdfPrev) ||
-			!PdfToward(cameraEnd, nullptr, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
+			!PdfArea(cameraEnd, nullptr, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
 	}
 	else {
-		if (!PdfToward(*lightEnd, lightPrevious, cameraEnd, &cameraMis[t - 1].pdfPrev)) return false;
+		if (!PdfArea(*lightEnd, lightPrevious, cameraEnd, &cameraMis[t - 1].pdfPrev)) return false;
 		if (cameraPrevious &&
-			!PdfToward(cameraEnd, lightEnd, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
+			!PdfArea(cameraEnd, lightEnd, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
 
 		// Recompute the light-side connection densities.
-		if (!PdfToward(cameraEnd, cameraPrevious, *lightEnd, &lightMis[s - 1].pdfPrev)) return false;
+		if (!PdfArea(cameraEnd, cameraPrevious, *lightEnd, &lightMis[s - 1].pdfPrev)) return false;
 		if (lightPrevious &&
-			!PdfToward(*lightEnd, &cameraEnd, *lightPrevious, &lightMis[s - 2].pdfPrev)) return false;
+			!PdfArea(*lightEnd, &cameraEnd, *lightPrevious, &lightMis[s - 2].pdfPrev)) return false;
 	}
-	if (!ValidateMisState(lightMis) || !ValidateMisState(cameraMis)) return false;
 
 	// PBRT-v3 balance heuristic: walk alternative splits in both directions.
 	double sumRatios = 0, ratio = 1;
 	for (int i = t - 1; i > 0; --i) {
-		if (!AdvanceMisRatio(cameraMis, i, &ratio)) return false;
+		ratio *= MisRatio(cameraMis, i);
 		if (!cameraMis[i].delta && !cameraMis[i - 1].delta &&
 			ValidConnection(&cameraPath[i], cameraPath[i - 1], count - i, i)) sumRatios += ratio;
 	}
 	ratio = 1;
 	for (int i = s - 1; i >= 0; --i) {
-		if (!AdvanceMisRatio(lightMis, i, &ratio)) return false;
+		ratio *= MisRatio(lightMis, i);
 		if (!lightMis[i].delta && !(i > 0 && lightMis[i - 1].delta) &&
 			ValidConnection(i > 0 ? &lightPath[i - 1] : nullptr, lightPath[i], i, count - i)) sumRatios += ratio;
 	}
-	if (!std::isfinite(sumRatios)) return Fail("BDPT MIS ratio sum overflowed.");
 	*weight = static_cast<real>(1 / (1 + sumRatios));
 	return true;
 }
@@ -379,35 +274,25 @@ bool EvaluateConnection(const Scene& scene, const Camera& camera, const std::vec
 	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
 	*contribution = Vec3(0);
 	*raster = Vec2(0, 0);
-	if (!Counts(lightPath, cameraPath, s, t)) return Fail("BDPT connection received invalid vertex counts.");
-	if (static_cast<int64>(s) + t < 2 || (s == 1 && t == 1)) return true;
-	const PathVertex& pt = cameraPath[t - 1];
-	if (pt.mType == PathVertexType::Environment && s != 0) return true;
-	Vec3 unweightedContribution(0);
+	if (s + t < 2 || (s == 1 && t == 1)) return true;
 	if (s == 0) {
-		if (!EvaluateEmission(cameraPath, t, &unweightedContribution)) return false;
+		*contribution = EvaluateEmission(cameraPath, t);
+		return true;
 	}
-	else {
-		const PathVertex& qs = lightPath[s - 1];
-		if (qs.mNormalMode != pt.mNormalMode) return Fail("BDPT subpaths must share one surface normal policy.");
-		if (t == 1) {
-			if (!ConnectCamera(camera, qs, &unweightedContribution, raster)) return false;
-		}
-		else if (s == 1) {
-			if (!ConnectEmitter(scene, qs, pt, &unweightedContribution)) return false;
-		}
-		else {
-			if (!ConnectSurfaces(qs, pt, &unweightedContribution)) return false;
-		}
-		if (unweightedContribution != Vec3(0)) {
-			if (qs.mType == PathVertexType::Environment) {
-				if (scene.Intersect(pt.mIsect.SpawnRay(qs.mDirection))) return true;
-			}
-			else if (!VisibilityTester(qs.mIsect, pt.mIsect).Unoccluded(scene)) return true;
-		}
+	const PathVertex& pt = cameraPath[t - 1];
+	if (pt.mType == PathVertexType::Environment) return true;
+	const PathVertex& qs = lightPath[s - 1];
+	Vec3 unweightedContribution(0);
+	if (t == 1) unweightedContribution = ConnectCamera(camera, qs, raster);
+	else if (s == 1) {
+		if (!ConnectEmitter(scene, qs, pt, &unweightedContribution)) return false;
 	}
-	if (!Finite(unweightedContribution)) return Fail("BDPT connection contribution is not finite.");
-	*contribution = unweightedContribution;
+	else unweightedContribution = ConnectSurfaces(qs, pt);
+	if (unweightedContribution == Vec3(0)) return true;
+	const bool visible = qs.mType == PathVertexType::Environment ?
+		!scene.Intersect(pt.mIsect.SpawnRay(qs.mDirection)) :
+		VisibilityTester(qs.mIsect, pt.mIsect).Unoccluded(scene);
+	if (visible) *contribution = unweightedContribution;
 	return true;
 }
 

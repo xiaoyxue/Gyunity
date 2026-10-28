@@ -53,9 +53,13 @@ bool ForwardDensity(const Scene& scene, const PathContext& path, int i, real* pd
 	const int source = i - 1;
 	if (source > 0 && source < n - 1 && Delta(LightVertex(path, source))) {
 		// Eq. (11): keep the sampled delta mass and geometry; only the singular distribution is removed.
-		if (source < s) return ConvertDensity(path.light[source].mDeltaPdf, path.light[source], LightVertex(path, i), pdf);
+		if (source < s) {
+			*pdf = Bidirectional::DirectionToArea(path.light[source].mDeltaPdfFwd, path.light[source], LightVertex(path, i));
+			return true;
+		}
 		const auto& vertex = path.camera[n - 1 - source];
-		return ConvertDensity(vertex.mDeltaReversePdf, vertex, CameraVertex(path, i), pdf);
+		*pdf = Bidirectional::DirectionToArea(vertex.mDeltaPdfPrev, vertex, CameraVertex(path, i));
+		return true;
 	}
 	// A recorded reverse density is reused only while its source and sampled successor are selected.
 	const int j = n - 1 - i;
@@ -71,10 +75,11 @@ bool ForwardDensity(const Scene& scene, const PathContext& path, int i, real* pd
 		// Eq. (10): scatter at x with the original directions, convert along x's sampled edge.
 		const auto& y = path.light[s - 1];
 		const auto& x = path.camera[path.selected.t - 1];
-		return ConvertDensity(x.mIsect.mBsdf->Pdf(y.mIsect.mOutDir, x.mIsect.mOutDir), x, CameraVertex(path, i), pdf);
+		*pdf = Bidirectional::DirectionToArea(x.mIsect.mBsdf->Pdf(y.mIsect.mOutDir, x.mIsect.mOutDir), x, CameraVertex(path, i));
+		return true;
 	}
 	if (i == 0) return Bidirectional::LightOriginPdf(scene, CameraVertex(path, 0), CameraVertex(path, 1), pdf);
-	return Bidirectional::PdfToward(CameraVertex(path, source),
+	return Bidirectional::PdfArea(CameraVertex(path, source),
 		i >= 2 ? &CameraVertex(path, i - 2) : nullptr, CameraVertex(path, i), pdf);
 }
 
@@ -84,9 +89,13 @@ bool ReverseDensity(const PathContext& path, int i, real* pdf) {
 	const bool merging = path.selected.technique == Technique::Merging;
 	const int source = i + 1;
 	if (source > 0 && source < n - 1 && Delta(LightVertex(path, source))) {
-		if (source < s) return ConvertDensity(path.light[source].mDeltaReversePdf, path.light[source], LightVertex(path, i), pdf);
+		if (source < s) {
+			*pdf = Bidirectional::DirectionToArea(path.light[source].mDeltaPdfPrev, path.light[source], LightVertex(path, i));
+			return true;
+		}
 		const auto& vertex = path.camera[n - 1 - source];
-		return ConvertDensity(vertex.mDeltaPdf, vertex, CameraVertex(path, i), pdf);
+		*pdf = Bidirectional::DirectionToArea(vertex.mDeltaPdfFwd, vertex, CameraVertex(path, i));
+		return true;
 	}
 	if (i < s - 2) {
 		*pdf = path.light[i].mPdfPrev;
@@ -100,9 +109,10 @@ bool ReverseDensity(const PathContext& path, int i, real* pdf) {
 		// Eq. (10): the reverse merge scatters at x but converts along y's original light edge.
 		const auto& y = path.light[s - 1];
 		const auto& x = path.camera[path.selected.t - 1];
-		return ConvertDensity(x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, y.mIsect.mOutDir), y, LightVertex(path, i), pdf);
+		*pdf = Bidirectional::DirectionToArea(x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, y.mIsect.mOutDir), y, LightVertex(path, i));
+		return true;
 	}
-	return Bidirectional::PdfToward(LightVertex(path, source),
+	return Bidirectional::PdfArea(LightVertex(path, source),
 		i + 2 < n ? &LightVertex(path, i + 2) : nullptr, LightVertex(path, i), pdf);
 }
 

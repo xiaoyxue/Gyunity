@@ -81,30 +81,30 @@ TEST(BDPTShadingNormal, CombinedCosineUsesTheAdjointDirection) {
 	const Vec3 wo = isect.mGeometryNormal;
 	const Vec3 wi = isect.mNormal;
 	double value;
-	ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, wo, wi, TransportMode::Radiance, &value));
+	value = Bidirectional::ScatteringCosine(isect, wo, wi, TransportMode::Radiance);
 	EXPECT_NEAR(value, 1.0, 1e-6);
 	// |wo.ns| |wi.ng| / |wo.ng| = 0.8 * 0.8 / 1.
-	ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, wo, wi, TransportMode::Importance, &value));
+	value = Bidirectional::ScatteringCosine(isect, wo, wi, TransportMode::Importance);
 	EXPECT_NEAR(value, 0.64, 1e-6);
 	// Swapped: the standalone correction is 1.5625; times the new |wi.ns| = 0.8 gives 1.25.
-	ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, wi, wo, TransportMode::Importance, &value));
+	value = Bidirectional::ScatteringCosine(isect, wi, wo, TransportMode::Importance);
 	EXPECT_NEAR(value, 1.25, 1e-6);
-	ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, wi, wo, TransportMode::Radiance, &value));
+	value = Bidirectional::ScatteringCosine(isect, wi, wo, TransportMode::Radiance);
 	EXPECT_NEAR(value, 0.8, 1e-6);
 
 	// Above ns but below ng: outside the support in both modes, for either argument.
 	const Vec3 belowGeometry = Vec3(1, 0, -0.1f).Norm();
 	ASSERT_GT(Dot(belowGeometry, isect.mNormal), 0);
 	for (TransportMode mode : { TransportMode::Radiance, TransportMode::Importance }) {
-		ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, wo, belowGeometry, mode, &value));
+		value = Bidirectional::ScatteringCosine(isect, wo, belowGeometry, mode);
 		EXPECT_DOUBLE_EQ(value, 0.0);
-		ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, belowGeometry, wo, mode, &value));
+		value = Bidirectional::ScatteringCosine(isect, belowGeometry, wo, mode);
 		EXPECT_DOUBLE_EQ(value, 0.0);
 	}
 	EXPECT_FALSE(Bidirectional::ShadingSupport(isect, belowGeometry));
 	EXPECT_TRUE(Bidirectional::ShadingSupport(isect, wo));
 	// Exactly tangent to the geometric surface is excluded as well.
-	ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, wo, Vec3(1, 0, 0), TransportMode::Importance, &value));
+	value = Bidirectional::ScatteringCosine(isect, wo, Vec3(1, 0, 0), TransportMode::Importance);
 	EXPECT_DOUBLE_EQ(value, 0.0);
 }
 
@@ -115,21 +115,11 @@ TEST(BDPTShadingNormal, EqualNormalsReduceToTheGeometricCosine) {
 	const Vec3 wi = Vec3(-0.6f, 0, 0.8f);
 	for (TransportMode mode : { TransportMode::Radiance, TransportMode::Importance }) {
 		double value;
-		ASSERT_TRUE(Bidirectional::ScatteringCosine(isect, wo, wi, mode, &value));
+		value = Bidirectional::ScatteringCosine(isect, wo, wi, mode);
 		EXPECT_NEAR(value, 0.8, 1e-6);
 	}
 }
 
-TEST(BDPTShadingNormal, MalformedNormalsAndDirectionsFail) {
-	Intersection isect = TiltedPoint();
-	double value = 7;
-	EXPECT_FALSE(Bidirectional::ScatteringCosine(isect, Vec3(0, 0, 2), kTilted, TransportMode::Radiance, &value));
-	EXPECT_EQ(value, 0);
-	isect.mNormal = -kTilted;
-	EXPECT_FALSE(Bidirectional::ScatteringCosine(isect, Vec3(0, 0, 1), kTilted, TransportMode::Radiance, &value));
-	isect.mNormal = Vec3(std::numeric_limits<real>::quiet_NaN(), 0, 1);
-	EXPECT_FALSE(Bidirectional::ScatteringCosine(isect, Vec3(0, 0, 1), kTilted, TransportMode::Radiance, &value));
-}
 
 TEST(BDPTShadingNormal, AreaDensityDoesNotUseShadingNormal) {
 	PathVertex from, to;
@@ -139,9 +129,9 @@ TEST(BDPTShadingNormal, AreaDensityDoesNotUseShadingNormal) {
 	to.mIsect.mNormal = kTilted;
 	to.mNormalMode = SurfaceNormalMode::Shading;
 	real tilted, aligned;
-	ASSERT_TRUE(ConvertDensity(0.5f, from, to, &tilted));
+	tilted = Bidirectional::DirectionToArea(0.5f, from, to);
 	to.mIsect.mNormal = to.mIsect.mGeometryNormal;
-	ASSERT_TRUE(ConvertDensity(0.5f, from, to, &aligned));
+	aligned = Bidirectional::DirectionToArea(0.5f, from, to);
 	EXPECT_FLOAT_EQ(tilted, 0.125f);
 	EXPECT_FLOAT_EQ(tilted, aligned);
 }
@@ -291,8 +281,8 @@ TEST(BDPTShadingNormal, ScatterThroughputPreservesGeometricArithmetic) {
 	Vec3 throughput(10, 0.2f, 5);
 	Vec3 expected = throughput;
 	expected *= f * std::abs(Dot(vertex.mIsect.mNormal, wi)) / pdf;
-	ASSERT_EQ(Bidirectional::ScatterThroughput(vertex, TransportMode::Importance,
-		wo, wi, f, pdf, &throughput), Bidirectional::ScatterStatus::Valid);
+	ASSERT_TRUE(Bidirectional::ScatterThroughput(vertex, TransportMode::Importance,
+		wo, wi, f, pdf, &throughput));
 	EXPECT_EQ(throughput, expected);
 }
 
@@ -304,8 +294,8 @@ TEST(BDPTShadingNormal, ScatterThroughputKeepsShadingProductsInDoubleUntilStorag
 	const real pdf = 0.37f;
 	const Vec3 before(10, 0.2f, 5);
 	Vec3 throughput = before;
-	ASSERT_EQ(Bidirectional::ScatterThroughput(vertex, TransportMode::Importance,
-		wo, wi, f, pdf, &throughput), Bidirectional::ScatterStatus::Valid);
+	ASSERT_TRUE(Bidirectional::ScatterThroughput(vertex, TransportMode::Importance,
+		wo, wi, f, pdf, &throughput));
 	const double cosine = double(0.8f) * double(0.8f);
 	for (int channel = 0; channel < 3; ++channel) {
 		const real expected = real(double(before[channel]) * double(f[channel]) * cosine / double(pdf));
@@ -319,23 +309,8 @@ TEST(BDPTShadingNormal, RejectedScatterLeavesThroughputUnchanged) {
 	vertex.mNormalMode = SurfaceNormalMode::Shading;
 	const Vec3 before(2, 3, 4);
 	Vec3 throughput = before;
-	ASSERT_EQ(Bidirectional::ScatterThroughput(vertex, TransportMode::Importance,
-		Vec3(0, 0, 1), Vec3(1, 0, -0.1f).Norm(), Vec3(1), 1, &throughput),
-		Bidirectional::ScatterStatus::Null);
+	ASSERT_FALSE(Bidirectional::ScatterThroughput(vertex, TransportMode::Importance,
+		Vec3(0, 0, 1), Vec3(1, 0, -0.1f).Norm(), Vec3(1), 1, &throughput));
 	EXPECT_EQ(throughput, before);
 }
 
-TEST(BDPTShadingNormal, InvalidScatterIsDistinctFromARejectedSample) {
-	PathVertex vertex;
-	vertex.mIsect = TiltedPoint();
-	vertex.mNormalMode = SurfaceNormalMode::Shading;
-	Vec3 throughput(1);
-	ASSERT_EQ(Bidirectional::ScatterThroughput(vertex, TransportMode::Importance,
-		Vec3(0, 0, 1), kTilted, Vec3((std::numeric_limits<real>::max)()), 0.1f, &throughput),
-		Bidirectional::ScatterStatus::Invalid);
-	EXPECT_EQ(throughput, Vec3(1));
-	vertex.mIsect.mNormal.x = std::numeric_limits<real>::quiet_NaN();
-	ASSERT_EQ(Bidirectional::ScatterThroughput(vertex, TransportMode::Radiance,
-		Vec3(0, 0, 1), kTilted, Vec3(1), 1, &throughput), Bidirectional::ScatterStatus::Invalid);
-	EXPECT_EQ(throughput, Vec3(1));
-}
