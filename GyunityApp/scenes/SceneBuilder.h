@@ -8,8 +8,10 @@
 #include "material/Glass.h"
 #include "material/Roughness.h"
 #include "material/Plastic.h"
+#include "material/Phong.h"
 #include "material/RoughDielectric.h"
 #include "light/AreaLight.h"
+#include "light/PointLight.h"
 #include "light/EnvLight.h"
 #include "texture/ConstantTexture.h"
 #include "texture/ImageTexture.h"
@@ -61,6 +63,9 @@ public:
 		real etaOutside, real etaInside, bool nonlinear) {
 		return PlasticMaterial::Create(ConstantColor(kd), ConstantColor(ks), etaOutside, etaInside, nonlinear);
 	}
+	static std::shared_ptr<Material> Phong(const Vec3& kd, const Vec3& ks, real exponent) {
+		return std::make_shared<PhongMaterial>(ConstantColor(kd), ConstantColor(ks), exponent);
+	}
 
 	// MediumInterface is non-owning; its media must outlive the scene.
 	void AddTriangle(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& normal,
@@ -86,6 +91,19 @@ public:
 		mScene->AddLight(light1);
 		mScene->AddPrimitive(std::make_shared<Primitive>(shape0, black, light0));
 		mScene->AddPrimitive(std::make_shared<Primitive>(shape1, black, light1));
+	}
+
+	// An emitting triangle with its own area light; it emits on the side of normal.
+	void AddTriangleLight(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& normal, const Vec3& emission) {
+		std::shared_ptr<Shape> shape = MakeTriangle(a, b, c, normal);
+		std::shared_ptr<Light> light = std::make_shared<AreaLight>(shape, emission);
+		mScene->AddLight(light);
+		mScene->AddPrimitive(std::make_shared<Primitive>(shape, Diffuse(Vec3(0, 0, 0)), light));
+	}
+
+	// intensity is radiant intensity: irradiance at distance d is intensity / d^2.
+	void AddPointLight(const Vec3& position, const Vec3& intensity) {
+		mScene->AddLight(std::make_shared<PointLight>(position, intensity));
 	}
 
 	// inside: the sphere is seen from inside (e.g. a giant sphere used as a wall).

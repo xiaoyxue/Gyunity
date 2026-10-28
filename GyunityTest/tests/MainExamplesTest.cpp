@@ -361,7 +361,7 @@ TEST_F(MainExampleRenders, VertexConnectionMergingLegacySurfaceScenesAndModes) {
 		}
 		++count;
 	}
-	EXPECT_EQ(count, 10);
+	EXPECT_EQ(count, 12);
 }
 
 TEST_F(MainExampleRenders, VertexConnectionMergingKdAndExplicitConcurrency) {
