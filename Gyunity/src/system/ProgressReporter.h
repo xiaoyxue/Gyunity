@@ -8,6 +8,8 @@ class ProgressReporter {
 public:
 	ProgressReporter(const std::string& label, size_t total);
 	void Advance();
+	// Optional phase label; does not change completed work or finish the report.
+	void SetPhase(const std::string& label);
 	// Call after all workers have joined. Only complete, successful work reports 100%.
 	bool Finish(bool success);
 

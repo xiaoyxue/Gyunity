@@ -138,6 +138,85 @@ TEST_F(EnvironmentBDPT, MixedLightSelectionPmfIsIncludedExactlyOnce) {
 	CheckWeightProducts();
 }
 
+TEST_F(EnvironmentBDPT, PrimaryStrategiesAreIndependentOfMisDensities) {
+	const real average = (std::sin(PI / 8) + std::sin(3 * PI / 8)) / 2;
+	const real mapPdf = (std::sin(5 * PI / 8) / average) / (2 * PI * PI);
+	const std::array<real, 3> expected = { 4, 2 / (PI * mapPdf), 1 / (9 * PI) };
+	for (int s = 0; s < 3; ++s) {
+		SCOPED_TRACE(s);
+		std::vector<PathVertex> light, eye;
+		BuildPaths(s, &light, &eye);
+		Vec3 primary, contribution;
+		Vec2 raster, primaryRaster;
+		real weight;
+		ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, s, 3 - s, &primary, &primaryRaster));
+		EXPECT_NEAR(primary.x, expected[s], 1e-5f);
+		ASSERT_TRUE(MisWeight(*scene, light, eye, s, 3 - s, &weight));
+		ASSERT_TRUE(ConnectPaths(*scene, *camera, light, eye, s, 3 - s, &contribution, &raster));
+		EXPECT_EQ(contribution, primary * weight);
+		eye[0].mPdfFwd = -1;
+		ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, s, 3 - s, &contribution, &raster));
+		EXPECT_EQ(contribution, primary);
+		EXPECT_FALSE(ConnectPaths(*scene, *camera, light, eye, s, 3 - s, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+		EXPECT_EQ(raster.x, primaryRaster.x);
+		EXPECT_EQ(raster.y, primaryRaster.y);
+		EXPECT_EQ(eye[0].mPdfFwd, -1);
+		const auto& endpoint = s == 0 ? eye.back() : light.front();
+		EXPECT_EQ(endpoint.mDirection, Vec3(0, 0, 1));
+		EXPECT_EQ(endpoint.mIsect.mPos, Vec3(0, 0, 100));
+	}
+}
+
+TEST_F(EnvironmentBDPT, SharedHelpersPreserveEnvironmentDirectionAndLaunchMeasures) {
+	scene->AddLight(std::make_shared<PointLight>(Vec3(1, 2, 3), Vec3(37)));
+	Initialize();
+	std::vector<PathVertex> light, eye;
+	BuildPaths(1, &light, &eye);
+	const real average = (std::sin(PI / 8) + std::sin(3 * PI / 8)) / 2;
+	const real mapPdf = (std::sin(5 * PI / 8) / average) / (2 * PI * PI);
+	real pmf, originPdf, surfacePdf;
+	ASSERT_TRUE(scene->LightSelectionPdf(0, &pmf));
+	ASSERT_TRUE(Bidirectional::LightOriginPdf(*scene, light[0], eye.back(), &originPdf));
+	ASSERT_TRUE(Bidirectional::PdfToward(light[0], nullptr, eye.back(), &surfacePdf));
+	EXPECT_NEAR(originPdf, pmf * mapPdf, 1e-7f);
+	EXPECT_NEAR(surfacePdf, 1 / (200 * PI), 1e-8f);
+	Vec3 dir, primary, distantPrimary;
+	Vec2 raster;
+	ASSERT_TRUE(Bidirectional::Direction(light[0], eye.back(), &dir));
+	EXPECT_EQ(dir, Vec3(0, 0, -1));
+	ASSERT_TRUE(Bidirectional::Direction(eye.back(), light[0], &dir));
+	EXPECT_EQ(dir, Vec3(0, 0, 1));
+	EXPECT_TRUE(Bidirectional::ValidConnection(&light[0], eye.back(), 1, 2));
+	EXPECT_TRUE(Bidirectional::ValidConnection(nullptr, light[0], 0, 2));
+	EXPECT_FALSE(Bidirectional::ValidConnection(&light[0], light[0], 1, 2));
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, 1, 2, &primary, &raster));
+	EXPECT_NEAR(primary.x, 2 / (pmf * mapPdf * PI), 1e-4f);
+	light[0].mIsect.mPos = Vec3(0, 0, 100000);
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, 1, 2, &distantPrimary, &raster));
+	EXPECT_EQ(primary, distantPrimary);
+	EXPECT_FALSE(Bidirectional::Direction(light[0], light[0], &dir));
+	light[0].mDirection = Vec3(0, 0, 2);
+	EXPECT_FALSE(Bidirectional::Direction(light[0], eye.back(), &dir));
+}
+
+TEST_F(EnvironmentBDPT, BlockedEnvironmentConnectionSkipsMis) {
+	scene->AddPrimitive(std::make_shared<Primitive>(
+		std::make_shared<Sphere>(Transform(), Transform(), 0.2f, Vec3(0, 0, 1))));
+	Initialize();
+	std::vector<PathVertex> light, eye;
+	BuildPaths(1, &light, &eye);
+	eye[0].mPdfFwd = -1;
+	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		Vec3 contribution(7);
+		Vec2 raster(7);
+		ASSERT_TRUE(evaluate(*scene, *camera, light, eye, 1, 2, &contribution, &raster));
+		EXPECT_EQ(contribution, Vec3(0));
+		EXPECT_EQ(raster.x, 0);
+		EXPECT_EQ(raster.y, 0);
+	}
+}
+
 TEST_F(EnvironmentBDPT, DirectConnectionDoesNotDependOnHelperEndpointDistance) {
 	std::vector<PathVertex> light, eye;
 	BuildPaths(1, &light, &eye);
@@ -160,6 +239,10 @@ TEST_F(EnvironmentBDPT, BackgroundHasUnitWeightAndCannotBeAConnectionSurface) {
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, light, escaped, 0, 2, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(2));
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, light, escaped, 1, 2, &contribution, &raster));
+	EXPECT_EQ(contribution, Vec3(0));
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, escaped, 0, 2, &contribution, &raster));
+	EXPECT_EQ(contribution, Vec3(2));
+	ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, escaped, 1, 2, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
 }
 

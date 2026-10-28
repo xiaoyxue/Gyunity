@@ -46,7 +46,7 @@ public:
 
 		if (pdfDir) {
 			Vec2 uv = DirToLatLong(normDir);
-			real sinTheta = SinTheta(uv[1]);
+			real sinTheta = std::sqrt(normDir.x * normDir.x + normDir.z * normDir.z);
 
 			if (sinTheta == 0) 
 				*pdfDir = 0;
@@ -65,7 +65,8 @@ public:
 	real PdfDir(const Vec3& dir) const {
 		Vec3 normDir = mTransformDirections ? mWorldToDirection.TransformVector(dir).Norm() : dir.Norm();
 		Vec2 uv = DirToLatLong(normDir);
-		real sinTheta = SinTheta(uv[1]);
+		// A latitude round trip loses relative precision in the polar Jacobian.
+		real sinTheta = std::sqrt(normDir.x * normDir.x + normDir.z * normDir.z);
 		if (sinTheta == 0)
 			return 0;
 		else 

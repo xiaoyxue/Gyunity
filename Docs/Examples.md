@@ -16,6 +16,13 @@ not the entire suite.
 | `Examples::LightTracing` | `mesh` | 1024x1024, 512 spp, depth 15 | `Test\CornellBoxLT.bmp` |
 | `Examples::VolumePathTracing` | `fog` | 1024x1024, 2000 spp, depth 8 | `Test\MediaTestFogEquiAngular.bmp` |
 | `Examples::BidirectionalPathTracing` | Any non-volume scene; default `mesh` | 1024x1024, 256 spp, depth 8 | `Test\CornellBoxBdpt.bmp` |
+| `Examples::VertexConnectionMerging` | Compatible surface scene; default `mesh` | 128x128, 16 iterations, depth 8, radius 0.05, alpha 2/3 | `Test\CornellBoxVcm.hdr` |
+
+VCM is callable from C++ only and is not added to the existing named/batch or
+scene-CLI selections. Set `Options::iterations` rather than `spp`; depth zero is
+supported. Its separate `useShadingNormals` flag defaults to `false`; `true` is
+explicitly rejected until VCM's shading-normal estimator is implemented. See
+[VCM](VCM.md) for mode, radius, concurrency and statistics arguments.
 
 `Examples::CornellBoxStandard`, `Examples::VeachMis`, `Examples::VeachBidir`
 and `Examples::Matpreview(profile)` load native JSON through the same defaults

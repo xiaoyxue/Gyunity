@@ -68,13 +68,22 @@
     <ClCompile Include="tests\LTTransportAuditTest.cpp" />
     <ClCompile Include="tests\LightProbabilityTest.cpp" />
     <ClCompile Include="tests\BDPTPathTest.cpp" />
+    <ClCompile Include="tests\VCMPathTest.cpp" />
+    <ClCompile Include="tests\VCMEstimatorTest.cpp" />
+    <ClCompile Include="tests\VCMRendererTest.cpp" />
+    <ClCompile Include="tests\HashGridTest.cpp" />
+    <ClCompile Include="tests\VCMPhotonMapTest.cpp" />
     <ClCompile Include="tests\BDPTShadingNormalTest.cpp" />
     <ClCompile Include="tests\ToneMapTest.cpp" />
     <ClCompile Include="tests\BDPTConnectionTest.cpp" />
     <ClCompile Include="tests\BDPTEnvironmentTest.cpp" />
     <ClCompile Include="tests\PixelDebugTest.cpp" />
     <ClCompile Include="tests\ProgressReporterTest.cpp" />
+    <ClCompile Include="tests\ThreadedTaskManagerTest.cpp" />
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="tests\VCMReference.h" />
   </ItemGroup>
   <ItemDefinitionGroup>
     <ClCompile>

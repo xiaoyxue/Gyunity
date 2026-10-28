@@ -163,8 +163,10 @@ public:
 	// Delta samples return probability mass; continuous samples return solid-angle density.
 	// Type and delta/continuous group probability describe selection even if the lobe rejects its direction.
 	// Empty/absorbing mixtures clear outputs; invalid weights log and return NaN probabilities.
+	// Optional reverse delta mass includes reverse lobe selection; -1 means unavailable.
 	Vec3 Sample(const Vec3 &wo, Vec3 *wi, real *pdf, const Vec3 &rand = Vec3(0, 0, 0), ScatterEventType flags = BSDF_ALL,
-		ScatterEventType* sampledType = nullptr, real* eventProbability = nullptr) const;
+		ScatterEventType* sampledType = nullptr, real* eventProbability = nullptr,
+		real* reverseDeltaMass = nullptr) const;
 	Vec3 Evaluate(const Vec3 &wo, const Vec3 &wi, ScatterEventType flags = BSDF_ALL) const;
 	bool IsDelta() const { 
 		return mIsDelta;
@@ -187,6 +189,8 @@ public:
 	// Nonnegative finite selection weight in the local shading frame; zero disables sampling.
 	virtual real SamplingWeight(const Vec3& wo) const { return 1; }
 	virtual bool IsDelta() const { return SurfaceEventClassifier::IsDelta(mScatterEventType); }
+	// Only queried for a successful sampled delta event, not arbitrary directions.
+	virtual real ReverseDeltaMass(const Vec3& wo, const Vec3& wi) const { return -1; }
 	virtual bool MatchesTypes(ScatterEventType flags) const { return (mScatterEventType & flags) == mScatterEventType; }
 	const ScatterEventType mScatterEventType;
 };
@@ -230,6 +234,8 @@ public:
 		return 0.0;
 	}
 
+	real ReverseDeltaMass(const Vec3&, const Vec3&) const override { return 1; }
+
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 
 	{
 		*wi = Vec3(-wo.x, -wo.y, wo.z);
@@ -267,6 +273,11 @@ public:
 	real Pdf(const Vec3 &wo, const Vec3 &wi) const override 
 	{
 		return 0.0;
+	}
+
+	real ReverseDeltaMass(const Vec3& wo, const Vec3& wi) const override {
+		const real reflection = FrDielectric(BSDFCoordinate::CosTheta(wi), mNc, mNt);
+		return wo.z * wi.z > 0 ? reflection : 1 - reflection;
 	}
 
 	Vec3 Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand) const override 

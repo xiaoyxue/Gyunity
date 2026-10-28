@@ -1,6 +1,7 @@
 #pragma once
 #include "SceneBuilder.h"
 #include "volume/Homogeneous.h"
+#include <array>
 
 // Parallel versions of CornellBox.h scenes; the original classes remain available.
 namespace CornellBoxScenes {
@@ -133,6 +134,77 @@ inline void RoughGlassLucyAndPurpleBunny(SceneBuilder& builder) {
 		Transform::Translate(Vec3(0.52, -0.92, 0.3)) * Transform::Scale(0.22, 0.22, 0.22);
 	builder.AddMesh("meshs\\bunny3.obj", purpleGlass, bunnyTransform);
 	AddCornellBoxLight(builder, 85);
+}
+
+// SmallVCM's Cornell box (scene.hxx, LoadCornellBox) with its glossy floor, in its z-up
+// coordinates. Triangles keep SmallVCM's vertex order; normals are cross(b - a, c - a),
+// facing into the box. A ceiling light uses SmallVCM's emitting light box.
+inline std::array<Vec3, 8> SmallVcmCorners() {
+	return { Vec3(-1.27029f, 1.30455f, -1.28002f), Vec3(1.28975f, 1.30455f, -1.28002f),
+		Vec3(1.28975f, 1.30455f, 1.28002f), Vec3(-1.27029f, 1.30455f, 1.28002f),
+		Vec3(-1.27029f, -1.25549f, -1.28002f), Vec3(1.28975f, -1.25549f, -1.28002f),
+		Vec3(1.28975f, -1.25549f, 1.28002f), Vec3(-1.27029f, -1.25549f, 1.28002f) };
+}
+
+inline void AddSmallVcmBox(SceneBuilder& builder, bool lightBox) {
+	const auto cb = SmallVcmCorners();
+	auto triangle = [&](const Vec3& a, const Vec3& b, const Vec3& c, const std::shared_ptr<Material>& material) {
+		builder.AddTriangle(a, b, c, Cross(b - a, c - a).Norm(), material);
+	};
+	auto glossy = builder.Phong(Vec3(0.1f), Vec3(0.7f), 90);
+	auto green = builder.Diffuse(Vec3(0.156863f, 0.803922f, 0.172549f));
+	auto red = builder.Diffuse(Vec3(0.803922f, 0.152941f, 0.152941f));
+	auto white = builder.Diffuse(Vec3(0.803922f));
+	auto blue = builder.Diffuse(Vec3(0.156863f, 0.172549f, 0.803922f));
+	triangle(cb[0], cb[4], cb[5], glossy);  // floor
+	triangle(cb[5], cb[1], cb[0], glossy);
+	triangle(cb[0], cb[1], cb[2], blue);    // back wall
+	triangle(cb[2], cb[3], cb[0], blue);
+	triangle(cb[2], cb[6], cb[7], white);   // ceiling
+	triangle(cb[7], cb[3], cb[2], white);
+	triangle(cb[3], cb[7], cb[4], green);   // left wall
+	triangle(cb[4], cb[0], cb[3], green);
+	triangle(cb[1], cb[5], cb[6], red);     // right wall
+	triangle(cb[6], cb[2], cb[1], red);
+	if (!lightBox) return;
+	const Vec3 lb[8] = {
+		Vec3(-0.25f, 0.25f, 1.26002f), Vec3(0.25f, 0.25f, 1.26002f), Vec3(0.25f, 0.25f, 1.28002f),
+		Vec3(-0.25f, 0.25f, 1.28002f), Vec3(-0.25f, -0.25f, 1.26002f), Vec3(0.25f, -0.25f, 1.26002f),
+		Vec3(0.25f, -0.25f, 1.28002f), Vec3(-0.25f, -0.25f, 1.28002f) };
+	triangle(lb[0], lb[2], lb[1], white);
+	triangle(lb[2], lb[0], lb[3], white);
+	triangle(lb[3], lb[4], lb[7], white);
+	triangle(lb[4], lb[3], lb[0], white);
+	triangle(lb[1], lb[6], lb[5], white);
+	triangle(lb[6], lb[1], lb[2], white);
+	triangle(lb[4], lb[5], lb[6], white);
+	triangle(lb[6], lb[7], lb[4], white);
+	// The light box's floor emits radiance 25.03 downwards.
+	const Vec3 emission(25.03329895614464f);
+	builder.AddTriangleLight(lb[0], lb[5], lb[4], Cross(lb[5] - lb[0], lb[4] - lb[0]).Norm(), emission);
+	builder.AddTriangleLight(lb[5], lb[0], lb[1], Cross(lb[0] - lb[5], lb[1] - lb[5]).Norm(), emission);
+}
+
+// SmallVCM scene 1: glossy floor, large mirror sphere, ceiling (area) light.
+inline void SmallVcmMirrorSphereCeiling(SceneBuilder& builder) {
+	AddSmallVcmBox(builder, true);
+	const auto cb = SmallVcmCorners();
+	const real radius = 0.8f;
+	const Vec3 center = (cb[0] + cb[1] + cb[4] + cb[5]) * (1.f / 4.f) + Vec3(0, 0, radius);
+	builder.AddSphere(center, radius, builder.Mirror(Vec3(1)));
+}
+
+// SmallVCM scene 2: glossy floor, small mirror and glass spheres, point light.
+inline void SmallVcmSpheresPoint(SceneBuilder& builder) {
+	AddSmallVcmBox(builder, false);
+	const auto cb = SmallVcmCorners();
+	const real radius = 0.5f;
+	const Vec3 leftWallCenter = (cb[0] + cb[4]) * (1.f / 2.f) + Vec3(0, 0, radius);
+	const Vec3 rightWallCenter = (cb[1] + cb[5]) * (1.f / 2.f) + Vec3(0, 0, radius);
+	const real xlen = rightWallCenter.x - leftWallCenter.x;
+	builder.AddSphere(leftWallCenter + Vec3(2.f * xlen / 7.f, 0, 0), radius, builder.Mirror(Vec3(1)));
+	builder.AddSphere(rightWallCenter - Vec3(2.f * xlen / 7.f, 0, 0), radius, builder.Glass(Vec3(1), Vec3(1), 1.f, 1.6f));
+	builder.AddPointLight(Vec3(0, -0.5f, 1), Vec3(70 * INV_PI * 0.25f));
 }
 
 inline void FogBunny(SceneBuilder& builder) {

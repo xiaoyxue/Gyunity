@@ -1,5 +1,6 @@
 #pragma once
 #include "SceneRenderer.h"
+#include "integrator/VCM.h"
 #include <optional>
 
 namespace Examples {
@@ -19,6 +20,10 @@ bool Sppm(const Options& options = {});
 bool LightTracing(const Options& options = {});
 bool VolumePathTracing(const Options& options = {});
 bool BidirectionalPathTracing(const std::string& scene = "mesh", const Options& options = {});
+bool VertexConnectionMerging(const std::string& scene = "mesh", const Options& options = {},
+	real initialRadius = 0.05f, real alpha = real(2.0 / 3.0),
+	Vcm::Mode mode = Vcm::Mode::Combined, int concurrency = ThreadedTaskManager::DefaultConcurrency(),
+	bool useShadingNormals = false, Gyunity::VertexConnectionMerging::Statistics* statistics = nullptr);
 
 bool CornellBoxStandard(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Path);
 bool VeachMis(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Path);

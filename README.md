@@ -2,13 +2,14 @@
 ## Description
 This is a physically based renderer (CPU based ray tracing), and it's original name is SmallSPPM since I have answered someone's question about sppm to write a demo. But now I decide to extend it to a graphics library, so I rename this project to "Gyunity" [dʒiːjuːnəti].
 
-Next plan is to implement the GPU based renderer and add more features like MCMC(MMLT), VCM, Differentiable Rendering core, Path Guiding methods...
+Next plan is to implement the GPU based renderer and add more features like MCMC(MMLT), Differentiable Rendering core, Path Guiding methods...
 
 ## Features
 - PathTracing (PT)
 - Stochastic progressive photon mapping (SPPM)
 - LightTracing (LT)
 - Bidirectional PathTracing (BDPT)
+- Surface Vertex Connection and Merging (VCM, opt-in geometric normals)
 - Volume PathTracing (VPT)
 - Equi-angular sampling
 - Multiple importance sampling (MIS)
@@ -130,6 +131,8 @@ See [INSTRUCTIONS.md](INSTRUCTIONS.md) for cmd.exe, Python/uv, PowerShell and SP
 | [Scene builder](Docs/SceneBuilder.md) | C++ construction API and legacy scene correspondence |
 | [Scenes](Docs/Scenes.md) | Named scene commands, Cornell/Veach data and Matpreview preparation |
 | [Examples](Docs/Examples.md) | C++ helpers, named examples and explicit batch rendering |
+| [VCM](Docs/VCM.md) | Progressive surface rendering, explicit MIS, photon mapping and supported normal policy |
+| [Threaded task groups](Docs/ThreadedTaskManager.md) | Scoped TBB execution, cancellation, progress and statistics |
 | [Debugging](Docs/Debugging.md) | Thread-local pixel diagnostics |
 | [Testing](Docs/Testing.md) | Scene regression commands and reference comparisons |
 

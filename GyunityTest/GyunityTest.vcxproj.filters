@@ -49,6 +49,21 @@
     <ClCompile Include="tests\BDPTPathTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\VCMPathTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VCMEstimatorTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VCMRendererTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\HashGridTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\VCMPhotonMapTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\BDPTShadingNormalTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
@@ -65,6 +80,9 @@
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\ProgressReporterTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\ThreadedTaskManagerTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\BDPTAcceptanceTest.cpp">
@@ -130,5 +148,10 @@
     <ClCompile Include="tests\VeachBidirSceneTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="tests\VCMReference.h">
+      <Filter>tests</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

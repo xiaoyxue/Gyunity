@@ -16,6 +16,12 @@ cases remain explicit: camera-hit emission (`s=0`), connection to the camera
 Their endpoint PDFs are not interchangeable, so they do not use a universal
 vertex-evaluation formula.
 
+The `Bidirectional` connection/PDF helpers are shared with VCM, not duplicated in
+its implementation. They retain the current normal-policy and mixed-lobe behavior.
+VCM currently requests geometric-normal subpaths and rejects mixed-lobe transport.
+The builders also retain successful forward/reverse delta component masses for
+VCM; standalone BDPT still uses its existing sampled-event flags and MIS ratios.
+
 `Trace` keeps vertex insertion, random draws and forward/reverse density writes
 visible. `ScatterThroughput` distinguishes a valid continuation, a null event
 and a logged error. Geometric float arithmetic and shading-mode double products

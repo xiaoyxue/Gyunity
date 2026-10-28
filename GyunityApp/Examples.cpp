@@ -19,7 +19,7 @@ bool Error(const std::string& message) {
 	return false;
 }
 
-bool Validate(const Options& options) {
+bool Validate(const Options& options, bool allowZeroDepth = false) {
 	if (!options.output.empty() && !options.outputDirectory.empty())
 		return Error("Choose an output filename or an output directory, not both.");
 	if (!options.outputDirectory.empty()) {
@@ -27,16 +27,18 @@ bool Validate(const Options& options) {
 		if (!std::filesystem::is_directory(options.outputDirectory, error) || error)
 			return Error("Cannot access example output directory '" + options.outputDirectory + "'.");
 	}
-	for (const auto value : {options.width, options.height, options.spp, options.maxDepth,
+	for (const auto value : {options.width, options.height, options.spp,
 		options.iterations, options.photonsPerStage}) {
 		if (value && *value <= 0) return Error("Explicit dimensions and sampling/depth budgets must be positive.");
 	}
+	if (options.maxDepth && *options.maxDepth < (allowZeroDepth ? 0 : 1))
+		return Error(allowZeroDepth ? "Explicit depth must be nonnegative." : "Explicit depth must be positive.");
 	return true;
 }
 
 bool Prepare(const std::string& name, const Options& overrides, const std::string& filename,
-	SceneRenderOptions& options, int legacySpp = 0, int legacyDepth = 0) {
-	if (!Validate(overrides)) return false;
+	SceneRenderOptions& options, int legacySpp = 0, int legacyDepth = 0, bool allowZeroDepth = false) {
+	if (!Validate(overrides, allowZeroDepth)) return false;
 	options.scene = FindScene(name);
 	if (!options.scene || !LoadSceneDefaults(options)) return false;
 	if (legacySpp) {
@@ -171,6 +173,32 @@ bool BidirectionalPathTracing(const std::string& scene, const Options& overrides
 		std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123),
 		options.maxDepth, options.spp);
 	return ::RenderScene(options, integrator);
+}
+
+bool VertexConnectionMerging(const std::string& scene, const Options& overrides,
+	real initialRadius, real alpha, Vcm::Mode mode, int concurrency, bool useShadingNormals,
+	Gyunity::VertexConnectionMerging::Statistics* statistics) {
+	if (statistics) *statistics = {};
+	const auto* selected = FindScene(scene);
+	if (!selected || selected->usesVolume) return Error("VCM requires a registered non-volume scene.");
+	if (overrides.spp || overrides.photonsPerStage)
+		return Error("VCM uses iterations, not spp or an independent photon budget.");
+	if (overrides.accelerator && *overrides.accelerator != SceneAccelerator::Bvh &&
+		*overrides.accelerator != SceneAccelerator::Kd)
+		return Error("VCM example requires BVH or KD acceleration.");
+	auto settings = overrides;
+	if (!settings.width) settings.width = 128;
+	if (!settings.height) settings.height = 128;
+	if (!settings.iterations) settings.iterations = 16;
+	if (!settings.maxDepth) settings.maxDepth = 8;
+	SceneRenderOptions options;
+	if (!Prepare(scene, settings, "CornellBoxVcm.hdr", options, 0, 0, true)) return false;
+	Gyunity::VertexConnectionMerging integrator(
+		std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123),
+		options.maxDepth, *settings.iterations, initialRadius, alpha, mode, concurrency, useShadingNormals);
+	const bool success = ::RenderScene(options, integrator);
+	if (statistics) *statistics = integrator.GetStatistics();
+	return success;
 }
 
 bool CornellBoxStandard(const Options& options, SurfaceIntegrator integrator) {

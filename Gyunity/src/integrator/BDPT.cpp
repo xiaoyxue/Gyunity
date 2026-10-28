@@ -16,11 +16,15 @@ bool Fail(const char* message) {
 	return false;
 }
 
+}
+
+namespace Bidirectional {
+
 bool ValidateScene(const Scene& scene) {
 	int environments = 0;
 	for (size_t i = 0; i < scene.GetLights().size(); ++i) {
 		const auto& light = scene.GetLights()[i];
-		if (!light->IsAreaLight() && !light->IsEnvironmentLight() && !dynamic_cast<const PointLight*>(light.get())) {
+		if (!light || (!light->IsAreaLight() && !light->IsEnvironmentLight() && !dynamic_cast<const PointLight*>(light.get()))) {
 			return Fail("BDPT supports area lights, point lights and an environment light.");
 		}
 		if (light->IsEnvironmentLight()) {
@@ -45,7 +49,7 @@ bool ValidateScene(const Scene& scene) {
 		}
 	}
 	for (const auto& primitive : scene.GetPrimitives()) {
-		if (!primitive->GetMaterial() || primitive->mMediumInterface.inside || primitive->mMediumInterface.outside) {
+		if (!primitive || !primitive->GetMaterial() || primitive->mMediumInterface.inside || primitive->mMediumInterface.outside) {
 			return Fail("Surface BDPT requires materials without participating media.");
 		}
 	}
@@ -62,7 +66,7 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 	if (!mSampler || mSpp <= 0 || mMaxDepth < 0 || mMaxDepth > std::numeric_limits<int>::max() - 2) {
 		return Fail("BDPT requires a sampler, positive sample count and valid maximum depth.");
 	}
-	if (!ValidateScene(scene)) return false;
+	if (!Bidirectional::ValidateScene(scene)) return false;
 	const int width = camera.GetFilm()->mResX, height = camera.GetFilm()->mResY;
 	if (width <= 0 || height <= 0) return Fail("BDPT requires positive image dimensions.");
 	const int tileSize = 32;

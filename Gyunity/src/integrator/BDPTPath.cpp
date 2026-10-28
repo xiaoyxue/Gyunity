@@ -80,10 +80,11 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 		// available as a connection endpoint, but the walk cannot continue from it.
 		if (normalMode == SurfaceNormalMode::Shading && !Bidirectional::ShadingSupport(isect, wo)) break;
 		Vec3 wi;
-		real pdf = 0;
+		real pdf = 0, reverseDeltaMass = -1;
 		const real u0 = rand(), u1 = rand(), u2 = rand();
 		ScatterEventType sampledType = ScatterEventType(0);
-		const Vec3 f = isect.mBsdf->Sample(wo, &wi, &pdf, Vec3(u0, u1, u2), BSDF_ALL, &sampledType);
+		const Vec3 f = isect.mBsdf->Sample(wo, &wi, &pdf, Vec3(u0, u1, u2), BSDF_ALL,
+			&sampledType, nullptr, &reverseDeltaMass);
 		if (!ValidPdf(pdf) || !Finite(f)) {
 			Fail("BDPT encountered a nonfinite or negative BSDF density/contribution.");
 			return -1;
@@ -97,6 +98,10 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 		if (scatter == Bidirectional::ScatterStatus::Invalid) return -1;
 		if (scatter == Bidirectional::ScatterStatus::Null) break;
 		current.mIsDelta = SurfaceEventClassifier::IsDelta(sampledType);
+		if (current.mIsDelta) {
+			current.mDeltaPdf = pdf;
+			current.mDeltaReversePdf = reverseDeltaMass;
+		}
 		pdfFwd = current.mIsDelta ? 0 : pdf;
 		// Evaluate with the saved incoming direction, before replacing the ray.
 		const real pdfPrev = current.mIsDelta ? 0 : isect.mBsdf->Pdf(wi, wo);

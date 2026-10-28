@@ -19,6 +19,17 @@ Examples::Options RenderOptions(const std::string& output, int width, int height
 	return options;
 }
 
+Examples::Options VcmOptions(const std::string& output, int width = 32, int height = 24,
+	int iterations = 4, int depth = 4) {
+	Examples::Options options;
+	options.output = output;
+	options.width = width;
+	options.height = height;
+	options.iterations = iterations;
+	options.maxDepth = depth;
+	return options;
+}
+
 TEST(MainExamples, SceneCliRemainsIndependentOfTheExamplesDispatcher) {
 	char app[] = "GyunityApp";
 	char list[] = "--list-scenes";
@@ -53,7 +64,7 @@ TEST(MainExamples, SceneCliRemainsIndependentOfTheExamplesDispatcher) {
 
 TEST(MainExamples, DefaultOutputUsesTheMainCheckoutTestDirectory) {
 	for (const auto* filename : { "CornellBoxPtEnvmap.bmp", "CornellBoxSppmTest.bmp",
-		"CornellBoxLT.bmp", "MediaTestFogEquiAngular.bmp", "CornellBoxBdpt.bmp" }) {
+		"CornellBoxLT.bmp", "MediaTestFogEquiAngular.bmp", "CornellBoxBdpt.bmp", "CornellBoxVcm.hdr" }) {
 		std::string output;
 		ASSERT_TRUE(Examples::OutputPath(filename, output));
 		const auto suffix = std::string("\\Test\\") + filename;
@@ -293,6 +304,131 @@ TEST_F(MainExampleRenders, FailedCheckedIntegratorDoesNotWriteImage) {
 	options.output = Output("must-not-write-failed-render.hdr");
 	EXPECT_FALSE(RenderScene(options, integrator));
 	EXPECT_FALSE(std::ifstream(options.output).good());
+}
+
+TEST_F(MainExampleRenders, VcmRenderSceneSavesOnlyAfterCheckedSuccess) {
+	SceneRenderOptions options;
+	options.scene = FindScene("empty");
+	options.width = options.height = 4;
+	options.output = Output("vcm-render-scene.hdr");
+	VertexConnectionMerging render(std::make_shared<RandomSampler>(17), 2, 2, 0.1f,
+		real(2.0 / 3), Vcm::Mode::Combined, 1, false);
+	ASSERT_TRUE(RenderScene(options, render));
+	EXPECT_TRUE(std::ifstream(options.output).good());
+	options.output = Output("vcm-map-must-not-save.hdr");
+	std::remove(options.output.c_str());
+	VertexConnectionMerging invalidMap(std::make_shared<RandomSampler>(17), 1, 1, 1e-12f,
+		real(2.0 / 3), Vcm::Mode::Combined, 1);
+	EXPECT_FALSE(RenderScene(options, invalidMap));
+	EXPECT_EQ(invalidMap.GetStatistics().mCameraSamples, 0);
+	EXPECT_FALSE(std::ifstream(options.output).good());
+	options.output = Output("vcm-must-not-save.hdr");
+	std::remove(options.output.c_str());
+	VertexConnectionMerging invalid(std::make_shared<RandomSampler>(17), 2, 0, 0.1f);
+	EXPECT_FALSE(RenderScene(options, invalid));
+	EXPECT_FALSE(std::ifstream(options.output).good());
+}
+
+TEST_F(MainExampleRenders, VertexConnectionMergingRejectsVolumeUnknownSceneAndAccelerator) {
+	const auto filename = Output("vcm-rejected-scene-must-not-save.hdr");
+	std::remove(filename.c_str());
+	auto options = VcmOptions(filename, 4, 4);
+	VertexConnectionMerging::Statistics statistics;
+	statistics.mSucceeded = true;
+	EXPECT_FALSE(Examples::VertexConnectionMerging("fog", options));
+	EXPECT_FALSE(Examples::VertexConnectionMerging("missing", options));
+	options.accelerator = static_cast<SceneAccelerator>(99);
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", options, 0.1f,
+		real(2.0 / 3), Vcm::Mode::Combined, 1, false, &statistics));
+	EXPECT_FALSE(statistics.mSucceeded);
+	EXPECT_EQ(statistics.mLightAttempts, 0);
+	EXPECT_FALSE(std::ifstream(filename).good());
+}
+
+TEST_F(MainExampleRenders, VertexConnectionMergingLegacySurfaceScenesAndModes) {
+	int count = 0;
+	for (const auto& scene : GetSceneRegistry()) {
+		if (scene.usesVolume || scene.file) continue;
+		for (auto mode : { Vcm::Mode::Combined, Vcm::Mode::ConnectionOnly, Vcm::Mode::MergingOnly }) {
+			SCOPED_TRACE(std::string(scene.name) + "-" + std::to_string(int(mode)));
+			const auto filename = outputDirectory + "\\vcm-example-" + scene.name + "-" + std::to_string(int(mode)) + ".hdr";
+			VertexConnectionMerging::Statistics statistics;
+			ASSERT_TRUE(Examples::VertexConnectionMerging(scene.name, VcmOptions(filename), 0.15f,
+				real(2.0 / 3), mode, 1, false, &statistics));
+			EXPECT_TRUE(statistics.mSucceeded);
+			EXPECT_EQ(statistics.mCameraSamples, 32 * 24 * 4);
+			ExpectImage(filename);
+		}
+		++count;
+	}
+	EXPECT_EQ(count, 12);
+}
+
+TEST_F(MainExampleRenders, VertexConnectionMergingKdAndExplicitConcurrency) {
+	for (int concurrency : { 1, 2 }) {
+		const auto filename = Output(("vcm-example-kd-" + std::to_string(concurrency) + ".hdr").c_str());
+		auto options = VcmOptions(filename, 32, 24, 2);
+		options.accelerator = SceneAccelerator::Kd;
+		VertexConnectionMerging::Statistics statistics;
+		ASSERT_TRUE(Examples::VertexConnectionMerging("mesh", options, 0.15f,
+			0.7f, Vcm::Mode::Combined, concurrency, false, &statistics));
+		EXPECT_TRUE(statistics.mSucceeded);
+		ExpectImage(filename);
+	}
+}
+
+TEST_F(MainExampleRenders, VertexConnectionMergingSupportsNativeSceneAndRejectsShadingWithoutSaving) {
+	const auto filename = Output("vcm-native-cornell.hdr");
+	ASSERT_TRUE(Examples::VertexConnectionMerging("CornellBoxStandard", VcmOptions(filename, 32, 24, 2),
+		0.15f, real(2.0 / 3), Vcm::Mode::Combined, 1));
+	ExpectImage(filename);
+	for (auto mode : { Vcm::Mode::Combined, Vcm::Mode::ConnectionOnly, Vcm::Mode::MergingOnly }) {
+		const auto rejected = Output(("vcm-shading-must-not-save-" + std::to_string(int(mode)) + ".hdr").c_str());
+		std::remove(rejected.c_str());
+		VertexConnectionMerging::Statistics statistics;
+		statistics.mSucceeded = true;
+		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(rejected, 4, 4, 1), 0.1f,
+			real(2.0 / 3), mode, 1, true, &statistics));
+		EXPECT_FALSE(statistics.mSucceeded);
+		EXPECT_EQ(statistics.mLightAttempts, 0);
+		EXPECT_EQ(statistics.mCameraSamples, 0);
+		EXPECT_FALSE(std::ifstream(rejected).good());
+	}
+}
+
+TEST_F(MainExampleRenders, VertexConnectionMergingRejectsParametersWithoutSaving) {
+	const auto filename = Output("vcm-example-must-not-save.hdr");
+	std::remove(filename.c_str());
+	const real nan = std::numeric_limits<real>::quiet_NaN(), inf = std::numeric_limits<real>::infinity();
+	for (int iterations : { 0, -1 })
+		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(filename, 4, 4, iterations)));
+	for (int depth : { -1, 410 })
+		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(filename, 4, 4, 1, depth)));
+	const auto valid = VcmOptions(filename, 4, 4, 1, 2);
+	for (real radius : { 0.f, -1.f, nan, inf, 1e-12f })
+		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", valid, radius));
+	for (real alpha : { 0.f, 1.f, nan, inf })
+		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", valid, 0.1f, alpha));
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", valid, 0.1f,
+		real(2.0 / 3), static_cast<Vcm::Mode>(99)));
+	for (int concurrency : { 0, -2 })
+		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", valid, 0.1f,
+			real(2.0 / 3), Vcm::Mode::Combined, concurrency));
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(filename, 0, 4, 1, 2)));
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(filename, 4, -1, 1, 2)));
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(filename, INT_MAX, INT_MAX, 1, 2)));
+	auto invalid = valid;
+	invalid.spp = 1;
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", invalid));
+	invalid = valid;
+	invalid.photonsPerStage = 1;
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", invalid));
+	EXPECT_FALSE(std::ifstream(filename).good());
+	EXPECT_FALSE(Examples::VertexConnectionMerging("empty",
+		VcmOptions(Output("nonexistent-vcm-example\\failed.hdr"), 4, 4, 1, 2)));
+	const auto direct = Output("vcm-example-depth-zero.hdr");
+	ASSERT_TRUE(Examples::VertexConnectionMerging("empty", VcmOptions(direct, 4, 4, 1, 0)));
+	EXPECT_TRUE(std::ifstream(direct).good());
 }
 
 }

@@ -9,6 +9,8 @@
 #include <vector>
 #include <algorithm>
 #include <fstream>
+#include <climits>
+#include <cmath>
 
 GYT_NAMESPACE_BEGIN
 
@@ -57,6 +59,26 @@ public:
 	{
 		//return area;
 		return mWidth * mHeight;
+	}
+
+	bool HasValidStorage() const {
+		if (mResX <= 0 || mResY <= 0 || int64(mResX) * mResY > INT_MAX || !mFilter) return false;
+		const size_t count = size_t(mResX) * mResY;
+		const double radius = mFilter->GetRadius();
+		return mPixelBuffer.size() == count && mImageBuffer.size() == count &&
+			mBufferLocks.size() == count && std::isfinite(radius) && radius >= 0 &&
+			radius < double(INT_MAX) - std::max(mResX, mResY) - 2;
+	}
+
+	// Inspect only after all film writers have joined.
+	bool HasFiniteSamples() const {
+		for (const auto& pixel : mPixelBuffer) {
+			if (!std::isfinite(pixel.weight) || pixel.weight <= 0) return false;
+			for (int c = 0; c < 3; ++c)
+				if (!std::isfinite(pixel.color[c]) || !std::isfinite(pixel.splat[c]) ||
+					!std::isfinite(pixel.color[c] / pixel.weight + pixel.splat[c])) return false;
+		}
+		return true;
 	}
 
 	void AddSample(real x, real y, const Vec3 &sample) 

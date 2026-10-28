@@ -16,6 +16,10 @@ bool Finite(const Vec3& value) {
 	return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
+}
+
+namespace Bidirectional {
+
 bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
 	if (from.mType == PathVertexType::Environment || to.mType == PathVertexType::Environment) {
 		if (from.mType == PathVertexType::Environment && to.mType == PathVertexType::Environment) {
@@ -34,20 +38,10 @@ bool Direction(const PathVertex& from, const PathVertex& to, Vec3* dir) {
 	return true;
 }
 
-bool Surface(const PathVertex& vertex) {
-	return vertex.mType == PathVertexType::Surface ||
-		(vertex.mLight && vertex.mLight->IsAreaLight());
-}
-
 bool Connectible(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Camera ||
 		(vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf &&
 			vertex.mIsect.mBsdf->HasNonDeltaLobes());
-}
-
-bool Counts(const std::vector<PathVertex>& light, const std::vector<PathVertex>& camera, int s, int t) {
-	return s >= 0 && t >= 1 && static_cast<size_t>(s) <= light.size() &&
-		static_cast<size_t>(t) <= camera.size();
 }
 
 bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVertex& next, real* pdf) {
@@ -112,6 +106,26 @@ bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, si
 	if (s == 1 && t == 1) return false;
 	if (s == 1) return lightEnd && lightEnd->mLight && Connectible(cameraEnd);
 	return lightEnd && Connectible(*lightEnd) && Connectible(cameraEnd);
+}
+
+}
+
+namespace {
+
+using Bidirectional::Direction;
+using Bidirectional::Connectible;
+using Bidirectional::LightOriginPdf;
+using Bidirectional::PdfToward;
+using Bidirectional::ValidConnection;
+
+bool Surface(const PathVertex& vertex) {
+	return vertex.mType == PathVertexType::Surface ||
+		(vertex.mLight && vertex.mLight->IsAreaLight());
+}
+
+bool Counts(const std::vector<PathVertex>& light, const std::vector<PathVertex>& camera, int s, int t) {
+	return s >= 0 && t >= 1 && static_cast<size_t>(s) <= light.size() &&
+		static_cast<size_t>(t) <= camera.size();
 }
 
 struct MisVertex {

@@ -5,6 +5,22 @@
 
 using namespace Gyunity;
 
+TEST(ProgressReporter, PhaseLabelsDoNotCompleteOrChangeTheDeclaredWork) {
+	testing::internal::CaptureStderr();
+	ProgressReporter progress("Staged work", 2);
+	progress.SetPhase("light");
+	progress.Advance();
+	progress.SetPhase("camera");
+	const auto running = testing::internal::GetCapturedStderr();
+	EXPECT_NE(running.find("camera"), std::string::npos);
+	EXPECT_EQ(running.find("100.0%"), std::string::npos);
+	testing::internal::CaptureStderr();
+	progress.Advance();
+	EXPECT_TRUE(progress.Finish(true));
+	const auto completed = testing::internal::GetCapturedStderr();
+	EXPECT_NE(completed.find("100.0%"), std::string::npos);
+}
+
 TEST(ProgressReporter, ReportsCompletedWorkFractionsAndDefersCompletion) {
 	testing::internal::CaptureStderr();
 	ProgressReporter progress("Test tiles", 4);

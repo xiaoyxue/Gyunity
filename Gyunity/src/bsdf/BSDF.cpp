@@ -98,11 +98,12 @@ real BSDF::Pdf(const Vec3& wo, const Vec3& wi, ScatterEventType flags) const {
 }
 
 Vec3 BSDF::Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand, ScatterEventType flags,
-	ScatterEventType* sampledType, real* eventProbability) const {
+	ScatterEventType* sampledType, real* eventProbability, real* reverseDeltaMass) const {
 	*wi = Vec3(0);
 	*pdf = 0;
 	if (sampledType) *sampledType = ScatterEventType(0);
 	if (eventProbability) *eventProbability = 0;
+	if (reverseDeltaMass) *reverseDeltaMass = -1;
 	const Vec3 woLocal = WorldToLocal(wo);
 	real weights[MAX_BSDFS], total;
 	if (!SamplingWeights(woLocal, flags, weights, &total)) {
@@ -152,6 +153,12 @@ Vec3 BSDF::Sample(const Vec3& wo, Vec3* wi, real* pdf, const Vec3& rand, Scatter
 	}
 	if (bxdf->IsDelta()) {
 		*pdf *= weights[selected] / total;
+		if (reverseDeltaMass) {
+			const real mass = bxdf->ReverseDeltaMass(woLocal, wiLocal);
+			real reverseWeights[MAX_BSDFS], reverseTotal;
+			if (mass >= 0 && SamplingWeights(wiLocal, flags, reverseWeights, &reverseTotal))
+				*reverseDeltaMass = reverseTotal > 0 ? mass * reverseWeights[selected] / reverseTotal : 0;
+		}
 		return f;
 	}
 	*pdf *= weights[selected];

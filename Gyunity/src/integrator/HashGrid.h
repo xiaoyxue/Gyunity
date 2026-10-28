@@ -21,8 +21,9 @@ public:
 
 
 	// spatial hash function
-	inline uint32 Hash(const int ix, const int iy, const int iz) {
-		return (uint32)((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) % mHashNum;
+	inline uint32 Hash(const int ix, const int iy, const int iz) const {
+		return ((uint32(ix) * 73856093u) ^ (uint32(iy) * 19349663u) ^
+			(uint32(iz) * 83492791u)) % mHashNum;
 	}
 
 	inline void AddPoint(const std::pair<Vec3, T> &point) {
@@ -98,9 +99,11 @@ public:
 	}
 
 	std::vector<T>& GetGrid(const Vec3 &point) {
-		Vec3 cellCoord = (point - mHitPointsBBox.minPoint) * mInvHashCellSize;
-		int ix = std::abs(int(cellCoord.x)), iy = std::abs(int(cellCoord.y)), iz = std::abs(int(cellCoord.z));
-		return mHashGrid[Hash(ix, iy, iz)];
+		return mHashGrid[BucketIndex(point)];
+	}
+
+	const std::vector<T>& GetGrid(const Vec3 &point) const {
+		return mHashGrid[BucketIndex(point)];
 	}
 
 
@@ -114,6 +117,12 @@ public:
 	}
 
 private:
+	uint32 BucketIndex(const Vec3& point) const {
+		Vec3 cellCoord = (point - mHitPointsBBox.minPoint) * mInvHashCellSize;
+		int ix = std::abs(int(cellCoord.x)), iy = std::abs(int(cellCoord.y)), iz = std::abs(int(cellCoord.z));
+		return Hash(ix, iy, iz);
+	}
+
 	std::vector<std::vector<T>> mHashGrid;
 	std::vector<std::pair<Vec3, T>> mHitPoints;
 	std::vector<real> mRad;
