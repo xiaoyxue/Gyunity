@@ -191,7 +191,7 @@ the #148 contract instead of replacing interpolated normals:
 - `ns` (interpolated, normalized) defines the BSDF frame and scattering cosines. The
   tangent comes from `dpdu` projected onto the shading plane, independent of the ray;
   a degenerate parameterization uses a deterministic `CoordinateSystem` basis.
-  `ng` keeps area densities (`ConvertDensity`), sidedness, emission and ray offsets.
+  `ng` keeps area densities (`DirectionToArea`), sidedness, emission and ray offsets.
   A shading normal on the far side of `ng` is a checked failure.
 - `Bidirectional::ScatteringCosine` returns `K = |wi.ns| * C`, with
   `C = |wo.ns| |wi.ng| / (|wo.ng| |wi.ns|)` for importance and `1` for radiance

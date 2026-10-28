@@ -88,6 +88,21 @@ comparing against the historical ten-scene references; `lucy-bunny` is new and
 has no original-scene baseline. Without `-Scenes`, the runner requires references
 for every registered scene rather than silently skipping missing references.
 
+For a fast check of **every** registered scene, render at a small size. References
+must use the same `-Width`, `-Height` and `-Spp` (Python: `--width`, `--height`,
+`--spp`); the defaults stay 512x512 at 64 spp. Rendering all scenes at 64x64 and
+16 spp with both accelerators takes about a minute, and two runs of one build are
+byte-identical:
+
+```powershell
+.\GyunityTest\RunSceneRegression.ps1 -Width 64 -Height 64 -Spp 16 `
+  -OutputDirectory "$TestRoot\scene-regression-small\renders" `
+  -ReferenceDirectory "$TestRoot\scene-regression-small\reference-64x64-16spp"
+```
+
+The `matpreview-*` scenes need the local material-preview package
+(`resources\scenes\matpreview`); pass `-Scenes` to leave them out when it is absent.
+
 A Python equivalent is available without additional packages:
 
 ```powershell

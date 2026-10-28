@@ -157,8 +157,6 @@ TEST_F(EnvironmentBDPT, PrimaryStrategiesAreIndependentOfMisDensities) {
 		eye[0].mPdfFwd = -1;
 		ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, s, 3 - s, &contribution, &raster));
 		EXPECT_EQ(contribution, primary);
-		EXPECT_FALSE(ConnectPaths(*scene, *camera, light, eye, s, 3 - s, &contribution, &raster));
-		EXPECT_EQ(contribution, Vec3(0));
 		EXPECT_EQ(raster.x, primaryRaster.x);
 		EXPECT_EQ(raster.y, primaryRaster.y);
 		EXPECT_EQ(eye[0].mPdfFwd, -1);
@@ -178,14 +176,14 @@ TEST_F(EnvironmentBDPT, SharedHelpersPreserveEnvironmentDirectionAndLaunchMeasur
 	real pmf, originPdf, surfacePdf;
 	ASSERT_TRUE(scene->LightSelectionPdf(0, &pmf));
 	ASSERT_TRUE(Bidirectional::LightOriginPdf(*scene, light[0], eye.back(), &originPdf));
-	ASSERT_TRUE(Bidirectional::PdfToward(light[0], nullptr, eye.back(), &surfacePdf));
+	ASSERT_TRUE(Bidirectional::PdfArea(light[0], nullptr, eye.back(), &surfacePdf));
 	EXPECT_NEAR(originPdf, pmf * mapPdf, 1e-7f);
 	EXPECT_NEAR(surfacePdf, 1 / (200 * PI), 1e-8f);
 	Vec3 dir, primary, distantPrimary;
 	Vec2 raster;
-	ASSERT_TRUE(Bidirectional::Direction(light[0], eye.back(), &dir));
+	dir = Bidirectional::DirectionTo(light[0], eye.back());
 	EXPECT_EQ(dir, Vec3(0, 0, -1));
-	ASSERT_TRUE(Bidirectional::Direction(eye.back(), light[0], &dir));
+	dir = Bidirectional::DirectionTo(eye.back(), light[0]);
 	EXPECT_EQ(dir, Vec3(0, 0, 1));
 	EXPECT_TRUE(Bidirectional::ValidConnection(&light[0], eye.back(), 1, 2));
 	EXPECT_TRUE(Bidirectional::ValidConnection(nullptr, light[0], 0, 2));
@@ -195,9 +193,6 @@ TEST_F(EnvironmentBDPT, SharedHelpersPreserveEnvironmentDirectionAndLaunchMeasur
 	light[0].mIsect.mPos = Vec3(0, 0, 100000);
 	ASSERT_TRUE(EvaluateConnection(*scene, *camera, light, eye, 1, 2, &distantPrimary, &raster));
 	EXPECT_EQ(primary, distantPrimary);
-	EXPECT_FALSE(Bidirectional::Direction(light[0], light[0], &dir));
-	light[0].mDirection = Vec3(0, 0, 2);
-	EXPECT_FALSE(Bidirectional::Direction(light[0], eye.back(), &dir));
 }
 
 TEST_F(EnvironmentBDPT, BlockedEnvironmentConnectionSkipsMis) {

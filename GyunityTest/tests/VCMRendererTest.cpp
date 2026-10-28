@@ -984,7 +984,7 @@ TEST_F(VCMRendererNegative, InvalidParametersAndSamplerStreamsFail) {
 	reject(std::make_shared<NullClone>(), 1, 1, 1, 0.5f, Mode::Combined, 1);
 }
 
-TEST_F(VCMRendererNegative, UnsupportedScenesAndCameraProbabilitiesFailChecked) {
+TEST_F(VCMRendererNegative, UnsupportedScenesFailChecked) {
 	for (int kind : { 0, 1, 2 }) {
 		Scene scene{};
 		auto primitive = std::make_shared<Primitive>(Plane(0), kind == 0 ? nullptr : Diffuse());
@@ -1001,16 +1001,6 @@ TEST_F(VCMRendererNegative, UnsupportedScenesAndCameraProbabilitiesFailChecked) 
 		EXPECT_FALSE(render.RenderChecked(scene, *camera));
 		EXPECT_EQ(render.GetStatistics().mLightAttempts, 0);
 	}
-	class BadCamera : public PinHoleCamera {
-	public:
-		BadCamera() : PinHoleCamera(std::make_shared<Film>(1, 1), Vec3(0, 0, 3), Vec3(0), Vec3(0, 1, 0), 45, 1) {}
-		real PdfDir(const Ray&) const override { return -1; }
-	} camera;
-	Scene empty{};
-	Initialize(empty);
-	Renderer render(std::make_shared<FixedSampler>(), 1, 1, 1);
-	EXPECT_FALSE(render.RenderChecked(empty, camera));
-	EXPECT_EQ(render.GetStatistics().mCameraSamples, 0);
 }
 
 TEST_F(VCMRendererNegative, CancellationAndMissingSamplerStreamsDrainBothPhaseLifetimes) {

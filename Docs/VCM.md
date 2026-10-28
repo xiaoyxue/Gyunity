@@ -35,7 +35,7 @@ RenderIteration
 sample: the VC sum plus the VM sum. Values are `Vector3d`; note that `Vector3d`
 scalar operators take `real`, so double factors are passed as `Vector3d(x)`.
 
-BDPT supplies the subpath builders, `EvaluateConnection`, `ConvertDensity` and the
+BDPT supplies the subpath builders, `EvaluateConnection`, `DirectionToArea` and the
 `Bidirectional` probability helpers. BDPT's own renderer and legacy MIS are not used.
 
 ## Usage
@@ -139,7 +139,7 @@ $$\text{pdfFwd}[i] = p_\omega(x_{i-1} \to x_i \mid x_{i-2})\,
 \text{pdfPrev}[i] = p_\omega(x_{i+1} \to x_i \mid x_{i+2})\,
 \frac{|\cos\theta_{x_i}|}{\lVert x_i - x_{i+1}\rVert^2} \tag{6}$$
 
-where $\theta$ uses the geometric normal (`ConvertDensity`). `pdfFwd[0]` is the light
+where $\theta$ uses the geometric normal (`DirectionToArea`). `pdfFwd[0]` is the light
 selection probability times the origin's area density (directional density for an
 environment). Recorded `mPdfFwd`/`mPdfPrev` are reused while their source and
 sampled successor remain selected; only the connection or merge boundary is
@@ -173,7 +173,7 @@ with $G(u \to v) = |\cos\theta_v| / \lVert v - u\rVert^2$.
 
 **Singular convention** (approved "report-keep-bdpt", report Eqs. 51-55). At an
 interior delta vertex $x_k$ the singular distribution is removed, but its sampled
-component mass $m$ (`mDeltaPdf` forward, `mDeltaReversePdf` reverse) and geometry
+component mass $m$ (`mDeltaPdfFwd` forward, `mDeltaPdfPrev` reverse) and geometry
 are kept:
 
 $$\text{pdfFwd}[k+1] = m_{fwd}(x_k)\, G(x_k \to x_{k+1}), \qquad

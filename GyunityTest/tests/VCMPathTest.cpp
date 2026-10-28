@@ -270,8 +270,8 @@ struct Fixture {
 			if (i > 0) v.mIsect.mOutDir = OracleDirection(v, full[i - 1]);
 			if (i > 0 && i + 1 < n && direct.delta[i]) {
 				v.mIsDelta = true;
-				v.mDeltaPdf = real(BranchMass(v, OracleDirection(v, full[i - 1]), OracleDirection(v, full[i + 1])));
-				v.mDeltaReversePdf = real(BranchMass(v, OracleDirection(v, full[i + 1]), OracleDirection(v, full[i - 1])));
+				v.mDeltaPdfFwd = real(BranchMass(v, OracleDirection(v, full[i - 1]), OracleDirection(v, full[i + 1])));
+				v.mDeltaPdfPrev = real(BranchMass(v, OracleDirection(v, full[i + 1]), OracleDirection(v, full[i - 1])));
 			}
 			if (i > 1 && direct.delta[i - 1]) v.mPdfFwd = 0;
 			if (i + 2 < n && direct.delta[i + 1]) v.mPdfPrev = 0;
@@ -283,8 +283,8 @@ struct Fixture {
 			if (i < n - 1) v.mIsect.mOutDir = OracleDirection(v, full[i + 1]);
 			if (i > 0 && i + 1 < n && direct.delta[i]) {
 				v.mIsDelta = true;
-				v.mDeltaPdf = real(BranchMass(v, OracleDirection(v, full[i + 1]), OracleDirection(v, full[i - 1])));
-				v.mDeltaReversePdf = real(BranchMass(v, OracleDirection(v, full[i - 1]), OracleDirection(v, full[i + 1])));
+				v.mDeltaPdfFwd = real(BranchMass(v, OracleDirection(v, full[i + 1]), OracleDirection(v, full[i - 1])));
+				v.mDeltaPdfPrev = real(BranchMass(v, OracleDirection(v, full[i - 1]), OracleDirection(v, full[i + 1])));
 			}
 			if (i + 2 < n && direct.delta[i + 1]) v.mPdfFwd = 0;
 			if (i > 1 && direct.delta[i - 1]) v.mPdfPrev = 0;
@@ -308,10 +308,10 @@ void SamePaths(const std::vector<PathVertex>& a, const std::vector<PathVertex>& 
 		EXPECT_EQ(a[i].mLight, b[i].mLight);
 		EXPECT_EQ(a[i].mCamera, b[i].mCamera);
 		EXPECT_EQ(a[i].mIsDelta, b[i].mIsDelta);
-		if (std::isnan(b[i].mDeltaPdf)) EXPECT_TRUE(std::isnan(a[i].mDeltaPdf));
-		else EXPECT_EQ(a[i].mDeltaPdf, b[i].mDeltaPdf);
-		if (std::isnan(b[i].mDeltaReversePdf)) EXPECT_TRUE(std::isnan(a[i].mDeltaReversePdf));
-		else EXPECT_EQ(a[i].mDeltaReversePdf, b[i].mDeltaReversePdf);
+		if (std::isnan(b[i].mDeltaPdfFwd)) EXPECT_TRUE(std::isnan(a[i].mDeltaPdfFwd));
+		else EXPECT_EQ(a[i].mDeltaPdfFwd, b[i].mDeltaPdfFwd);
+		if (std::isnan(b[i].mDeltaPdfPrev)) EXPECT_TRUE(std::isnan(a[i].mDeltaPdfPrev));
+		else EXPECT_EQ(a[i].mDeltaPdfPrev, b[i].mDeltaPdfPrev);
 		if (std::isnan(b[i].mPdfFwd)) EXPECT_TRUE(std::isnan(a[i].mPdfFwd));
 		else EXPECT_EQ(a[i].mPdfFwd, b[i].mPdfFwd);
 		if (std::isnan(b[i].mPdfPrev)) EXPECT_TRUE(std::isnan(a[i].mPdfPrev));
@@ -1418,9 +1418,9 @@ TEST(VCMPath, TwoDeltaCausticHasSoleMergeSupportIncludingFirstSurfaceTransport) 
 	PointOrigin(fixture, false);
 	std::vector<PathVertex> light, eye;
 	fixture.Split(3, true, light, eye);
-	EXPECT_GT(light[1].mDeltaReversePdf, 0);
-	EXPECT_GT(eye[1].mDeltaPdf, 0);
-	EXPECT_LT(eye[1].mDeltaPdf, 1);
+	EXPECT_GT(light[1].mDeltaPdfPrev, 0);
+	EXPECT_GT(eye[1].mDeltaPdfFwd, 0);
+	EXPECT_LT(eye[1].mDeltaPdfFwd, 1);
 	for (Mode mode : { Mode::Combined, Mode::MergingOnly }) {
 		const Vcm::PathContext path(light, eye, { Technique::Merging, 3, 3 }, 0.2, 16, mode);
 		Compare("sole-caustic-merge", fixture.scene, path, fixture.direct);
@@ -1485,7 +1485,7 @@ TEST(VCMPath, SpecularEmissionIgnoresEmitterAndUnusedContinuationFlags) {
 	emitter.mIsect.mBsdf = GYT_MEMORY_POOL_ALLOC(fixture.arena, BSDF)(emitter.mIsect);
 	emitter.mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, SpecularBSDF)());
 	emitter.mIsDelta = true; // Emission does not consume this continuation.
-	emitter.mDeltaPdf = emitter.mDeltaReversePdf = -1;
+	emitter.mDeltaPdfFwd = emitter.mDeltaPdfPrev = -1;
 	for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
 		const Vcm::PathContext path(light, eye, { Technique::Connection, 0, 4 }, 0.2, 16, mode);
 		Compare("LSSE-specular-emitter", fixture.scene, path, fixture.direct);
@@ -1516,10 +1516,10 @@ TEST(VCMPath, UnusedContinuationMetadataIsIgnored) {
 	std::vector<PathVertex> light, eye;
 	fixture.Split(3, false, light, eye);
 	light.back().mIsDelta = true;
-	light.back().mDeltaPdf = std::numeric_limits<real>::quiet_NaN();
-	light.back().mDeltaReversePdf = -1;
+	light.back().mDeltaPdfFwd = std::numeric_limits<real>::quiet_NaN();
+	light.back().mDeltaPdfPrev = -1;
 	eye[0].mIsDelta = true;
-	eye[0].mDeltaPdf = -1; // Camera origin is not a scattering event either.
+	eye[0].mDeltaPdfFwd = -1; // Camera origin is not a scattering event either.
 	Compare("unused-continuation-masses", fixture.scene,
 		Vcm::PathContext(light, eye, { Technique::Connection, 3, 1 }, 0.2, 16), fixture.direct);
 }
@@ -1543,9 +1543,9 @@ TEST(VCMPath, ObliqueRefractionAndTirKeepTrueSampledBranchMasses) {
 			std::vector<PathVertex> light, eye;
 			fixture.Split(s, false, light, eye);
 			const PathVertex& event = s > 2 ? light[2] : eye[2];
-			EXPECT_NEAR(event.mDeltaPdf, mass, 1e-7);
-			if (tir) EXPECT_EQ(event.mDeltaPdf, 1);
-			else { EXPECT_GT(event.mDeltaPdf, 0); EXPECT_LT(event.mDeltaPdf, 1); }
+			EXPECT_NEAR(event.mDeltaPdfFwd, mass, 1e-7);
+			if (tir) EXPECT_EQ(event.mDeltaPdfFwd, 1);
+			else { EXPECT_GT(event.mDeltaPdfFwd, 0); EXPECT_LT(event.mDeltaPdfFwd, 1); }
 			for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
 				Compare(tir ? "tir-chain" : "refracted-chain", fixture.scene,
 					Vcm::PathContext(light, eye, { Technique::Connection, s, 5 - s }, 0.2, 16, mode), fixture.direct);
@@ -1632,8 +1632,8 @@ TEST_F(VCMEnvironment, GeneratedMixedOriginsAndSpecularChainsMatchBothIndependen
 				const Vec3 outgoing = next.mType == PathVertexType::Environment ? next.mDirection : -next.mIsect.mOutDir;
 				EXPECT_EQ(next.mPdfFwd, 0);
 				EXPECT_EQ((*prefix)[i - 1].mPdfPrev, 0);
-				EXPECT_NEAR(source.mDeltaPdf, BranchMass(source, source.mIsect.mOutDir, outgoing), 1e-6);
-				EXPECT_NEAR(source.mDeltaReversePdf, BranchMass(source, outgoing, source.mIsect.mOutDir), 1e-6);
+				EXPECT_NEAR(source.mDeltaPdfFwd, BranchMass(source, source.mIsect.mOutDir, outgoing), 1e-6);
+				EXPECT_NEAR(source.mDeltaPdfPrev, BranchMass(source, outgoing, source.mIsect.mOutDir), 1e-6);
 				if (Dot(source.mIsect.mOutDir, source.mIsect.mNormal) * Dot(outgoing, source.mIsect.mNormal) > 0)
 					++reflections;
 				else
@@ -1682,7 +1682,7 @@ TEST_F(VCMEnvironment, GeneratedMixedOriginsAndSpecularChainsMatchBothIndependen
 						for (size_t i = pair.second; i < pair.first->size(); ++i) {
 							auto &unused = (*pair.first)[i];
 							unused.mType = PathVertexType::Environment;
-							unused.mPdfFwd = unused.mDeltaPdf = unused.mDeltaReversePdf = std::numeric_limits<real>::quiet_NaN();
+							unused.mPdfFwd = unused.mDeltaPdfFwd = unused.mDeltaPdfPrev = std::numeric_limits<real>::quiet_NaN();
 						}
 					}
 					Compare("generated-singular-unused-suffix", scene,
@@ -1817,8 +1817,8 @@ TEST_F(VCMEnvironment, GeneratedDielectricBranchesIncludingTirRetainLsEmission) 
 		EXPECT_EQ(eye[0].mPdfPrev, 0);
 		const real expectedMass = variant == 2 ? 1 : variant == 1 ?
 			1 - FrDielectric(0.8f, 1, 1.5f) : FrDielectric(0.8f, 1, 1.5f);
-		EXPECT_NEAR(eye[1].mDeltaPdf, expectedMass, 1e-7);
-		EXPECT_NEAR(eye[1].mDeltaReversePdf, expectedMass, 1e-7);
+		EXPECT_NEAR(eye[1].mDeltaPdfFwd, expectedMass, 1e-7);
+		EXPECT_NEAR(eye[1].mDeltaPdfPrev, expectedMass, 1e-7);
 		const Vcm::PathContext path(light, eye, { Technique::Connection, 0, 3 }, 0.2, 16);
 		const Edges independent = ReportEdges(scene, path);
 		for (Mode mode : { Mode::Combined, Mode::ConnectionOnly, Mode::MergingOnly }) {
@@ -1857,7 +1857,7 @@ TEST_F(VCMEnvironment, GeneratedEmissiveMirrorHasDistinctEmissionAndScatteringRo
 	ASSERT_EQ(eye[1].mLight, emitter.get());
 	ASSERT_TRUE(eye[1].mIsect.mBsdf->IsDelta());
 	ASSERT_TRUE(eye[1].mIsDelta);
-	EXPECT_EQ(eye[1].mDeltaPdf, 1);
+	EXPECT_EQ(eye[1].mDeltaPdfFwd, 1);
 	for (int t : { 2, 3 }) {
 		const Vcm::PathContext path(light, eye, { Technique::Connection, 0, t }, 0.2, 16);
 		const Edges independent = ReportEdges(scene, path);
