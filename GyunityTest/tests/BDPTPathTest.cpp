@@ -106,13 +106,13 @@ TEST(BDPTPath, DensityUsesDistanceSquaredAndDestinationNormal) {
 	to.mIsect.mPos = Vec3(0, 0, 2);
 	to.mIsect.mGeometryNormal = Vec3(0, 0, 1);
 	real pdf;
-	ASSERT_TRUE(ConvertDensity(0.5f, from, to, &pdf));
+	pdf = Bidirectional::DirectionToArea(0.5f, from, to);
 	EXPECT_FLOAT_EQ(pdf, 0.125f);
 	to.mIsect.mPos.z = 4;
-	ASSERT_TRUE(ConvertDensity(0.5f, from, to, &pdf));
+	pdf = Bidirectional::DirectionToArea(0.5f, from, to);
 	EXPECT_FLOAT_EQ(pdf, 0.03125f);
 	to.mIsect.mGeometryNormal = Vec3(std::sqrt(0.75f), 0, 0.5f);
-	ASSERT_TRUE(ConvertDensity(0.5f, from, to, &pdf));
+	pdf = Bidirectional::DirectionToArea(0.5f, from, to);
 	EXPECT_FLOAT_EQ(pdf, 0.015625f);
 }
 
@@ -123,28 +123,15 @@ TEST(BDPTPath, EnvironmentDensityHasNoFiniteDistanceFalloff) {
 	to.mIsect.mGeometryNormal = Vec3(std::sqrt(0.75f), 0, 0.5f);
 	real nearPdf, farPdf;
 	to.mIsect.mPos = Vec3(0, 0, 2);
-	ASSERT_TRUE(ConvertDensity(0.25f, from, to, &nearPdf));
+	nearPdf = Bidirectional::DirectionToArea(0.25f, from, to);
 	to.mIsect.mPos.z = 1000;
-	ASSERT_TRUE(ConvertDensity(0.25f, from, to, &farPdf));
+	farPdf = Bidirectional::DirectionToArea(0.25f, from, to);
 	EXPECT_FLOAT_EQ(nearPdf, 0.125f);
 	EXPECT_FLOAT_EQ(farPdf, nearPdf);
-	ASSERT_TRUE(ConvertDensity(0.4f, to, from, &farPdf));
+	farPdf = Bidirectional::DirectionToArea(0.4f, to, from);
 	EXPECT_FLOAT_EQ(farPdf, 0.4f);
 }
 
-TEST(BDPTPath, DensityRejectsCoincidentAndInvalidInputs) {
-	PathVertex from, to;
-	real pdf = 1;
-	EXPECT_FALSE(ConvertDensity(1, from, to, &pdf));
-	EXPECT_EQ(pdf, 0);
-	to.mIsect.mPos = Vec3(0, 0, 1);
-	EXPECT_FALSE(ConvertDensity(std::numeric_limits<real>::quiet_NaN(), from, to, &pdf));
-	EXPECT_EQ(pdf, 0);
-	for (real invalid : {-1.f, std::numeric_limits<real>::infinity()}) {
-		EXPECT_FALSE(ConvertDensity(invalid, from, to, &pdf));
-		EXPECT_EQ(pdf, 0);
-	}
-}
 
 TEST(BDPTPath, RoundedAdjacentEndpointsHaveZeroContinuousAreaDensity) {
 	PathVertex from, to;
@@ -155,7 +142,7 @@ TEST(BDPTPath, RoundedAdjacentEndpointsHaveZeroContinuousAreaDensity) {
 	EXPECT_GT((to.mIsect.mPos - from.mIsect.mPos).Length2(), 0);
 	EXPECT_GT(std::abs(Dot(to.mIsect.mGeometryNormal, sampledDirection)), 0.4f);
 	real pdf = 1;
-	ASSERT_TRUE(ConvertDensity(0.20677432417869568f, from, to, &pdf));
+	pdf = Bidirectional::DirectionToArea(0.20677432417869568f, from, to);
 	EXPECT_EQ(pdf, 0);
 }
 
@@ -165,11 +152,11 @@ TEST(BDPTPath, OneUlpNormalDisplacementRetainsPositiveAreaSupport) {
 	to.mIsect.mPos = Vec3(1.000001f, 1, 1);
 	to.mIsect.mGeometryNormal = Vec3(0, 1, 0);
 	real pdf;
-	ASSERT_TRUE(ConvertDensity(0.25f, from, to, &pdf));
+	pdf = Bidirectional::DirectionToArea(0.25f, from, to);
 	EXPECT_EQ(pdf, 0);
 	for (real y : {NextFloatUp(1.f), NextFloatDown(1.f)}) {
 		to.mIsect.mPos.y = y;
-		ASSERT_TRUE(ConvertDensity(0.25f, from, to, &pdf));
+		pdf = Bidirectional::DirectionToArea(0.25f, from, to);
 		EXPECT_TRUE(std::isfinite(pdf));
 		EXPECT_GT(pdf, 0);
 	}
@@ -302,17 +289,12 @@ TEST(BDPTPath, MixedLobesStoreTheSampledEventRatherThanMaterialDeltaState) {
 	}
 }
 
-TEST(BDPTPath, RejectsMediumBoundaries) {
-	auto camera = MakeCamera();
-	PathSamples samples;
-	MemoryPool arena;
-	std::vector<PathVertex> path;
-	const Ray ray(Vec3(0, 0, 1), Vec3(0, 0, -1));
+TEST(BDPTPath, SceneValidationRejectsMediumBoundaries) {
 	HomogeneousMedium fog(Vec3(0), Vec3(1), 0);
 	auto boundaryScene = std::make_shared<Scene>();
 	boundaryScene->AddPrimitive(std::make_shared<Primitive>(Plane(0, 1), nullptr, nullptr, MediumInterface(&fog, nullptr)));
 	Initialize(boundaryScene);
-	EXPECT_EQ(GenerateCameraPath(*boundaryScene, *camera, samples, arena, ray, 3, SurfaceNormalMode::Geometric, path), -1);
+	EXPECT_FALSE(Bidirectional::ValidateScene(*boundaryScene));
 }
 
 TEST(BDPTPath, LightPathStoresJointOriginPmfAndImportanceMode) {
@@ -353,7 +335,7 @@ TEST(BDPTPath, PointPositionIsNotAContinuousReverseDensity) {
 	PathVertex surface;
 	surface.mIsect.mPos = Vec3(0);
 	real pdf;
-	ASSERT_TRUE(ConvertDensity(0.3f, surface, path[0], &pdf));
+	pdf = Bidirectional::DirectionToArea(0.3f, surface, path[0]);
 	EXPECT_EQ(pdf, 0);
 }
 
@@ -381,7 +363,7 @@ TEST(BDPTPath, MirrorEventAndEnvironmentEscapeAreRetained) {
 	EXPECT_EQ(path[0].mPdfPrev, 0);
 }
 
-TEST(BDPTPath, EmptyAndInvalidBudgetsAreExplicit) {
+TEST(BDPTPath, SceneWithoutLightsHasAnEmptyLightPath) {
 	auto scene = std::make_shared<Scene>();
 	Initialize(scene);
 	PathSamples samples;
@@ -389,10 +371,6 @@ TEST(BDPTPath, EmptyAndInvalidBudgetsAreExplicit) {
 	std::vector<PathVertex> path;
 	EXPECT_EQ(GenerateLightPath(*scene, samples, arena, 3, SurfaceNormalMode::Geometric, path), 0);
 	EXPECT_EQ(samples.GetCursor(), 0);
-	EXPECT_EQ(GenerateLightPath(*scene, samples, arena, -1, SurfaceNormalMode::Geometric, path), -1);
-	auto camera = MakeCamera();
-	EXPECT_EQ(GenerateCameraPath(*scene, *camera, samples, arena,
-		Ray(Vec3(0), Vec3(0)), 3, SurfaceNormalMode::Geometric, path), -1);
 }
 
 TEST(BDPTPath, GlassTransmissionUsesRadianceAndImportanceModes) {

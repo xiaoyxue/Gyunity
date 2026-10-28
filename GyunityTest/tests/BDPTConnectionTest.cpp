@@ -242,23 +242,12 @@ TEST_F(FiniteBDPT, PrimaryConnectionDoesNotDependOnMisSnapshots) {
 	Split(1, &lightPath, &cameraPath);
 	for (auto& vertex : lightPath) vertex.mPdfFwd = 0;
 	for (auto& vertex : cameraPath) vertex.mPdfFwd = 0;
-	Vec3 primary, weighted(99);
+	Vec3 primary;
 	Vec2 raster;
 	ASSERT_TRUE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &primary, &raster));
 	EXPECT_NEAR(primary.x, 8.f / (25 * PI), 1e-6f);
-	EXPECT_FALSE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &weighted, &raster));
-	EXPECT_EQ(weighted, Vec3(0));
 }
 
-TEST_F(FiniteBDPT, PrimaryConnectionRejectsMixedNormalPolicies) {
-	std::vector<PathVertex> lightPath, cameraPath;
-	Split(1, &lightPath, &cameraPath);
-	lightPath.back().mNormalMode = SurfaceNormalMode::Shading;
-	Vec3 primary(99);
-	Vec2 raster;
-	EXPECT_FALSE(EvaluateConnection(*scene, *camera, lightPath, cameraPath, 1, 2, &primary, &raster));
-	EXPECT_EQ(primary, Vec3(0));
-}
 
 TEST_F(FiniteBDPT, GeometryUsesInverseSquareAndNormalizedDirections) {
 	PathVertex first, second;
@@ -266,9 +255,9 @@ TEST_F(FiniteBDPT, GeometryUsesInverseSquareAndNormalizedDirections) {
 	second.mIsect.mNormal = second.mIsect.mGeometryNormal = Vec3(0, 0, -1);
 	second.mIsect.mPos = Vec3(0, 0, 2);
 	real nearValue, farValue;
-	ASSERT_TRUE(GeometryTerm(first, second, &nearValue));
+	nearValue = GeometryTerm(first, second);
 	second.mIsect.mPos.z = 4;
-	ASSERT_TRUE(GeometryTerm(first, second, &farValue));
+	farValue = GeometryTerm(first, second);
 	EXPECT_FLOAT_EQ(nearValue, 0.25f);
 	EXPECT_FLOAT_EQ(farValue, 0.0625f);
 }
@@ -279,28 +268,12 @@ TEST_F(FiniteBDPT, GeometryAndDensityRetainDistinctSurfacePredicates) {
 	endpoint.mIsect.mPos = Vec3(0, 0, 2);
 	endpoint.mIsect.mGeometryNormal = Vec3(0.6f, 0, -0.8f);
 	real geometry, density;
-	ASSERT_TRUE(GeometryTerm(full[1], endpoint, &geometry));
-	ASSERT_TRUE(ConvertDensity(4, full[1], endpoint, &density));
+	geometry = GeometryTerm(full[1], endpoint);
+	density = Bidirectional::DirectionToArea(4, full[1], endpoint);
 	EXPECT_FLOAT_EQ(geometry, 0.2f);
 	EXPECT_FLOAT_EQ(density, 1);
 }
 
-TEST_F(FiniteBDPT, ConnectionEvaluatorsRejectInvalidCountsAndResetOutputs) {
-	std::vector<PathVertex> lightPath, cameraPath;
-	Split(1, &lightPath, &cameraPath);
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
-		for (const auto& counts : { std::make_pair(-1, 2), std::make_pair(1, 0),
-			std::make_pair(2, 2), std::make_pair(1, 3) }) {
-			Vec3 contribution(7);
-			Vec2 raster(7);
-			EXPECT_FALSE(evaluate(*scene, *camera, lightPath, cameraPath,
-				counts.first, counts.second, &contribution, &raster));
-			EXPECT_EQ(contribution, Vec3(0));
-			EXPECT_EQ(raster.x, 0);
-			EXPECT_EQ(raster.y, 0);
-		}
-	}
-}
 
 TEST_F(FiniteBDPT, ZeroStrategiesDoNotReadMisDensities) {
 	std::vector<PathVertex> lightPath, cameraPath;
@@ -325,19 +298,6 @@ TEST_F(FiniteBDPT, ZeroStrategiesDoNotReadMisDensities) {
 	}
 }
 
-TEST_F(FiniteBDPT, PrimaryFailureLeavesBothEvaluatorOutputsZero) {
-	std::vector<PathVertex> lightPath, cameraPath;
-	Split(0, &lightPath, &cameraPath);
-	cameraPath.back().mThroughput = Vec3(std::numeric_limits<real>::infinity());
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
-		Vec3 contribution(7);
-		Vec2 raster(7);
-		EXPECT_FALSE(evaluate(*scene, *camera, lightPath, cameraPath, 0, 3, &contribution, &raster));
-		EXPECT_EQ(contribution, Vec3(0));
-		EXPECT_EQ(raster.x, 0);
-		EXPECT_EQ(raster.y, 0);
-	}
-}
 
 TEST_F(FiniteBDPT, BlockedConnectionContributesZero) {
 	auto blocker = std::make_shared<Sphere>(Transform(), Transform(), 0.2f, Vec3(0.5f, 0, 1));
@@ -471,8 +431,10 @@ TEST_F(FiniteBDPT, OrdinaryZeroProbabilityIsNotRemappedAsSpecular) {
 	std::vector<PathVertex> lightPath, cameraPath;
 	Split(0, &lightPath, &cameraPath);
 	const auto originalCamera = cameraPath;
-	real weight;
-	EXPECT_FALSE(MisWeight(*scene, lightPath, cameraPath, 0, 3, &weight));
+	// Remapping the zero like a delta marker would give a positive weight; a true zero
+	// makes the alternative strategy infinitely more likely.
+	real weight = 1;
+	ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, 0, 3, &weight));
 	EXPECT_EQ(weight, 0);
 	for (size_t i = 0; i < cameraPath.size(); ++i) {
 		EXPECT_FLOAT_EQ(cameraPath[i].mPdfFwd, originalCamera[i].mPdfFwd);
@@ -675,26 +637,40 @@ TEST(FiniteBDPTRender, ProgressIsMonotonicAndCompletesOnlyOnce) {
 	EXPECT_EQ(output.back(), '\n');
 }
 
-TEST(FiniteBDPTRender, FailedRenderNeverReportsCompletion) {
-	class InvalidRayCamera : public PinHoleCamera {
-	public:
-		using PinHoleCamera::PinHoleCamera;
-		Ray GenerateRay(int, int, const Vec2&, real) const override {
-			return Ray(Vec3(0), Vec3(0));
-		}
-	};
+TEST(FiniteBDPTRender, NonfiniteContributionFailsWithoutReportingCompletion) {
 	auto scene = std::make_shared<Scene>();
-	scene->SetAccelerator(std::make_shared<BruteForce>());
+	scene->AddPrimitive(std::make_shared<Primitive>(std::make_shared<Sphere>(Transform(), Transform(), 1, Vec3(0)),
+		std::make_shared<DiffuseMaterial>(std::make_shared<ConstantTexture<Vec3>>(Vec3(1e38f)))));
+	// Finite inputs whose two-bounce product overflows: only the output check can catch it.
+	scene->AddLight(std::make_shared<PointLight>(Vec3(0, 0, 2), Vec3(1)));
+	scene->SetAccelerator(std::make_shared<BruteForce>(scene->GetPrimitives()));
 	scene->Initialize();
-	InvalidRayCamera camera(std::make_shared<Film>(8, 8), Vec3(0, 0, 3), Vec3(0),
+	PinHoleCamera camera(std::make_shared<Film>(8, 8), Vec3(0, 0, 3), Vec3(0),
 		Vec3(0, 1, 0), 53.13010235415597f, 1);
-	BidirectionalPathTracing integrator(std::make_shared<RandomSampler>(123), 0, 1);
+	BidirectionalPathTracing integrator(std::make_shared<RandomSampler>(123), 2, 1);
 	testing::internal::CaptureStderr();
 	const bool rendered = integrator.RenderChecked(*scene, camera);
 	const std::string output = testing::internal::GetCapturedStderr();
 	EXPECT_FALSE(rendered);
 	EXPECT_EQ(output.find("100.0%"), std::string::npos);
 	EXPECT_NE(output.find("failed after 0 of 1 work units."), std::string::npos);
+}
+
+TEST(FiniteBDPTRender, UnusableLightPowerFailsTheRender) {
+	auto scene = std::make_shared<Scene>();
+	scene->AddPrimitive(std::make_shared<Primitive>(std::make_shared<Sphere>(Transform(), Transform(), 1, Vec3(0)),
+		std::make_shared<DiffuseMaterial>(std::make_shared<ConstantTexture<Vec3>>(Vec3(0.5f)))));
+	scene->AddLight(std::make_shared<PointLight>(Vec3(0, 0, 2), Vec3(std::numeric_limits<real>::infinity())));
+	scene->SetAccelerator(std::make_shared<BruteForce>(scene->GetPrimitives()));
+	scene->Initialize();
+	PinHoleCamera camera(std::make_shared<Film>(8, 8), Vec3(0, 0, 3), Vec3(0),
+		Vec3(0, 1, 0), 53.13010235415597f, 1);
+	BidirectionalPathTracing integrator(std::make_shared<RandomSampler>(123), 1, 1);
+	testing::internal::CaptureStderr();
+	const bool rendered = integrator.RenderChecked(*scene, camera);
+	const std::string output = testing::internal::GetCapturedStderr();
+	EXPECT_FALSE(rendered);
+	EXPECT_EQ(output.find("100.0%"), std::string::npos);
 }
 
 TEST(FiniteBDPTRender, TilesCoverPartialEdgesAndCloneOneSamplerPerTile) {

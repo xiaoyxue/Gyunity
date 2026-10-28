@@ -388,7 +388,7 @@ TEST_F(VCMEstimator, DirectPairIgnoresUnselectedSuffixesAndTerminalContinuationM
 	unused.mPdfFwd = std::numeric_limits<real>::quiet_NaN();
 	paths[0].push_back(unused);
 	eye.push_back(unused);
-	paths[0][1].mDeltaPdf = eye[1].mDeltaReversePdf = std::numeric_limits<real>::quiet_NaN();
+	paths[0][1].mDeltaPdfFwd = eye[1].mDeltaPdfPrev = std::numeric_limits<real>::quiet_NaN();
 	const auto lightBefore = Snapshot(paths[0]), eyeBefore = Snapshot(eye);
 	ASSERT_TRUE(Pair());
 	EXPECT_EQ(expected, result);
@@ -401,7 +401,7 @@ TEST_F(VCMEstimator, GatherIgnoresUnselectedCameraSuffix) {
 	ASSERT_TRUE(Gather());
 	const auto expected = result;
 	PathVertex unused;
-	unused.mPdfFwd = unused.mDeltaPdf = std::numeric_limits<real>::quiet_NaN();
+	unused.mPdfFwd = unused.mDeltaPdfFwd = std::numeric_limits<real>::quiet_NaN();
 	eye.push_back(unused);
 	const auto before = Snapshot(eye);
 	ASSERT_TRUE(Gather());

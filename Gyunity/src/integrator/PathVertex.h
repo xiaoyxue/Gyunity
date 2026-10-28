@@ -27,7 +27,7 @@ public:
 	// replace its densities. Includes component selection, not geometry or eta^2.
 	// Zero forward means no event; negative reverse means unsupported component.
 	// Only meaningful when this vertex AND its sampled successor are selected.
-	real mDeltaPdf = 0, mDeltaReversePdf = 0;
+	real mDeltaPdfFwd = 0, mDeltaPdfPrev = 0;
 	PathVertexType mType = PathVertexType::Surface;
 	SurfaceNormalMode mNormalMode = SurfaceNormalMode::Geometric;
 	const Light* mLight = nullptr;

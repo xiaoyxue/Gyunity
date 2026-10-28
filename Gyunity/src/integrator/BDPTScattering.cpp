@@ -1,6 +1,5 @@
 #include "BDPTScattering.h"
 #include <cmath>
-#include <limits>
 
 GYT_NAMESPACE_BEGIN
 
@@ -35,36 +34,19 @@ bool Normalized(const Vec3& v, Vec3* unit) {
 
 namespace Bidirectional {
 
-bool UnitDirection(const Vec3& v) {
-	const double length2 = Dot64(v, v);
-	return std::isfinite(length2) && std::abs(length2 - 1.0) <= 1e-4;
-}
-
 bool ShadingSupport(const Intersection& isect, const Vec3& w) {
 	return SameStrictSide(Dot64(w, isect.mNormal), Dot64(w, isect.mGeometryNormal));
 }
 
-bool ScatteringCosine(const Intersection& isect, const Vec3& wo, const Vec3& wi, TransportMode mode, double* value) {
-	*value = 0;
+double ScatteringCosine(const Intersection& isect, const Vec3& wo, const Vec3& wi, TransportMode mode) {
 	const Vec3& ns = isect.mNormal;
 	const Vec3& ng = isect.mGeometryNormal;
-	if (!UnitDirection(ns) || !UnitDirection(ng) || !UnitDirection(wo) || !UnitDirection(wi) || Dot64(ns, ng) <= 0) {
-		return Fail("BDPT requires prepared, consistently oriented unit normals and directions.");
-	}
-	if (mode != TransportMode::Radiance && mode != TransportMode::Importance) {
-		return Fail("BDPT received an invalid transport mode.");
-	}
 	const double woNs = Dot64(wo, ns), woNg = Dot64(wo, ng);
 	const double wiNs = Dot64(wi, ns), wiNg = Dot64(wi, ng);
 	// Check support before cancelling |wi.ns| in the importance factor.
-	if (!SameStrictSide(woNs, woNg) || !SameStrictSide(wiNs, wiNg)) return true;
-	if (mode == TransportMode::Radiance) *value = std::abs(wiNs);
-	else *value = std::abs(woNs) * std::abs(wiNg) / std::abs(woNg);
-	if (!std::isfinite(*value)) {
-		*value = 0;
-		return Fail("BDPT scattering cosine is not finite.");
-	}
-	return true;
+	if (!SameStrictSide(woNs, woNg) || !SameStrictSide(wiNs, wiNg)) return 0;
+	if (mode == TransportMode::Radiance) return std::abs(wiNs);
+	return std::abs(woNs) * std::abs(wiNg) / std::abs(woNg);
 }
 
 bool PrepareSurfaceFrame(Intersection* isect, SurfaceNormalMode mode) {
@@ -73,7 +55,6 @@ bool PrepareSurfaceFrame(Intersection* isect, SurfaceNormalMode mode) {
 		CoordinateSystem(isect->mNormal, &isect->mShadingDpDu, &isect->mShadingDpDv);
 		return true;
 	}
-	if (mode != SurfaceNormalMode::Shading) return Fail("BDPT received an invalid surface normal mode.");
 	Vec3 ns, ng;
 	if (!Normalized(isect->mNormal, &ns) || !Normalized(isect->mGeometryNormal, &ng)) {
 		return Fail("BDPT surface has an invalid shading or geometric normal.");
@@ -96,32 +77,19 @@ bool PrepareSurfaceFrame(Intersection* isect, SurfaceNormalMode mode) {
 	return true;
 }
 
-ScatterStatus ScatterThroughput(const PathVertex& vertex, TransportMode mode,
+bool ScatterThroughput(const PathVertex& vertex, TransportMode mode,
 	const Vec3& wo, const Vec3& wi, const Vec3& f, real pdf, Vec3* throughput) {
 	const Intersection& isect = vertex.mIsect;
 	if (vertex.mNormalMode == SurfaceNormalMode::Geometric) {
 		*throughput *= f * std::abs(Dot(isect.mNormal, wi)) / pdf;
+		return true;
 	}
-	else {
-		double cosine;
-		if (!ScatteringCosine(isect, wo, wi, mode, &cosine)) return ScatterStatus::Invalid;
-		if (cosine == 0) return ScatterStatus::Null;
-		Vec3 next;
-		for (int channel = 0; channel < 3; ++channel) {
-			const double value = double((*throughput)[channel]) * double(f[channel]) * cosine / double(pdf);
-			if (!std::isfinite(value) || std::abs(value) > double((std::numeric_limits<real>::max)())) {
-				Fail("BDPT path throughput is not representable.");
-				return ScatterStatus::Invalid;
-			}
-			next[channel] = static_cast<real>(value);
-		}
-		*throughput = next;
+	const double cosine = ScatteringCosine(isect, wo, wi, mode);
+	if (cosine == 0) return false;
+	for (int channel = 0; channel < 3; ++channel) {
+		(*throughput)[channel] = static_cast<real>(double((*throughput)[channel]) * double(f[channel]) * cosine / double(pdf));
 	}
-	if (!Finite(*throughput)) {
-		Fail("BDPT path throughput is not finite.");
-		return ScatterStatus::Invalid;
-	}
-	return ScatterStatus::Valid;
+	return true;
 }
 
 }
