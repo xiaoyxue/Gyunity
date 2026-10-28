@@ -6,10 +6,13 @@
 #include "system/ProgressReporter.h"
 #include "sampler/Halton.h"
 #include "sampler/Sobol.h"
+#include "tbb/task_arena.h"
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <mutex>
+#include <typeinfo>
 #include <unordered_set>
 
 GYT_NAMESPACE_BEGIN
@@ -17,28 +20,57 @@ GYT_NAMESPACE_BEGIN
 namespace {
 
 using Tasks = ThreadedTaskManager;
+using Vcm::Contribution;
+using Vcm::PathContribution;
+using Vcm::Detail::CheckedSequence;
 
 bool Fail(const char* message) {
 	GetDefaultLogger()->Error(message, false);
 	return false;
 }
 
-bool Unit(const Vec3& v) {
-	return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) &&
-		std::abs(v.Length2() - 1) <= 1e-4f;
+bool Unit(const Vec3& value) {
+	return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) &&
+		std::abs(value.Length2() - 1) <= 1e-4f;
 }
 
-bool Radius(real initial, real alpha, int iteration, int64 count, real* radius, double* area) {
+bool MergingRadius(real initial, real alpha, int iteration, int64 nVm, real* radius, double* area) {
 	*radius = real(double(initial) * std::pow(double(iteration) + 1, -(1 - double(alpha)) / 2));
 	*area = std::acos(-1.0) * double(*radius) * double(*radius);
 	return (std::isfinite(*radius) && *radius > 0 && std::isnormal(*area) &&
-		std::isfinite(double(count) * *area) && double(count) * *area > 0) ||
+		std::isfinite(double(nVm) * *area) && double(nVm) * *area > 0) ||
 		Fail("VCM iteration radius, disk area and attempted-count normalization must be representable.");
+}
+
+bool Store(const std::array<double, 3>& value, Vec3* result) {
+	for (double channel : value)
+		if (!std::isfinite(channel) || std::abs(channel) > (std::numeric_limits<real>::max)())
+			return Fail("VCM contribution is nonfinite or outside the real range.");
+	*result = Vec3(real(value[0]), real(value[1]), real(value[2]));
+	return true;
 }
 
 std::string FormatTime(double seconds) {
 	const auto total = static_cast<uint64>(seconds);
 	return fmt::format("{}:{:02}:{:02}", total / 3600, (total / 60) % 60, total % 60);
+}
+
+bool IndexedSampler(const Sampler& sampler) {
+	// Subclasses may override Sample or Clone with stateful behavior.
+	return typeid(sampler) == typeid(HaltonSampler) || typeid(sampler) == typeid(SobolSampler) ||
+		typeid(sampler) == typeid(RegularHaltonSampler);
+}
+
+struct ArenaDeleter {
+	void operator()(MemoryPool* arena) const {
+		if (arena) { arena->~MemoryPool(); FreeAligned(arena); }
+	}
+};
+using Arena = std::unique_ptr<MemoryPool, ArenaDeleter>;
+
+Arena CreateArena() {
+	void* memory = AllocAligned(sizeof(MemoryPool));
+	return Arena(memory ? new (memory) MemoryPool() : nullptr);
 }
 
 struct SamplerDomain {
@@ -61,139 +93,229 @@ SamplerDomain Domain(const Sampler& sampler) {
 
 }
 
-namespace Vcm {
-namespace Detail {
-
-bool ValidateSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int iterations) {
-	if (maxDepth < 0 || maxDepth > 409 || pixels <= 0 || iterations <= 0)
-		return Fail("VCM requires valid depth, pixel and iteration sampling budgets.");
-	const auto domain = Domain(sampler);
-	// Light: 5 emission draws + 3 per nonterminal surface (maxDepth-1).
-	// Eye: 2 jitter draws + 3 per nonterminal surface (maxDepth).
-	const uint64 dimensions = std::max(uint64(5), uint64(3) * maxDepth + 2);
-	if (dimensions > domain.dimensions)
-		return Fail("VCM path dimension budget exceeds the sampler's supported dimensions.");
-	// The largest phase index is 2*(iterations*pixels)-1. Sobol has 52
-	// direction columns, and RegularHalton must also represent index+1.
-	if (uint64(pixels) > ((domain.maximumIndex + 1) / 2) / uint64(iterations))
-		return Fail("VCM phase sample indices exceed the sampler's supported index range.");
-	return true;
-}
-
-CheckedSequence::CheckedSequence(Sampler& sampler, int64 instance) : mSampler(sampler), mInstance(instance) {
-	const auto domain = Domain(sampler);
-	mDimensions = domain.dimensions;
-	mMaximumIndex = domain.maximumIndex;
-	mRoundedUnitEndpoint = domain.roundedUnitEndpoint;
-}
-
-real CheckedSequence::Sample() {
-	if (!mValid) return 0;
-	if (mCursor < 0 || unsigned(mCursor) >= mDimensions || mInstance < 0 || uint64(mInstance) > mMaximumIndex) {
-		mValid = Fail("VCM sample dimension or index lies outside the sampler's supported domain.");
-		return 0;
-	}
-	const real value = mSampler.Sample(mCursor++, mInstance);
-	if (!std::isfinite(value) || value < 0 || value > 1 || (value == 1 && !mRoundedUnitEndpoint)) {
-		// Safe indexing value while the current builder unwinds. A failed
-		// sequence's path is never consumed by an estimator or the film.
-		mValid = Fail("VCM sampler returned an invalid value outside its endpoint convention.");
-		return 0;
-	}
-	// Sobol's uint32->float and RegularHalton's float sum can round to one.
-	// Match RandomStateSequence's existing exact-one wrap for these samplers;
-	// Halton's scaled [0,1) outputs and unknown adapters remain strictly checked.
-	return value == 1 ? 0 : value;
-}
-
-}
-}
-
-namespace {
-
-using Vcm::Detail::CheckedSequence;
-
-// The project also builds in C++14: ordinary new need not honor alignas(64).
-struct ArenaDeleter {
-	void operator()(MemoryPool* arena) const {
-		if (arena) { arena->~MemoryPool(); FreeAligned(arena); }
-	}
-};
-using Arena = std::unique_ptr<MemoryPool, ArenaDeleter>;
-
-Arena CreateArena() {
-	void* memory = AllocAligned(sizeof(MemoryPool));
-	return Arena(memory ? new (memory) MemoryPool() : nullptr);
-}
-
-bool Store(const double sum[3], Vec3* result) {
-	for (int c = 0; c < 3; ++c)
-		if (!std::isfinite(sum[c]) || std::abs(sum[c]) > (std::numeric_limits<real>::max)())
-			return Fail("VCM camera contribution is nonfinite or outside the real range.");
-	*result = Vec3(real(sum[0]), real(sum[1]), real(sum[2]));
-	return true;
-}
-
-}
-
-struct VertexConnectionMerging::Tile {
-	int minX, minY, maxX, maxY;
-	std::shared_ptr<Sampler> lightSampler, cameraSampler;
+struct VertexConnectionMerging::Worker {
 	Arena lightArena, cameraArena;
+	std::array<std::shared_ptr<Sampler>, 2> indexedSamplers;
 	std::vector<PathVertex> cameraPath;
+	PathContribution connection, merging;
+	const Tasks::Context* context = nullptr;
 	int64 lightAttempts = 0, cameraSamples = 0;
-	std::array<double, 3> cameraConnectionSum{}, cameraMergingSum{}, splatConnectionSum{};
 };
 
 struct VertexConnectionMerging::RenderState {
+	struct Sums {
+		std::array<double, 3> connection{}, merging{}, splat{};
+	};
 	const Scene& scene;
 	const Camera& camera;
 	const std::shared_ptr<Film> film;
 	const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-	int width = 0, height = 0, iteration = 0;
-	int64 count = 0;
+	int width = 0, height = 0, iteration = 0, concurrency = 1;
+	int64 nVc = 1, nVm = 0;
 	size_t workPerIteration = 0;
 	real radius = 0;
 	double area = 0;
-	std::vector<Tile> tiles;
+	bool indexedSampling = false, trustedClones = false;
+	ProgressReporter* progress = nullptr;
+	std::mutex samplerMutex;
+	std::unordered_set<const Sampler*> activeSamplers;
+	std::vector<std::unique_ptr<Worker>> workers;
+	std::vector<Sums> sums;
 	std::vector<std::vector<PathVertex>> lightPaths;
-	Vcm::PhotonMap map;
+	Vcm::PhotonMap photonMap;
 
 	RenderState(const Scene& scene, const Camera& camera)
 		: scene(scene), camera(camera), film(camera.GetFilm()) {}
 
+	Worker* CurrentWorker() const {
+		const int index = tbb::this_task_arena::current_thread_index();
+		if (index < 0 || size_t(index) >= workers.size()) {
+			Fail("VCM task has no valid arena worker slot.");
+			return nullptr;
+		}
+		return workers[size_t(index)].get();
+	}
+
 	void ClearPaths() {
-		// All task groups have joined before paths release their arena-backed BSDFs.
-		map.Clear();
+		photonMap.Clear();
 		for (auto& path : lightPaths) path.clear();
-		for (auto& tile : tiles) {
-			tile.cameraPath.clear();
-			tile.cameraArena->Reset();
-			tile.lightArena->Reset();
+		for (auto& worker : workers) {
+			worker->cameraPath.clear();
+			worker->connection.mContributions.clear();
+			worker->merging.mContributions.clear();
+			worker->cameraArena->Reset();
+			worker->lightArena->Reset();
+			worker->context = nullptr;
 		}
 	}
 
 	void CollectStatistics(Statistics& statistics) const {
-		size_t bytes = 0, pathBytes = lightPaths.capacity() * sizeof(std::vector<PathVertex>);
+		size_t arenaBytes = 0, pathBytes = lightPaths.capacity() * sizeof(std::vector<PathVertex>);
 		statistics.mLightAttempts = statistics.mCameraSamples = 0;
-		statistics.mCameraConnectionSum = {};
-		statistics.mCameraMergingSum = {};
-		statistics.mSplatConnectionSum = {};
-		for (const auto& tile : tiles) {
-			bytes += tile.lightArena->TotalAllocated();
-			statistics.mLightAttempts += tile.lightAttempts;
-			statistics.mCameraSamples += tile.cameraSamples;
-			for (int c = 0; c < 3; ++c) {
-				statistics.mCameraConnectionSum[c] += tile.cameraConnectionSum[c];
-				statistics.mCameraMergingSum[c] += tile.cameraMergingSum[c];
-				statistics.mSplatConnectionSum[c] += tile.splatConnectionSum[c];
-			}
+		statistics.mCameraConnectionSum = statistics.mCameraMergingSum = statistics.mSplatConnectionSum = {};
+		for (const auto& worker : workers) {
+			arenaBytes += worker->lightArena->TotalAllocated();
+			statistics.mLightAttempts += worker->lightAttempts;
+			statistics.mCameraSamples += worker->cameraSamples;
+		}
+		// Logical-pixel reduction keeps diagnostics independent of worker assignment.
+		for (const auto& sum : sums) for (int channel = 0; channel < 3; ++channel) {
+			statistics.mCameraConnectionSum[channel] += sum.connection[channel];
+			statistics.mCameraMergingSum[channel] += sum.merging[channel];
+			statistics.mSplatConnectionSum[channel] += sum.splat[channel];
 		}
 		for (const auto& path : lightPaths) pathBytes += path.capacity() * sizeof(PathVertex);
-		statistics.mPeakLightArenaBytes = std::max(statistics.mPeakLightArenaBytes, bytes);
+		statistics.mPeakLightArenaBytes = std::max(statistics.mPeakLightArenaBytes, arenaBytes);
 		statistics.mPeakLightPathBytes = std::max(statistics.mPeakLightPathBytes, pathBytes);
 	}
 };
+
+struct VertexConnectionMerging::PixelTask {
+	int64 index;
+	Vec2 raster;
+	Worker& worker;
+	std::vector<PathVertex>& cameraPath;
+	PathContribution& connection;
+	PathContribution& merging;
+	RenderState::Sums& sums;
+
+	PixelTask(int64 index, Worker& worker, RenderState::Sums& sums)
+		: index(index), worker(worker), cameraPath(worker.cameraPath),
+		connection(worker.connection), merging(worker.merging), sums(sums) {}
+};
+
+struct VertexConnectionMerging::SamplerLease {
+	std::shared_ptr<Sampler> sampler;
+	RenderState* registered = nullptr;
+	~SamplerLease() {
+		if (registered) {
+			std::lock_guard<std::mutex> lock(registered->samplerMutex);
+			registered->activeSamplers.erase(sampler.get());
+		}
+	}
+	SamplerLease() = default;
+	SamplerLease(const SamplerLease&) = delete;
+	SamplerLease& operator=(const SamplerLease&) = delete;
+};
+
+bool VertexConnectionMerging::RenderIteration(RenderState& state) {
+	if (!MergingRadius(mInitialRadius, mAlpha, state.iteration, state.nVm, &state.radius, &state.area)) return false;
+	mStatistics.mLastRadius = state.radius;
+	mStatistics.mLastArea = state.area;
+	if (!TraceLightSubpaths(state)) return false;
+	if (UseVm() && !BuildHashGrid(state)) return false;
+
+	return ForEachPixel(state, Phase::Camera, [&](PixelTask& pixel) {
+		if (!TraceEyeSubpath(state, pixel)) return false;
+		const auto& cameraPath = pixel.cameraPath;
+		const auto& lightPath = state.lightPaths[size_t(pixel.index)];
+		auto& weightedContributionVc = pixel.connection;
+		auto& weightedContributionVm = pixel.merging;
+		if (!VertexConnection(state, lightPath, cameraPath, state.radius, &weightedContributionVc)) return false;
+		if (UseVm() && !VertexMerging(state, cameraPath, state.radius, &weightedContributionVm)) return false;
+		return Combine(state, pixel, weightedContributionVc, weightedContributionVm);
+	});
+}
+
+bool VertexConnectionMerging::VertexConnection(const RenderState& state,
+	const std::vector<PathVertex>& lightPath, const std::vector<PathVertex>& cameraPath,
+	real radius, PathContribution* weightedContributionVc) const {
+	auto& records = weightedContributionVc->mContributions;
+	records.clear();
+	records.reserve(lightPath.size() + 1);
+	records.emplace_back();
+	auto& cameraContribution = records.front().mValue;
+	const int nLight = int(lightPath.size()), nCamera = int(cameraPath.size());
+	for (int t = 1; t <= nCamera; ++t) {
+		if (Cancelled(state)) return false;
+		for (int s = 0; s <= nLight; ++s) {
+			const int depth = s + t - 2;
+			if (depth < 0 || depth > mMaxDepth ||
+				!Bidirectional::ValidConnection(s ? &lightPath[s - 1] : nullptr, cameraPath[t - 1], s, t)) continue;
+			const Vcm::Strategy strategy{ Vcm::Technique::Connection, s, t };
+			const Vcm::PathContext path(lightPath, cameraPath, strategy, radius, state.nVm, mMode);
+			if (!Vcm::IsStrategyEnabled(path, strategy)) continue;
+			Vec3 contributionVc;
+			Vec2 projectedRaster;
+			if (!EvaluateConnection(state.scene, state.camera, lightPath, cameraPath,
+				s, t, &contributionVc, &projectedRaster)) return false;
+			if (contributionVc == Vec3(0)) continue;
+			real weightVc;
+			if (!Vcm::ComputeMisWeight(state.scene, path, strategy, &weightVc)) return false;
+			if (t == 1) {
+				if (!std::isfinite(projectedRaster.x) || !std::isfinite(projectedRaster.y) ||
+					projectedRaster.x < 0 || projectedRaster.y < 0 ||
+					projectedRaster.x >= state.width || projectedRaster.y >= state.height)
+					return Fail("VCM camera splat lies outside the film.");
+				const Vec3 value = contributionVc * (weightVc / real(mIterations));
+				Contribution splat;
+				splat.mRaster = projectedRaster;
+				splat.mIsSplat = true;
+				for (int channel = 0; channel < 3; ++channel) splat.mValue[channel] = value[channel];
+				records.push_back(splat);
+			}
+			else for (int channel = 0; channel < 3; ++channel)
+				cameraContribution[channel] += double(contributionVc[channel]) * weightVc / state.nVc;
+		}
+	}
+	return true;
+}
+
+bool VertexConnectionMerging::VertexMerging(const RenderState& state,
+	const std::vector<PathVertex>& cameraPath, real radius, PathContribution* weightedContributionVm) const {
+	auto& records = weightedContributionVm->mContributions;
+	records.clear();
+	records.emplace_back();
+	auto& cameraContribution = records.front().mValue;
+	std::vector<Vcm::PhotonRecord> photons;
+	for (int t = 2; t <= int(cameraPath.size()) && t - 1 <= mMaxDepth; ++t) {
+		if (Cancelled(state)) return false;
+		const auto& cameraVertex = cameraPath[t - 1];
+		if (cameraVertex.mType != PathVertexType::Surface || cameraVertex.mIsect.mBsdf->IsDelta()) continue;
+		if (!state.photonMap.Query(cameraVertex.mIsect.mPos, cameraVertex.mIsect.mGeometryNormal, photons)) return false;
+		for (const auto& photon : photons) {
+			if (Cancelled(state)) return false;
+			const int s = int(photon.mVertexIndex) + 1;
+			if (s + t - 3 > mMaxDepth) continue;
+			const auto& lightPath = state.lightPaths[photon.mLightPathIndex];
+			const Vcm::Strategy strategy{ Vcm::Technique::Merging, s, t };
+			const Vcm::PathContext path(lightPath, cameraPath, strategy, radius, state.nVm, mMode);
+			if (!Vcm::IsStrategyEnabled(path, strategy)) continue;
+			std::array<double, 3> contributionVm{};
+			if (!Vcm::MergeEstimate(path, &contributionVm)) return false;
+			real weightVm;
+			if (!Vcm::ComputeMisWeight(state.scene, path, strategy, &weightVm)) return false;
+			for (int channel = 0; channel < 3; ++channel)
+				cameraContribution[channel] += weightVm * contributionVm[channel] / state.nVm;
+		}
+	}
+	return true;
+}
+
+bool VertexConnectionMerging::Combine(RenderState& state, PixelTask& pixel,
+	const PathContribution& weightedContributionVc, const PathContribution& weightedContributionVm) {
+	std::array<double, 3> pixelContribution{};
+	for (const auto* pathContribution : { &weightedContributionVc, &weightedContributionVm }) {
+		for (const auto& contribution : pathContribution->mContributions) {
+			if (contribution.mIsSplat) {
+				Vec3 splat;
+				if (!Store(contribution.mValue, &splat)) return false;
+				state.film->AddSplat(contribution.mRaster.x, contribution.mRaster.y, splat);
+				for (int channel = 0; channel < 3; ++channel) pixel.sums.splat[channel] += splat[channel];
+			}
+			else for (int channel = 0; channel < 3; ++channel) {
+				pixelContribution[channel] += contribution.mValue[channel];
+				auto& sum = pathContribution == &weightedContributionVc ? pixel.sums.connection : pixel.sums.merging;
+				sum[channel] += contribution.mValue[channel];
+			}
+		}
+	}
+	Vec3 value;
+	if (!Store(pixelContribution, &value)) return false;
+	state.film->AddSample(pixel.raster.x, pixel.raster.y, value);
+	++pixel.worker.cameraSamples;
+	return true;
+}
 
 void VertexConnectionMerging::Render(const Scene& scene, const Camera& camera) {
 	RenderChecked(scene, camera);
@@ -206,10 +328,12 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 	if (!Prepare(state)) return false;
 	ProgressReporter progress(fmt::format("Rendering VCM ({} x {}, {} iterations, depth {}, concurrency {})",
 		state.width, state.height, mIterations, mMaxDepth, mConcurrency), state.workPerIteration * size_t(mIterations));
+	state.progress = &progress;
 	bool success = true;
 	for (state.iteration = 0; state.iteration < mIterations && success; ++state.iteration) {
-		success = RenderIteration(state, progress);
-		const size_t photons = state.map.RecordCount();
+		success = RenderIteration(state);
+		if (success) ++mStatistics.mIterations;
+		const size_t photons = state.photonMap.RecordCount();
 		state.ClearPaths();
 		if (success) ReportIteration(state, photons);
 	}
@@ -229,6 +353,117 @@ void VertexConnectionMerging::ReportIteration(const RenderState& state, size_t p
 		FormatTime(elapsed), FormatTime(remaining));
 	std::fprintf(stderr, "\n%s\n", message.c_str());
 	std::fflush(stderr);
+}
+
+bool VertexConnectionMerging::ForEachPixel(RenderState& state, Phase phase,
+	const std::function<bool(PixelTask&)>& task) {
+	const auto name = fmt::format("VCM {} phase {}/{}", phase == Phase::Light ? "light" : "camera",
+		state.iteration + 1, mIterations);
+	state.progress->SetPhase(name);
+	const auto result = Tasks::Run(name, 0, size_t(state.nVm),
+		[&](size_t index, const Tasks::Context& context) {
+			auto* worker = state.CurrentWorker();
+			if (!worker) return Tasks::Status::Failed;
+			worker->context = &context;
+			worker->connection.mContributions.clear();
+			worker->merging.mContributions.clear();
+			PixelTask pixel(int64(index), *worker, state.sums[index]);
+			const bool success = !mCancelled.load() && !context.IsCancellationRequested() && task(pixel);
+			worker->cameraPath.clear();
+			worker->cameraArena->Reset();
+			const bool cancelled = mCancelled.load() || context.IsCancellationRequested();
+			worker->context = nullptr;
+			return cancelled ? Tasks::Status::Cancelled : success ? Tasks::Status::Success : Tasks::Status::Failed;
+		}, state.concurrency, state.progress);
+	if (phase == Phase::Light) {
+		mStatistics.mLastLightPhase = result;
+		++mStatistics.mLightPhases;
+		mStatistics.mLightSeconds += result.mElapsed.count();
+	}
+	else {
+		mStatistics.mLastCameraPhase = result;
+		++mStatistics.mCameraPhases;
+		mStatistics.mCameraSeconds += result.mElapsed.count();
+	}
+	state.CollectStatistics(mStatistics);
+	if (result.mStatus != Tasks::Status::Success || mCancelled.load()) return false;
+	return phase != Phase::Camera || state.film->HasFiniteSamples() ||
+		Fail("VCM film accumulation is nonfinite or has missing sample weights.");
+}
+
+bool VertexConnectionMerging::TraceLightSubpaths(RenderState& state) {
+	return ForEachPixel(state, Phase::Light, [&](PixelTask& pixel) {
+		const int64 sampleIndex = 2 * (int64(state.iteration) * state.nVm + pixel.index);
+		SamplerLease stream;
+		if (!OpenSampleStream(state, pixel.worker, Phase::Light, sampleIndex, &stream)) return false;
+		CheckedSequence random(*stream.sampler, sampleIndex);
+		auto& lightPath = state.lightPaths[size_t(pixel.index)];
+		const int nLight = GenerateLightPath(state.scene, random, *pixel.worker.lightArena,
+			mMaxDepth + 1, SurfaceNormalMode::Geometric, lightPath);
+		++pixel.worker.lightAttempts;
+		return nLight >= 0 && random.Valid() && Vcm::ValidateSubpath(state.scene, lightPath, false);
+	});
+}
+
+bool VertexConnectionMerging::BuildHashGrid(RenderState& state) {
+	const auto name = fmt::format("VCM map phase {}/{}", state.iteration + 1, mIterations);
+	state.progress->SetPhase(name);
+	bool built = false;
+	mStatistics.mLastMapPhase = Tasks::Run(name, 0, 1, [&](size_t, const Tasks::Context& context) {
+		if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
+		if (!state.photonMap.Build(state.lightPaths, state.radius)) return Tasks::Status::Failed;
+		built = true;
+		return mCancelled.load() || context.IsCancellationRequested() ? Tasks::Status::Cancelled : Tasks::Status::Success;
+	}, state.concurrency, state.progress);
+	++mStatistics.mMapPhases;
+	if (built) ++mStatistics.mMapBuilds;
+	mStatistics.mMapSeconds += mStatistics.mLastMapPhase.mElapsed.count();
+	mStatistics.mPeakPhotons = std::max(mStatistics.mPeakPhotons, state.photonMap.RecordCount());
+	return mStatistics.mLastMapPhase.mStatus == Tasks::Status::Success && !mCancelled.load();
+}
+
+bool VertexConnectionMerging::TraceEyeSubpath(RenderState& state, PixelTask& pixel) {
+	const int64 sampleIndex = 2 * (int64(state.iteration) * state.nVm + pixel.index) + 1;
+	SamplerLease stream;
+	if (!OpenSampleStream(state, pixel.worker, Phase::Camera, sampleIndex, &stream)) return false;
+	CheckedSequence random(*stream.sampler, sampleIndex);
+	const real u = random(), v = random();
+	if (!random.Valid()) return false;
+	const int x = int(pixel.index % state.width), y = int(pixel.index / state.width);
+	const double exactX = double(x) + u, exactY = double(y) + v;
+	const real sampleX = x + u, sampleY = y + v;
+	if (exactX < x || exactX >= double(x) + 1 || exactY < y || exactY >= double(y) + 1 ||
+		!std::isfinite(sampleX) || !std::isfinite(sampleY) ||
+		double(sampleX) < 0 || double(sampleX) > state.width || double(sampleY) < 0 || double(sampleY) > state.height)
+		return Fail("VCM jittered film coordinates lie outside the supported raster.");
+	pixel.raster = Vec2(sampleX, sampleY);
+	// Preserve the camera/Film rounding at closed raster edges; do not clamp valid jitter.
+	const Ray ray = state.camera.GenerateRay(x, y, Vec2(u, v), 0);
+	const int nCamera = GenerateCameraPath(state.scene, state.camera, random, *pixel.worker.cameraArena,
+		ray, mMaxDepth + 2, SurfaceNormalMode::Geometric, pixel.cameraPath);
+	return nCamera >= 0 && random.Valid() && Vcm::ValidateSubpath(state.scene, pixel.cameraPath, true);
+}
+
+bool VertexConnectionMerging::OpenSampleStream(RenderState& state, Worker& worker,
+	Phase phase, int64 sampleIndex, SamplerLease* stream) const {
+	std::unique_lock<std::mutex> lock(state.samplerMutex, std::defer_lock);
+	if (!state.trustedClones) lock.lock();
+	stream->sampler = state.indexedSampling ? worker.indexedSamplers[size_t(phase)] :
+		mSampler->CloneForPath(uint64(sampleIndex));
+	if (!stream->sampler || stream->sampler.get() == mSampler.get())
+		return Fail("VCM requires independent non-null path sampler clones.");
+	if (!state.trustedClones) {
+		if (!Vcm::Detail::ValidateSamplingBudget(*stream->sampler, mMaxDepth, state.nVm, mIterations)) return false;
+		if (!state.activeSamplers.insert(stream->sampler.get()).second)
+			return Fail("VCM path sampler aliases another active stream.");
+		stream->registered = &state;
+	}
+	return true;
+}
+
+bool VertexConnectionMerging::Cancelled(const RenderState& state) const {
+	const auto* worker = state.CurrentWorker();
+	return mCancelled.load() || !worker || (worker->context && worker->context->IsCancellationRequested());
 }
 
 bool VertexConnectionMerging::Prepare(RenderState& state) const {
@@ -265,202 +500,104 @@ bool VertexConnectionMerging::Prepare(RenderState& state) const {
 		if (!scene.LightSelectionPdf(i, &pmf) || !std::isfinite(pmf) || pmf < 0)
 			return Fail("VCM scene light-selection probability is invalid.");
 	}
-	const int width = state.width = film->mResX, height = state.height = film->mResY;
-	const int64 count = state.count = int64(width) * height;
-	const size_t columns = (size_t(width) + 31) / 32, rows = (size_t(height) + 31) / 32;
-	const size_t tileCount = columns * rows;
-	state.workPerIteration = 2 * tileCount + (mMode != Vcm::Mode::ConnectionOnly ? 1 : 0);
-	if (!Vcm::Detail::ValidateSamplingBudget(*mSampler, mMaxDepth, count, mIterations)) return false;
-	if (tileCount > size_t((std::numeric_limits<uint32>::max)()) / 2 ||
-		state.workPerIteration > (std::numeric_limits<size_t>::max)() / mIterations ||
-		size_t(count) > (std::numeric_limits<size_t>::max)() / sizeof(PathVertex) / (mMaxDepth + 1))
-		return Fail("VCM sample indices, tile seeds or path storage budget overflow.");
-	if (!Radius(mInitialRadius, mAlpha, 0, count, &state.radius, &state.area) ||
-		!Radius(mInitialRadius, mAlpha, mIterations - 1, count, &state.radius, &state.area)) return false;
-	// Check camera endpoint PDFs before allocating the light batch.
-	const Ray probe = camera.GenerateRay(width / 2, height / 2, Vec2(0.5f), 0);
+	state.width = film->mResX;
+	state.height = film->mResY;
+	state.nVm = int64(state.width) * state.height;
+	if (!Vcm::Detail::ValidateSamplingBudget(*mSampler, mMaxDepth, state.nVm, mIterations)) return false;
+	if (uint64(state.nVm) > (std::numeric_limits<size_t>::max)() / 2 ||
+		uint64(state.nVm) > (std::numeric_limits<size_t>::max)() / sizeof(PathVertex) / (mMaxDepth + 1))
+		return Fail("VCM path or progress storage budget overflows.");
+	state.workPerIteration = 2 * size_t(state.nVm) + (UseVm() ? 1 : 0);
+	if (state.workPerIteration > (std::numeric_limits<size_t>::max)() / mIterations)
+		return Fail("VCM progress budget overflows.");
+	if (!MergingRadius(mInitialRadius, mAlpha, 0, state.nVm, &state.radius, &state.area) ||
+		!MergingRadius(mInitialRadius, mAlpha, mIterations - 1, state.nVm, &state.radius, &state.area)) return false;
+	const Ray probe = camera.GenerateRay(state.width / 2, state.height / 2, Vec2(0.5f), 0);
 	if (!Unit(probe.mDir) || !std::isfinite(probe.mOrig.x) || !std::isfinite(probe.mOrig.y) ||
 		!std::isfinite(probe.mOrig.z) || probe.mMedium ||
 		!std::isfinite(camera.PdfPos()) || camera.PdfPos() <= 0 ||
 		!std::isfinite(camera.PdfDir(probe)) || camera.PdfDir(probe) <= 0)
 		return Fail("VCM camera ray or endpoint probability is invalid.");
 
-	state.tiles.reserve(tileCount);
+	state.indexedSampling = IndexedSampler(*mSampler);
+	state.trustedClones = state.indexedSampling || typeid(*mSampler) == typeid(RandomSampler);
+	const uint64 last = 2 * uint64(state.nVm) * uint64(mIterations) - 1;
+	std::vector<uint64> keys = state.indexedSampling ? std::vector<uint64>{ 0, 1 } :
+		std::vector<uint64>{ 0, 1, last - 1, last };
+	std::sort(keys.begin(), keys.end());
+	keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
 	std::unordered_set<const Sampler*> streams{ mSampler.get() };
-	for (size_t i = 0; i < tileCount; ++i) {
-		Tile tile;
-		tile.minX = int(i % columns) * 32;
-		tile.minY = int(i / columns) * 32;
-		tile.maxX = tile.minX + std::min(32, width - tile.minX);
-		tile.maxY = tile.minY + std::min(32, height - tile.minY);
-		tile.lightSampler = mSampler->Clone(uint32(2 * i));
-		tile.cameraSampler = mSampler->Clone(uint32(2 * i + 1));
-		if (!tile.lightSampler || !tile.cameraSampler ||
-			!streams.insert(tile.lightSampler.get()).second || !streams.insert(tile.cameraSampler.get()).second)
-			return Fail("VCM requires distinct non-null tile/phase sampler clones.");
-		if (!Vcm::Detail::ValidateSamplingBudget(*tile.lightSampler, mMaxDepth, count, mIterations) ||
-			!Vcm::Detail::ValidateSamplingBudget(*tile.cameraSampler, mMaxDepth, count, mIterations)) return false;
-		tile.lightArena = CreateArena();
-		tile.cameraArena = CreateArena();
-		if (!tile.lightArena || !tile.cameraArena) return Fail("VCM could not allocate its aligned tile arenas.");
-		tile.cameraPath.reserve(mMaxDepth + 2);
-		state.tiles.push_back(std::move(tile));
+	std::vector<std::shared_ptr<Sampler>> probes;
+	for (uint64 key : keys) {
+		auto sampler = state.indexedSampling ? mSampler->Clone(uint32(key)) : mSampler->CloneForPath(key);
+		if (!sampler || !streams.insert(sampler.get()).second)
+			return Fail("VCM requires distinct non-null light/camera path samplers.");
+		if (!Vcm::Detail::ValidateSamplingBudget(*sampler, mMaxDepth, state.nVm, mIterations)) return false;
+		probes.push_back(std::move(sampler));
 	}
-	state.lightPaths.resize(static_cast<size_t>(count));
+	tbb::task_arena arena(mConcurrency);
+	arena.initialize();
+	state.concurrency = arena.max_concurrency();
+	for (int i = 0; i < state.concurrency; ++i) {
+		auto worker = std::make_unique<Worker>();
+		worker->lightArena = CreateArena();
+		worker->cameraArena = CreateArena();
+		if (!worker->lightArena || !worker->cameraArena) return Fail("VCM could not allocate its aligned worker arenas.");
+		worker->cameraPath.reserve(mMaxDepth + 2);
+		if (state.indexedSampling) for (uint32 phase = 0; phase < 2; ++phase) {
+			auto sampler = mSampler->Clone(phase);
+			if (!sampler || !streams.insert(sampler.get()).second)
+				return Fail("VCM indexed sampler clones must be independent.");
+			if (!Vcm::Detail::ValidateSamplingBudget(*sampler, mMaxDepth, state.nVm, mIterations)) return false;
+			worker->indexedSamplers[phase] = std::move(sampler);
+		}
+		state.workers.push_back(std::move(worker));
+	}
+	state.sums.resize(size_t(state.nVm));
+	state.lightPaths.resize(size_t(state.nVm));
 	for (auto& path : state.lightPaths) path.reserve(mMaxDepth + 1);
 	return true;
 }
 
-bool VertexConnectionMerging::RenderIteration(RenderState& state, ProgressReporter& progress) {
-	if (!Radius(mInitialRadius, mAlpha, state.iteration, state.count, &state.radius, &state.area)) return false;
-	mStatistics.mLastRadius = state.radius;
-	mStatistics.mLastArea = state.area;
+namespace Vcm {
+namespace Detail {
 
-	const auto lightName = fmt::format("VCM light phase {}/{}", state.iteration + 1, mIterations);
-	progress.SetPhase(lightName);
-	mStatistics.mLastLightPhase = Tasks::Run(lightName, 0, state.tiles.size(),
-		[&](size_t i, const Tasks::Context& context) { return TraceLightPaths(state, state.tiles[i], context); },
-		mConcurrency, &progress);
-	++mStatistics.mLightPhases;
-	mStatistics.mLightSeconds += mStatistics.mLastLightPhase.mElapsed.count();
-	state.CollectStatistics(mStatistics);
-	if (mStatistics.mLastLightPhase.mStatus != Tasks::Status::Success || mCancelled.load()) return false;
-
-	if (mMode != Vcm::Mode::ConnectionOnly) {
-		const auto mapName = fmt::format("VCM map phase {}/{}", state.iteration + 1, mIterations);
-		progress.SetPhase(mapName);
-		bool built = false;
-		mStatistics.mLastMapPhase = Tasks::Run(mapName, 0, 1,
-			[&](size_t, const Tasks::Context& context) {
-				if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
-				if (!state.map.Build(state.lightPaths, state.radius)) return Tasks::Status::Failed;
-				built = true;
-				return mCancelled.load() || context.IsCancellationRequested() ? Tasks::Status::Cancelled : Tasks::Status::Success;
-			}, mConcurrency, &progress);
-		++mStatistics.mMapPhases;
-		if (built) ++mStatistics.mMapBuilds;
-		mStatistics.mMapSeconds += mStatistics.mLastMapPhase.mElapsed.count();
-		mStatistics.mPeakPhotons = std::max(mStatistics.mPeakPhotons, state.map.RecordCount());
-		if (mStatistics.mLastMapPhase.mStatus != Tasks::Status::Success || mCancelled.load()) return false;
-	}
-
-	const auto cameraName = fmt::format("VCM camera phase {}/{}", state.iteration + 1, mIterations);
-	progress.SetPhase(cameraName);
-	mStatistics.mLastCameraPhase = Tasks::Run(cameraName, 0, state.tiles.size(),
-		[&](size_t i, const Tasks::Context& context) { return TraceCameraPaths(state, state.tiles[i], context); },
-		mConcurrency, &progress);
-	++mStatistics.mCameraPhases;
-	mStatistics.mCameraSeconds += mStatistics.mLastCameraPhase.mElapsed.count();
-	bool success = mStatistics.mLastCameraPhase.mStatus == Tasks::Status::Success && !mCancelled.load();
-	if (success && !state.film->HasFiniteSamples()) success = Fail("VCM film accumulation is nonfinite or has missing sample weights.");
-	state.CollectStatistics(mStatistics);
-	if (success) ++mStatistics.mIterations;
-	return success;
-}
-
-Tasks::Status VertexConnectionMerging::TraceLightPaths(RenderState& state, Tile& tile, const Tasks::Context& context) {
-	for (int y = tile.minY; y < tile.maxY; ++y) for (int x = tile.minX; x < tile.maxX; ++x) {
-		if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
-		const int64 pixel = int64(y) * state.width + x;
-		CheckedSequence random(*tile.lightSampler, 2 * (int64(state.iteration) * state.count + pixel));
-		auto& light = state.lightPaths[size_t(pixel)];
-		const int nLight = GenerateLightPath(state.scene, random, *tile.lightArena, mMaxDepth + 1,
-			SurfaceNormalMode::Geometric, light);
-		++tile.lightAttempts;
-		if (nLight < 0 || !random.Valid() || !Vcm::ValidateSubpath(state.scene, light, false)) return Tasks::Status::Failed;
-	}
-	return mCancelled.load() || context.IsCancellationRequested() ? Tasks::Status::Cancelled : Tasks::Status::Success;
-}
-
-Tasks::Status VertexConnectionMerging::TraceCameraPaths(RenderState& state, Tile& tile, const Tasks::Context& context) {
-	const auto& scene = state.scene;
-	const auto& camera = state.camera;
-	for (int y = tile.minY; y < tile.maxY; ++y) for (int x = tile.minX; x < tile.maxX; ++x) {
-		if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
-		const int64 pixel = int64(y) * state.width + x;
-		CheckedSequence random(*tile.cameraSampler, 2 * (int64(state.iteration) * state.count + pixel) + 1);
-		const real u = random(), v = random();
-		if (!random.Valid()) return Tasks::Status::Failed;
-		const double exactX = double(x) + u, exactY = double(y) + v;
-		const real sampleX = x + u, sampleY = y + v;
-		if (exactX < x || exactX >= double(x) + 1 || exactY < y || exactY >= double(y) + 1 ||
-			!std::isfinite(sampleX) || !std::isfinite(sampleY) ||
-			double(sampleX) < 0 || double(sampleX) > state.width || double(sampleY) < 0 || double(sampleY) > state.height) {
-			Fail("VCM jittered film coordinates lie outside the supported raster.");
-			return Tasks::Status::Failed;
-		}
-		// Preserve the camera/Film rounding at closed raster edges; do not clamp valid jitter.
-		const Ray ray = camera.GenerateRay(x, y, Vec2(u, v), 0);
-		auto& eye = tile.cameraPath;
-		const auto& light = state.lightPaths[size_t(pixel)];
-		const int nCamera = GenerateCameraPath(scene, camera, random, *tile.cameraArena, ray, mMaxDepth + 2,
-			SurfaceNormalMode::Geometric, eye);
-		if (nCamera < 0 || !random.Valid() || !Vcm::ValidateSubpath(scene, eye, true)) return Tasks::Status::Failed;
-
-		double sum[3] = {};
-		for (int t = 1; t <= nCamera; ++t) {
-			if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
-			if (!Connect(light, t, state, tile, sum)) return Tasks::Status::Failed;
-			if (mMode != Vcm::Mode::ConnectionOnly && t >= 2 && t - 1 <= mMaxDepth &&
-				!Merge(t, state, tile, sum)) return Tasks::Status::Failed;
-		}
-		Vec3 contribution;
-		if (!Store(sum, &contribution)) return Tasks::Status::Failed;
-		state.film->AddSample(sampleX, sampleY, contribution);
-		++tile.cameraSamples;
-		eye.clear();
-		tile.cameraArena->Reset();
-	}
-	return mCancelled.load() || context.IsCancellationRequested() ? Tasks::Status::Cancelled : Tasks::Status::Success;
-}
-
-bool VertexConnectionMerging::Connect(const std::vector<PathVertex>& light, int t,
-	const RenderState& state, Tile& tile, double sum[3]) const {
-	const auto& eye = tile.cameraPath;
-	for (int s = 0; s <= int(light.size()); ++s) {
-		const int depth = s + t - 2;
-		if (depth < 0 || depth > mMaxDepth ||
-			!Bidirectional::ValidConnection(s ? &light[s - 1] : nullptr, eye[t - 1], s, t)) continue;
-		if (mMode == Vcm::Mode::MergingOnly) {
-			if (s != 0) continue;
-			bool specular = true;
-			for (int j = 1; j + 1 < t; ++j)
-				specular &= eye[j].mIsect.mBsdf && eye[j].mIsect.mBsdf->IsDelta();
-			if (!specular) continue;
-		}
-		Vec3 primary;
-		Vec2 raster;
-		if (!EvaluateConnection(state.scene, state.camera, light, eye, s, t, &primary, &raster)) return false;
-		if (primary == Vec3(0)) continue;
-		const Vcm::Strategy strategy{ Vcm::Technique::Connection, s, t };
-		const Vcm::PathContext path(light, eye, strategy, state.radius, state.count, mMode);
-		real weight;
-		if (!Vcm::ComputeMisWeight(state.scene, path, strategy, &weight)) return false;
-		if (t == 1) {
-			if (!std::isfinite(raster.x) || !std::isfinite(raster.y) ||
-				raster.x < 0 || raster.y < 0 || raster.x >= state.width || raster.y >= state.height)
-				return Fail("VCM camera splat lies outside the film.");
-			const Vec3 splat = primary * (weight / real(mIterations));
-			state.film->AddSplat(raster.x, raster.y, splat);
-			for (int c = 0; c < 3; ++c) tile.splatConnectionSum[c] += splat[c];
-		}
-		else for (int c = 0; c < 3; ++c) {
-			const double value = double(primary[c]) * weight;
-			sum[c] += value;
-			tile.cameraConnectionSum[c] += value;
-		}
-	}
+bool ValidateSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int iterations) {
+	if (maxDepth < 0 || maxDepth > 409 || pixels <= 0 || iterations <= 0)
+		return Fail("VCM requires valid depth, pixel and iteration sampling budgets.");
+	const auto domain = Domain(sampler);
+	// Light: five emission draws and three per nonterminal surface; eye: two jitter draws.
+	const uint64 dimensions = std::max(uint64(5), uint64(3) * maxDepth + 2);
+	if (dimensions > domain.dimensions)
+		return Fail("VCM path dimension budget exceeds the sampler's supported dimensions.");
+	if (uint64(pixels) > ((domain.maximumIndex + 1) / 2) / uint64(iterations))
+		return Fail("VCM phase sample indices exceed the sampler's supported index range.");
 	return true;
 }
 
-bool VertexConnectionMerging::Merge(int t, const RenderState& state, Tile& tile, double sum[3]) const {
-	Vec3 merged;
-	if (!Vcm::GatherMerging(state.scene, state.map, state.lightPaths, tile.cameraPath, t, mMaxDepth, mMode, &merged)) return false;
-	for (int c = 0; c < 3; ++c) {
-		sum[c] += merged[c];
-		tile.cameraMergingSum[c] += merged[c];
+CheckedSequence::CheckedSequence(Sampler& sampler, int64 instance) : mSampler(sampler), mInstance(instance) {
+	const auto domain = Domain(sampler);
+	mDimensions = domain.dimensions;
+	mMaximumIndex = domain.maximumIndex;
+	mRoundedUnitEndpoint = domain.roundedUnitEndpoint;
+}
+
+real CheckedSequence::Sample() {
+	if (!mValid) return 0;
+	if (mCursor < 0 || unsigned(mCursor) >= mDimensions || mInstance < 0 || uint64(mInstance) > mMaximumIndex) {
+		mValid = Fail("VCM sample dimension or index lies outside the sampler's supported domain.");
+		return 0;
 	}
-	return true;
+	const real value = mSampler.Sample(mCursor++, mInstance);
+	if (!std::isfinite(value) || value < 0 || value > 1 || (value == 1 && !mRoundedUnitEndpoint)) {
+		mValid = Fail("VCM sampler returned an invalid value outside its endpoint convention.");
+		return 0;
+	}
+	// Preserve the legacy exact-one wrap only for the known Sobol/RegularHalton convention.
+	return value == 1 ? 0 : value;
+}
+
+}
 }
 
 GYT_NAMESPACE_END

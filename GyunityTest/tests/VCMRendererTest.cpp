@@ -24,6 +24,7 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <tuple>
 
 using namespace Gyunity;
 
@@ -57,6 +58,66 @@ public:
 	real Sample(unsigned int, unsigned long long) override { return 0.5f; }
 	std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<FixedSampler>(); }
 };
+
+TEST(VCMPathSampling, FullWidthPathKeysAreDeterministicAndDoNotChangeLegacySampling) {
+	RandomSampler sampler(123), legacyReference(123);
+	std::vector<real> previous;
+	for (uint64 key : { uint64(7), (uint64(1) << 32) + 7, (uint64(1) << 48) + 7 }) {
+		auto first = sampler.CloneForPath(key), second = sampler.CloneForPath(key);
+		ASSERT_NE(first, nullptr);
+		ASSERT_NE(second, nullptr);
+		EXPECT_NE(first.get(), second.get());
+		std::vector<real> values;
+		for (unsigned d = 0; d < 16; ++d) {
+			const real value = first->Sample(d, key);
+			EXPECT_EQ(value, second->Sample(d, key));
+			values.push_back(value);
+		}
+		if (!previous.empty()) EXPECT_NE(values, previous);
+		previous = values;
+	}
+	for (unsigned d = 0; d < 16; ++d)
+		EXPECT_EQ(sampler.Sample(d, 1), legacyReference.Sample(d, 1));
+	for (uint32 seed : { 0u, 123u, 0xfedcba98u }) {
+		auto clone = sampler.Clone(seed);
+		RandomSampler reference(static_cast<int>(seed));
+		for (unsigned d = 0; d < 16; ++d)
+			EXPECT_EQ(clone->Sample(d, 0), reference.Sample(d, 0));
+	}
+	RandomSampler otherSeed(124);
+	auto first = sampler.CloneForPath(7), other = otherSeed.CloneForPath(7);
+	std::vector<real> firstValues, otherValues;
+	for (unsigned d = 0; d < 16; ++d) {
+		firstValues.push_back(first->Sample(d, 7));
+		otherValues.push_back(other->Sample(d, 7));
+	}
+	EXPECT_NE(firstValues, otherValues);
+	RandomSampler seed0(0), seed2(2);
+	std::vector<real> batch0, batch2;
+	for (uint64 key = 0; key < 16; ++key) {
+		batch0.push_back(seed0.CloneForPath(key)->Sample(0, key));
+		batch2.push_back(seed2.CloneForPath(key)->Sample(0, key));
+	}
+	std::sort(batch0.begin(), batch0.end());
+	std::sort(batch2.begin(), batch2.end());
+	EXPECT_NE(batch0, batch2) << "Changing the root seed must not merely permute the same path samples.";
+}
+
+TEST(VCMPathSampling, LegacyCustomClonesKeepTheirBehaviorAndRejectUnsupportedWideKeys) {
+	class CustomRandom : public RandomSampler {
+	public:
+		explicit CustomRandom(int seed = 0) : RandomSampler(seed) {}
+		real Sample(unsigned, unsigned long long) override { return 0.25f; }
+		std::shared_ptr<Sampler> Clone(uint32 seed) override { return std::make_shared<CustomRandom>(int(seed)); }
+	} custom;
+	auto supported = custom.CloneForPath(17);
+	ASSERT_NE(supported, nullptr);
+	EXPECT_EQ(supported->Sample(0, 17), 0.25f);
+	EXPECT_EQ(custom.CloneForPath(uint64(1) << 32), nullptr);
+	FixedSampler legacy;
+	EXPECT_NE(legacy.CloneForPath((std::numeric_limits<uint32>::max)()), nullptr);
+	EXPECT_EQ(legacy.CloneForPath(uint64(1) << 32), nullptr);
+}
 
 class DownwardSampler : public FixedSampler {
 public:
@@ -181,7 +242,7 @@ protected:
 	}
 };
 
-TEST_F(VCMRenderer, BlackAndVisibleEmissionAllModesAndPartialTiles) {
+TEST_F(VCMRenderer, BlackAndVisibleEmissionAllModesAndPartialImageSizes) {
 	for (Mode mode : Modes) for (int iterations : { 1, 4 }) for (bool emission : { false, true }) {
 		Scene scene{};
 		auto shape = Plane(0, 100);
@@ -196,7 +257,8 @@ TEST_F(VCMRenderer, BlackAndVisibleEmissionAllModesAndPartialTiles) {
 		EXPECT_EQ(stats.mLightAttempts, 66 * iterations);
 		EXPECT_EQ(stats.mCameraSamples, 66 * iterations);
 		EXPECT_EQ(stats.mMapBuilds, mode == Mode::ConnectionOnly ? 0 : iterations);
-		EXPECT_EQ(stats.mLastLightPhase.mPlanned, 2);
+		EXPECT_EQ(stats.mLastLightPhase.mPlanned, 66);
+		EXPECT_EQ(stats.mLastCameraPhase.mPlanned, 66);
 		const std::string name = "emission-" + std::to_string(int(mode)) + "-" +
 			std::to_string(iterations) + "-" + std::to_string(emission);
 		for (auto pixel : Image(*camera, name)) EXPECT_EQ(pixel.x, emission ? 3 : 0);
@@ -306,7 +368,8 @@ TEST_F(VCMRenderer, ContributionSumsUseActualModeWeightsAndResetBetweenRenders) 
 	}
 }
 
-TEST_F(VCMRenderer, TilePhaseClonesPersistAndIndicesAndStatefulStreamsDoNotReplay) {
+TEST_F(VCMRenderer, LogicalPathStreamsDoNotReplayOrDependOnWorkerAssignment) {
+	std::vector<std::tuple<uint64, unsigned, real>> referenceEvents;
 	for (int concurrency : { 1, 4 }) {
 		Scene scene{};
 		auto shape = Plane(0, 100);
@@ -322,18 +385,29 @@ TEST_F(VCMRenderer, TilePhaseClonesPersistAndIndicesAndStatefulStreamsDoNotRepla
 			Mode::Combined, concurrency);
 		ASSERT_TRUE(render.RenderChecked(scene, *camera));
 		EXPECT_FALSE(recording->violation);
-		ASSERT_EQ(recording->seeds.size(), 8);
-		for (uint32 i = 0; i < 8; ++i) EXPECT_EQ(recording->seeds[i], i);
+		const uint32 streamCount = 2 * 33 * 34 * 4;
+		ASSERT_EQ(recording->seeds.size(), streamCount + 4); // First/last phase-key preflight does not draw samples.
+		std::map<uint32, int> cloneCounts;
+		for (uint32 seed : recording->seeds) ++cloneCounts[seed];
+		ASSERT_EQ(cloneCounts.size(), streamCount);
+		for (uint32 seed = 0; seed < streamCount; ++seed)
+			EXPECT_EQ(cloneCounts[seed], 1 + (seed < 2 || seed >= streamCount - 2 ? 1 : 0));
 		std::map<uint32, std::unique_ptr<RandomSampler>> reference;
 		std::map<uint32, uint64> ordinals;
 		std::set<std::pair<uint64, unsigned>> dimensions;
+		std::vector<std::tuple<uint64, unsigned, real>> events;
 		for (const auto& event : recording->events) {
 			if (!reference.count(event.seed)) reference[event.seed] = std::make_unique<RandomSampler>(event.seed);
 			EXPECT_EQ(event.ordinal, ordinals[event.seed]++);
 			EXPECT_EQ(event.value, reference[event.seed]->Sample(event.dimension, event.instance));
 			EXPECT_EQ(event.seed % 2, event.instance % 2);
+			EXPECT_EQ(event.seed, event.instance);
 			EXPECT_TRUE(dimensions.insert({ event.instance, event.dimension }).second);
+			events.emplace_back(event.instance, event.dimension, event.value);
 		}
+		std::sort(events.begin(), events.end());
+		if (concurrency == 1) referenceEvents = events;
+		else EXPECT_EQ(events, referenceEvents);
 		EXPECT_EQ(dimensions.size(), 33 * 34 * 4 * 7);
 		EXPECT_EQ(recording->starts.size(), 8);
 		for (const auto& phase : recording->starts) EXPECT_EQ(phase.second.size(), recording->pixels);
@@ -452,8 +526,8 @@ private:
 	real mScale;
 };
 
-// RandomSampler::Clone replaces its seed. Preserve the independent replicate
-// identity as well as the renderer's stable tile/phase ID in this test adapter.
+// Preserve the independent replicate identity when the legacy Clone adapter
+// receives a logical path/phase key.
 class IndependentSeedSampler : public Sampler {
 public:
 	explicit IndependentSeedSampler(uint32 seed) : mSeed(seed), mRandom(seed) {}
@@ -663,9 +737,10 @@ private:
 	mutable int64 mAttempts = 0;
 };
 
-TEST_F(VCMRenderer, MultiTileArenasSurviveReadersAndStorageDoesNotGrowWithIterations) {
+TEST_F(VCMRenderer, WorkerArenasSurviveReadersAndStorageStaysBounded) {
+	size_t serialArenaBytes = 0;
 	for (int concurrency : { 1, 4 }) {
-		size_t arenaBytes = 0, pathBytes = 0;
+		size_t pathBytes = 0;
 		for (int iterations : { 1, 4, 12 }) {
 			Lifetime state;
 			Scene scene{};
@@ -683,8 +758,10 @@ TEST_F(VCMRenderer, MultiTileArenasSurviveReadersAndStorageDoesNotGrowWithIterat
 			EXPECT_EQ(s.mLastCameraPhase.mActive, 0);
 			EXPECT_LE(s.mLastLightPhase.mPeakConcurrency, concurrency);
 			EXPECT_LE(s.mLastCameraPhase.mPeakConcurrency, concurrency);
-			if (iterations == 1) { arenaBytes = s.mPeakLightArenaBytes; pathBytes = s.mPeakLightPathBytes; }
-			EXPECT_EQ(s.mPeakLightArenaBytes, arenaBytes);
+			if (concurrency == 1 && iterations == 1) serialArenaBytes = s.mPeakLightArenaBytes;
+			if (iterations == 1) pathBytes = s.mPeakLightPathBytes;
+			// A worker can retain its one-batch high-water allocation, not one batch per iteration.
+			EXPECT_LE(s.mPeakLightArenaBytes, size_t(concurrency) * serialArenaBytes);
 			EXPECT_EQ(s.mPeakLightPathBytes, pathBytes);
 			Summary(render, "lifetime-" + std::to_string(concurrency) + "-" + std::to_string(iterations),
 				Mean(Image(*camera, "lifetime-" + std::to_string(concurrency) + "-" + std::to_string(iterations))));
@@ -1092,7 +1169,7 @@ TEST_F(VCMRendererNegative, MapFailureAndCancellationJoinWithoutStartingCameraWo
 		const auto output = testing::internal::GetCapturedStderr();
 		EXPECT_FALSE(success);
 		EXPECT_EQ(output.find("100.0%"), std::string::npos);
-		EXPECT_NE(output.find("failed after 2 of 10 work units"), std::string::npos);
+		EXPECT_NE(output.find("failed after 33 of 134 work units"), std::string::npos);
 		EXPECT_EQ(output.find("VCM iteration "), std::string::npos);
 		const auto& stats = render.GetStatistics();
 		EXPECT_EQ(stats.mMapPhases, 1);
@@ -1144,6 +1221,46 @@ TEST_F(VCMRendererNegative, ParametersFilmCameraAndCloneFailuresDoNotStartWork) 
 	camera->GetFilm()->mArea *= 0.5f;
 	camera->mCz = Vec3(0);
 	reject(sampler, 1, 1, 1, 0.5f, Mode::Combined, 1);
+}
+
+TEST_F(VCMRendererNegative, WidePathKeysArePreflightedWithoutTruncationOrLongRendering) {
+	Scene scene{};
+	scene.AddLight(std::make_shared<FixedLight>());
+	Initialize(scene);
+	auto camera = CameraFor(2, 1);
+	Renderer unsupported(std::make_shared<FixedSampler>(), 0, INT_MAX, 1, .75f, Mode::Combined, 1);
+	EXPECT_FALSE(unsupported.RenderChecked(scene, *camera));
+	EXPECT_EQ(unsupported.GetStatistics().mLightPhases, 0u);
+
+	struct State {
+		std::vector<uint64> keys;
+		int samples = 0;
+		Renderer* render = nullptr;
+	};
+	class WideSampler : public FixedSampler {
+	public:
+		explicit WideSampler(std::shared_ptr<State> state) : state(state) {}
+		std::shared_ptr<Sampler> CloneForPath(uint64 key) override {
+			state->keys.push_back(key);
+			return std::make_shared<WideSampler>(state);
+		}
+		real Sample(unsigned, unsigned long long) override {
+			++state->samples;
+			state->render->RequestCancellation();
+			return .5f;
+		}
+		std::shared_ptr<State> state;
+	};
+	auto state = std::make_shared<State>();
+	Renderer render(std::make_shared<WideSampler>(state), 0, INT_MAX, 1, .75f, Mode::Combined, 1);
+	state->render = &render;
+	EXPECT_FALSE(render.RenderChecked(scene, *camera));
+	const uint64 last = uint64(4) * INT_MAX - 1;
+	EXPECT_NE(std::find(state->keys.begin(), state->keys.end(), last), state->keys.end());
+	EXPECT_NE(std::find(state->keys.begin(), state->keys.end(), last - 1), state->keys.end());
+	EXPECT_GT(state->samples, 0);
+	EXPECT_EQ(render.GetStatistics().mLastLightPhase.mStatus, ThreadedTaskManager::Status::Cancelled);
+	EXPECT_EQ(render.GetStatistics().mCameraPhases, 0u);
 }
 
 TEST_F(VCMRendererNegative, UnsupportedScenesAndCameraProbabilitiesFailChecked) {

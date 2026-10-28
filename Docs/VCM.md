@@ -4,23 +4,32 @@
 
 `RenderChecked` prepares one render-local `RenderState`, runs `RenderIteration`,
 then clears each iteration's paths only after its task groups have joined.
-The state owns the complete light-path batch, map and tile arenas; it is not a
+The state owns the complete light-path batch, map and worker arenas; it is not a
 new shared renderer base or mutable state retained between renders.
 
-`RenderIteration` shows the three synchronous phases directly: `TraceLightPaths`,
-`PhotonMap::Build`, and `TraceCameraPaths`. The camera loop generates one path,
-then walks `t` in order, calling `Connect` followed by `Merge`. `Connect` walks
-`s` and reuses BDPT's `EvaluateConnection`; `Merge` adds the already-normalized
-`GatherMerging` result. There is no second BDPT tracer or primary estimator.
-Counters and storage accounting are kept outside the contribution equations.
+`RenderIteration` directly shows `TraceLightSubpaths`, `BuildHashGrid`, and
+`ForEachPixel`. Each pixel traces an eye path, computes `VertexConnection` and
+`VertexMerging`, then calls `Combine`. The two estimators contain the `s/t` and
+photon loops, using `contributionVc/Vm`, `weightVc/Vm`, `nVc` and `nVm`.
+BDPT still supplies the subpath builders and `EvaluateConnection`.
+
+`Contribution` records a weighted RGB value and whether it is a camera-sample
+term or a projected splat. `PathContribution` groups one aggregate camera-sample
+record with any splats; it does not store a record per photon. `Combine` writes
+the splats separately and calls `Film::AddSample` once, even for black results.
+Splats already include `1/iterations`; ordinary terms are averaged by Film.
 
 In `VCMPath.cpp`, `ForwardDensity` and `ReverseDensity` follow the light and
 camera sampling directions explicitly. `LightVertex` and `CameraVertex` retain
 the different physical endpoints of a finite-radius merge. `StrategyDensity`
-forms the two prefix products in their original order. Each public PDF/MIS
-entry validates its selected immutable context once; the alternatives reuse
-that validation without evaluating unused densities or suffixes. Complete-path,
-selected-prefix and map-surface validation retain their different contracts.
+forms the two prefix products in their original order. `MisPdfs` reuses recorded
+`mPdfFwd/mPdfPrev` values and caches necessary boundary corrections on first use
+within that selected context. `UseVc/UseVm` gate the active strategy families;
+they do not alter recorded densities. `pdfPath` excludes sample counts.
+Each public PDF/MIS entry validates its selected immutable context once; the
+alternatives reuse that validation without evaluating unused densities or
+suffixes. Complete-path, selected-prefix and map-surface validation retain their
+different contracts.
 
 `PhotonMap::Build` first collects and validates lightweight `(path, vertex)` IDs,
 then inserts their radius-relative positions into the hash grid. This temporary
@@ -28,7 +37,7 @@ ID vector is released after building; paths/BSDFs are never copied. Querying
 sorts and deduplicates candidate IDs before `WithinRadius` and `CompatibleNormals`
 apply the physical acceptance rule. The checked broad phase is not the kernel.
 
-The existing `s`, `t`, `light`/`eye` and member naming conventions are retained.
+The existing `s`, `t`, descriptive camelCase and member naming conventions are retained.
 BDPT's classes, rendering loop, MIS, BSDFs and public interfaces are unchanged
 by this readability refactor.
 
@@ -120,18 +129,41 @@ VM gathers from all **attempts**, including empty ones. The physical radius is
 `pi*R*R` are used throughout the iteration's map, MIS and normalization.
 Camera contributions go through `Film::AddSample` once, including black samples,
 without division by iterations. Each paired `t=1` contribution is splatted once,
-scaled only by `1/iterations`. `GatherMerging` is already weighted and normalized;
-the renderer adds it directly without a second MIS/kernel/photon divisor.
+scaled only by `1/iterations`. The renderer's `MergeEstimate` returns the primary
+estimate including `1/area`; `VertexMerging` applies its per-pair `weightVm/nVm`.
+The existing checked `EvaluateMerging`/`GatherMerging` interfaces remain fully
+weighted and normalized for their callers; never normalize those outputs again.
 
-Stable 32x32 tiles include partial edges. Separate light/eye sampler clones per
-tile persist across iterations, with seeds `2*tile + phase` and sample indices
+There are no VCM image tiles. Task indices directly cover `[0,P)`, including
+non-square dimensions and partial image sizes. Sample/path keys are
 `2*(iteration*P + pixel) + phase` (light=0, eye=1), never worker indices.
+Stateful streams are cloned for one path with `CloneForPath(uint64)` and released
+after tracing; they are not retained for every pixel. Standard RandomSampler
+keeps MT, combines the configured seed with the full path key, and leaves its
+legacy `Clone(uint32)` behavior unchanged. Mixing the configured seed before
+the path key prevents different root seeds from merely permuting the same
+nearby path streams.
+
+Exact built-in Halton, Sobol and RegularHalton samplers are index-addressed and
+can reuse worker-local clones. Subclasses are not assumed stateless. Legacy
+custom samplers can use their old Clone for 32-bit keys; larger keys require
+an explicit `CloneForPath` implementation or fail before tracing. First/last
+phase-key preflight checks actual clone capabilities and aliases. Custom clone
+factories are serialized, and simultaneous use of an aliased clone is rejected.
+
 The synchronous named light phase joins before a named map-build task runs in
 the same scoped concurrency model, including its nested hash-grid parallel work.
 The camera phase joins before clearing references and resetting light arenas.
-Separately aligned, tile-owned light arenas retain all path BSDFs until then;
-eye scratch resets after each sample's consumers. Storage is `O(P*depth)`, not
-proportional to iterations. Explicit enumeration remains intentionally expensive.
+Separately aligned worker-owned light arenas retain all path BSDFs until then;
+eye scratch resets after each path's consumers. Worker slots select scratch only,
+not random streams. Arena pools retain their per-worker high-water allocation,
+bounded by the render workload and fixed concurrency rather than accumulating
+one batch per iteration. Explicit MIS enumeration remains intentionally expensive.
+
+Removing tiles and reseeding by logical paths intentionally changes the random
+realization. Separate VC/VM accumulation and delayed splat writes can also change
+rounding/order. Fixed-path probability reports remain comparable exactly, but
+old random-render hashes are not the new renderer's acceptance criterion.
 
 Modes reuse `Vcm::Mode`: Combined uses joint VC/VM MIS; ConnectionOnly skips map
 construction; MergingOnly retains VM and camera-visible `LS*E` emission/background
@@ -155,10 +187,11 @@ The supported surface/finite-radius limitations of the probability/map layers
 below still apply, including geometric-normal shading and the map's checked
 relative extent and oriented-normal filter.
 
-Sampling-domain checks apply to the parent sampler **and each phase clone**.
+Sampling-domain checks apply to the parent sampler and actual clones.
 The worst light budget is `max(5,3*depth+2)` draws; the eye budget is
-`3*depth+2`, including jitter. Checks occur before path storage, and the
-renderer-local sequence also checks every dimension/index before calling `Sample`.
+`3*depth+2`, including jitter. Parent/preflight checks occur before path storage;
+runtime clones are checked before tracing their paths. The renderer-local
+sequence also checks every dimension/index before calling `Sample`.
 
 | Sampler | Dimensions | Maximum renderer depth | Phase sample indices |
 |---|---:|---:|---|
@@ -167,9 +200,9 @@ renderer-local sequence also checks every dimension/index before calling `Sample
 | `RegularHaltonSampler` | 1229 | 409 | below `INT64_MAX`, so `index+1` remains signed-representable |
 | Random/custom samplers | renderer cap 1229 | 409 | below `INT64_MAX` |
 
-Opaque custom samplers must support the declared budget; no sampler framework
-or legacy generator is changed. Sobol's uint32-to-float conversion and
-RegularHalton's float accumulation can round to exactly one. Only these known
+Opaque custom samplers must support the declared budget and path-key range;
+the existing Clone and Sample interfaces remain unchanged. Sobol's uint32-to-float
+conversion and RegularHalton's float accumulation can round to exactly one. Only these known
 families retain `RandomStateSequence`'s exact-one-to-zero convention. Halton and
 custom adapters returning one fail; all negative/nonfinite/greater-than-one
 values fail. Other generated values are unchanged.
@@ -186,8 +219,9 @@ before failure returns. A failed film may contain partial work and must not be
 saved as a successful image. `GetStatistics()` is a bounded post-render summary:
 completed iterations/attempts/samples, last physical radius/area, phase counts
 and times, last task-group results, and peak light-arena/path bytes and photons.
-It is not process RSS and excludes map buckets, eye scratch, film and allocator
-overhead. One renderer instance must not render concurrently.
+It is not process RSS and excludes map buckets, eye scratch, sampler clones,
+film, allocator overhead and the diagnostic reduction buffer. One renderer
+instance must not render concurrently.
 Its three RGB diagnostic sums are the actual terms using the selected mode's
 MIS weights: `mCameraConnectionSum` (including retained `LS*E`),
 `mCameraMergingSum` (already kernel/count-normalized), and
@@ -197,9 +231,11 @@ per iteration, divide camera sums by `P*iterations` and splat sums by `P` to
 compare image means (allow float accumulation/RGBE quantization). They are
 **pre-filter diagnostics**, not component images for arbitrary filters or
 rounded boundary samples. Only interpret totals after success; failures can
-contain partial work. The bounded tile-local sums are reduced after barriers.
-Each VM-enabled iteration declares `2*tileCount+1` progress units (light tiles,
-one map task, camera tiles); ConnectionOnly declares `2*tileCount`.
+contain partial work. Nine double counters per logical pixel retain these sums
+in a worker-independent order (72 bytes/pixel, not growing with iterations);
+reduction occurs only after phase barriers. Each VM-enabled iteration declares
+`2*P+1` progress units (light paths, one map task, camera paths); ConnectionOnly
+declares `2*P`.
 `mLastMapPhase` records the map task's scoped concurrency/status/timing.
 Cancellation or failure in that phase joins and cleans up without starting eye
 work or reporting overall 100%.
@@ -220,7 +256,7 @@ VCM iteration 64/64: radius 0.00308965, 3804768 photons, light 0.1s, map 1.2s, c
 
 `VCMRenderer.*` exercises actual emission/black/environment/specular renders,
 camera/splat normalization, radius-dependent gather arithmetic, persistent RNG
-streams, partial tiles, barriers, arena reuse and single-worker determinism.
+streams, partial image dimensions, barriers, arena reuse and deterministic path keys.
 `VCMRendererNegative.*` records expected checked failures separately. Tiny HDR
 checks allow RGBE quantization; the diffuse-environment check uses a separately
 declared Monte Carlo/finite-radius tolerance, not a relaxed MIS tolerance.

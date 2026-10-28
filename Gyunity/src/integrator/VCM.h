@@ -9,6 +9,17 @@
 GYT_NAMESPACE_BEGIN
 
 namespace Vcm {
+
+struct Contribution {
+	std::array<double, 3> mValue{};
+	Vec2 mRaster;
+	bool mIsSplat = false;
+};
+
+struct PathContribution {
+	std::vector<Contribution> mContributions;
+};
+
 namespace Detail {
 
 // Renderer-local checks; legacy sampler implementations and outputs are unchanged.
@@ -61,19 +72,29 @@ public:
 	const Statistics& GetStatistics() const { return mStatistics; }
 
 private:
-	struct Tile;
+	struct Worker;
+	struct PixelTask;
 	struct RenderState;
+	struct SamplerLease;
+	enum class Phase { Light, Camera };
 
 	bool Prepare(RenderState& state) const;
-	bool RenderIteration(RenderState& state, ProgressReporter& progress);
+	bool RenderIteration(RenderState& state);
 	void ReportIteration(const RenderState& state, size_t photons) const;
-	ThreadedTaskManager::Status TraceLightPaths(RenderState& state, Tile& tile,
-		const ThreadedTaskManager::Context& context);
-	ThreadedTaskManager::Status TraceCameraPaths(RenderState& state, Tile& tile,
-		const ThreadedTaskManager::Context& context);
-	bool Connect(const std::vector<PathVertex>& light, int t,
-		const RenderState& state, Tile& tile, double sum[3]) const;
-	bool Merge(int t, const RenderState& state, Tile& tile, double sum[3]) const;
+	bool TraceLightSubpaths(RenderState& state);
+	bool BuildHashGrid(RenderState& state);
+	bool ForEachPixel(RenderState& state, Phase phase, const std::function<bool(PixelTask&)>& task);
+	bool TraceEyeSubpath(RenderState& state, PixelTask& pixel);
+	bool VertexConnection(const RenderState& state, const std::vector<PathVertex>& lightPath,
+		const std::vector<PathVertex>& cameraPath, real radius, Vcm::PathContribution* weightedContributionVc) const;
+	bool VertexMerging(const RenderState& state, const std::vector<PathVertex>& cameraPath,
+		real radius, Vcm::PathContribution* weightedContributionVm) const;
+	bool Combine(RenderState& state, PixelTask& pixel, const Vcm::PathContribution& weightedContributionVc,
+		const Vcm::PathContribution& weightedContributionVm);
+	bool OpenSampleStream(RenderState& state, Worker& worker, Phase phase,
+		int64 sampleIndex, SamplerLease* stream) const;
+	bool Cancelled(const RenderState& state) const;
+	bool UseVm() const { return Vcm::UseVm(mMode); }
 
 	std::shared_ptr<Sampler> mSampler;
 	int mMaxDepth, mIterations;

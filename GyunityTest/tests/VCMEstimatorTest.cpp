@@ -209,6 +209,39 @@ TEST_F(VCMEstimator, ManualDepthOneJointScoresAndModes) {
 	RecordProperty("manual_joint_cases", 27);
 }
 
+TEST_F(VCMEstimator, PrimaryMergeIncludesAreaButNotMisOrLightPathAveraging) {
+	const auto lightBefore = Snapshot(paths[0]), eyeBefore = Snapshot(eye);
+	for (double radius : { 0.25, 0.5, 2.0 }) for (int64 nVm : { 1, 4, 17 }) {
+		for (Mode mode : { Mode::Combined, Mode::MergingOnly }) {
+			std::array<double, 3> contributionVm{};
+			const Vcm::PathContext path(paths[0], eye, { Technique::Merging, 2, 2 }, radius, nVm, mode);
+			ASSERT_TRUE(Vcm::MergeEstimate(path, &contributionVm));
+			const auto expected = Expected(0.125, 1, radius, 1);
+			for (int c = 0; c < 3; ++c)
+				EXPECT_NEAR(contributionVm[c], expected[c], std::abs(expected[c]) * 1e-12);
+		}
+	}
+	EXPECT_EQ(Snapshot(paths[0]), lightBefore);
+	EXPECT_EQ(Snapshot(eye), eyeBefore);
+	EXPECT_EQ(photonLobe.evaluations, 0);
+}
+
+TEST_F(VCMEstimator, InvalidPrimaryMergeClearsItsOutput) {
+	for (int variant = 0; variant < 4; ++variant) {
+		auto lightPath = paths[0];
+		auto cameraPath = eye;
+		double radius = 0.5;
+		if (variant == 0) radius = 0;
+		if (variant == 1) lightPath.back().mIsect.mPos.x = 2;
+		if (variant == 2) cameraPath.back().mNormalMode = SurfaceNormalMode::Shading;
+		if (variant == 3) cameraPath.back().mThroughput.x = std::numeric_limits<real>::infinity();
+		std::array<double, 3> contributionVm{ 1, 2, 3 };
+		EXPECT_FALSE(Vcm::MergeEstimate(Vcm::PathContext(lightPath, cameraPath,
+			{ Technique::Merging, 2, 2 }, radius, 4), &contributionVm));
+		EXPECT_EQ(contributionVm, (std::array<double, 3>{}));
+	}
+}
+
 TEST_F(VCMEstimator, ManualTwoVmStrategiesShareOneJointDenominator) {
 	eye[0].mIsect.mPos = Vec3(0);
 	eye[0].mPdfPrev = 0.125f;
