@@ -115,8 +115,6 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 }
 
 bool VertexConnectionMerging::Prepare(RenderState& state) const {
-	if (mUseShadingNormals)
-		return Fail("VCM shading-normal transport is not implemented; useShadingNormals must be false.");
 	if (!mSampler || mMaxDepth < 0 || mIterations <= 0 || !std::isfinite(mInitialRadius) || mInitialRadius <= 0 ||
 		!(mAlpha > 0 && mAlpha < 1) || (!Vcm::UseVc(mMode) && !Vcm::UseVm(mMode)))
 		return Fail("VCM requires a sampler, nonnegative depth, positive iterations and radius, alpha in (0,1) and a valid mode.");
@@ -148,7 +146,7 @@ bool VertexConnectionMerging::TraceLightPaths(RenderState& state) {
 		RandomStateSequence random(sampler, sampleIndex);
 		auto& lightPath = state.lightPaths[size_t(pixel)];
 		return GenerateLightPath(state.scene, random, worker.lightArena, mMaxDepth + 1,
-			SurfaceNormalMode::Geometric, lightPath) >= 0 && SupportedPath(lightPath);
+			NormalMode(), lightPath) >= 0 && SupportedPath(lightPath);
 	})) return false;
 	mStatistics.mLightAttempts += state.nVm;
 	return true;
@@ -185,7 +183,7 @@ bool VertexConnectionMerging::RenderPixel(RenderState& state, int64 pixel, Worke
 	const Ray ray = state.camera.GenerateRay(x, y, Vec2(u, v), 0);
 	auto& cameraPath = worker.cameraPath;
 	const int nCamera = GenerateCameraPath(state.scene, state.camera, random, worker.cameraArena, ray,
-		mMaxDepth + 2, SurfaceNormalMode::Geometric, cameraPath);
+		mMaxDepth + 2, NormalMode(), cameraPath);
 	if (nCamera < 0 || !SupportedPath(cameraPath)) return false;
 
 	const auto& lightPath = state.lightPaths[size_t(pixel)];

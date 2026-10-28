@@ -43,7 +43,8 @@ public:
 		: mSampler(sampler), mMaxDepth(maxDepth), mIterations(iterations), mInitialRadius(initialRadius),
 		mAlpha(alpha), mMode(mode), mConcurrency(concurrency), mUseShadingNormals(useShadingNormals) {}
 
-	// Only geometric-normal VCM is implemented; requesting shading normals fails.
+	// useShadingNormals = true uses BDPT's adjoint-corrected shading-normal transport on both
+	// subpaths, and the shading-normal merge factor of Docs/VCM.md Eq. (13).
 	void Render(const Scene& scene, const Camera& camera) override;
 	bool RenderChecked(const Scene& scene, const Camera& camera) override;
 	// Cooperative cancellation of an active render. All tasks drain before return.
@@ -71,6 +72,9 @@ private:
 	std::shared_ptr<Sampler> PathSampler(const RenderState& state, int64 sampleIndex) const;
 	void ReportIteration(const RenderState& state, size_t photons) const;
 	bool UseVm() const { return Vcm::UseVm(mMode); }
+	SurfaceNormalMode NormalMode() const {
+		return mUseShadingNormals ? SurfaceNormalMode::Shading : SurfaceNormalMode::Geometric;
+	}
 
 	std::shared_ptr<Sampler> mSampler;
 	int mMaxDepth, mIterations;

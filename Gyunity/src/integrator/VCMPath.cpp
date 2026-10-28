@@ -33,6 +33,13 @@ bool Delta(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf && vertex.mIsect.mBsdf->IsDelta();
 }
 
+// Eq. (10) BSDF density at the merge vertex x; shading normals mask its support as in PdfArea.
+real MergePdf(const PathVertex& x, const Vec3& wo, const Vec3& wi) {
+	const bool supported = x.mNormalMode == SurfaceNormalMode::Geometric ||
+		(Bidirectional::ShadingSupport(x.mIsect, wo) && Bidirectional::ShadingSupport(x.mIsect, wi));
+	return supported ? x.mIsect.mBsdf->Pdf(wo, wi) : 0;
+}
+
 bool Continuous(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf && !Delta(vertex);
 }
@@ -75,7 +82,7 @@ bool ForwardDensity(const Scene& scene, const PathContext& path, int i, real* pd
 		// Eq. (10): scatter at x with the original directions, convert along x's sampled edge.
 		const auto& y = path.light[s - 1];
 		const auto& x = path.camera[path.selected.t - 1];
-		*pdf = Bidirectional::DirectionToArea(x.mIsect.mBsdf->Pdf(y.mIsect.mOutDir, x.mIsect.mOutDir), x, CameraVertex(path, i));
+		*pdf = Bidirectional::DirectionToArea(MergePdf(x, y.mIsect.mOutDir, x.mIsect.mOutDir), x, CameraVertex(path, i));
 		return true;
 	}
 	if (i == 0) return Bidirectional::LightOriginPdf(scene, CameraVertex(path, 0), CameraVertex(path, 1), pdf);
@@ -109,7 +116,7 @@ bool ReverseDensity(const PathContext& path, int i, real* pdf) {
 		// Eq. (10): the reverse merge scatters at x but converts along y's original light edge.
 		const auto& y = path.light[s - 1];
 		const auto& x = path.camera[path.selected.t - 1];
-		*pdf = Bidirectional::DirectionToArea(x.mIsect.mBsdf->Pdf(x.mIsect.mOutDir, y.mIsect.mOutDir), y, LightVertex(path, i));
+		*pdf = Bidirectional::DirectionToArea(MergePdf(x, x.mIsect.mOutDir, y.mIsect.mOutDir), y, LightVertex(path, i));
 		return true;
 	}
 	return Bidirectional::PdfArea(LightVertex(path, source),
@@ -208,7 +215,11 @@ Vector3d MergeEstimate(const PathContext& path) {
 	// extra cosine, or division by a full path pdf.
 	const Vec3 scattering = x.mIsect.mBsdf->Evaluate(x.mIsect.mOutDir, y.mIsect.mOutDir);
 	const double area = std::acos(-1.0) * path.radius * path.radius;
-	return ToVector3d(x.mThroughput) * ToVector3d(scattering) * ToVector3d(y.mThroughput) / Vector3d(area);
+	const Vector3d estimate = ToVector3d(x.mThroughput) * ToVector3d(scattering) * ToVector3d(y.mThroughput) / Vector3d(area);
+	if (x.mNormalMode == SurfaceNormalMode::Geometric) return estimate;
+	// Eq. (13): the photon density carries y's geometric cosine; VC carries x's shading K instead.
+	const double cosine = Bidirectional::ScatteringCosine(x.mIsect, x.mIsect.mOutDir, y.mIsect.mOutDir, TransportMode::Radiance);
+	return estimate * Vector3d(cosine / std::abs(double(Dot(y.mIsect.mOutDir, y.mIsect.mGeometryNormal))));
 }
 
 }
