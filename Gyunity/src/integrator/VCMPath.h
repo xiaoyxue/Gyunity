@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BDPTPath.h"
+#include <array>
 
 GYT_NAMESPACE_BEGIN
 
@@ -57,6 +58,10 @@ bool ComputeMisWeight(const Scene& scene, const PathContext& path,
 bool ValidateSubpath(const Scene& scene, const std::vector<PathVertex>& path, bool camera);
 
 class PhotonMap;
+
+// Primary VM estimate: betaE * camera BSDF * betaL / area, before MIS and 1/nVm.
+// Rendering must still evaluate MIS, including for a zero primary estimate.
+bool MergeEstimate(const PathContext& path, std::array<double, 3>* contributionVm);
 
 // Sum-ready wVM * betaE * f_camera(eyeOut, ORIGINAL photonOut) * betaL /
 // (lightPathCount * pi * radius^2). Selected technique must be Merging.

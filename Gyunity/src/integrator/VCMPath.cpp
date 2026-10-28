@@ -56,6 +56,20 @@ bool Continuous(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf && !Delta(vertex);
 }
 
+bool ValidateMergeGeometry(const PathContext& path) {
+	const auto& y = path.light[path.selected.s - 1];
+	const auto& x = path.camera[path.selected.t - 1];
+	double distance2 = 0;
+	for (int axis = 0; axis < 3; ++axis) {
+		const double offset = double(y.mIsect.mPos[axis]) - double(x.mIsect.mPos[axis]);
+		distance2 += offset * offset;
+	}
+	if (!std::isfinite(distance2) || distance2 > path.radius * path.radius ||
+		!Unit(y.mIsect.mOutDir) || !Unit(x.mIsect.mOutDir))
+		return Fail("VCM merge requires in-radius endpoints and original unit incoming directions.");
+	return true;
+}
+
 bool ValidateVertex(const PathVertex& vertex, bool lightOrigin, bool cameraOrigin, bool continued) {
 	if (vertex.mNormalMode != SurfaceNormalMode::Geometric)
 		return Fail("VCM path evaluation only supports geometric-normal transport.");
@@ -189,17 +203,7 @@ bool Validate(const Scene& scene, const PathContext& path) {
 			!Bidirectional::Direction(path.light[selected.s - 1], path.camera[selected.t - 1], &direction)) return false;
 	}
 	else {
-		const PathVertex& y = path.light[selected.s - 1];
-		const PathVertex& x = path.camera[selected.t - 1];
-		double distance2 = 0;
-		for (int axis = 0; axis < 3; ++axis) {
-			const double offset = double(y.mIsect.mPos[axis]) - double(x.mIsect.mPos[axis]);
-			distance2 += offset * offset;
-		}
-		if (!std::isfinite(distance2) || distance2 > path.radius * path.radius ||
-			!Unit(y.mIsect.mOutDir) || !Unit(x.mIsect.mOutDir)) {
-			return Fail("VCM merge requires in-radius endpoints and original unit incoming directions.");
-		}
+		if (!ValidateMergeGeometry(path)) return false;
 	}
 	return true;
 }
@@ -484,7 +488,7 @@ bool StoreContribution(const double value[3], Vec3* contribution) {
 	return true;
 }
 
-bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
+bool ValidateMergePair(const PathContext& path, double* normalization) {
 	if (path.selected.s < 2 || path.selected.t < 2)
 		return Fail("VCM merging requires valid light and camera surface prefixes.");
 	if (!ValidLocalPrefix(path.light, path.selected.s, false) ||
@@ -504,23 +508,56 @@ bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
 			(double(y.mIsect.mGeometryNormal[axis]) / std::sqrt(yLength2));
 	if (cosine < 0.9)
 		return Fail("VCM merging endpoints must have compatible oriented geometric normals.");
-	double normalization;
-	if (!Normalization(path.radius, path.lightPathCount, &normalization)) return false;
-	real weight;
-	if (!ComputeMisWeight(scene, path, path.selected, &weight)) return false;
+	return Normalization(path.radius, path.lightPathCount, normalization);
+}
+
+bool MergeNumerator(const PathContext& path, double value[3]) {
+	const auto& y = path.light[path.selected.s - 1];
+	const auto& x = path.camera[path.selected.t - 1];
 	const Vec3 scattering = x.mIsect.mBsdf->Evaluate(x.mIsect.mOutDir, y.mIsect.mOutDir);
 	if (!Finite(scattering)) return Fail("VCM merging evaluated nonfinite camera scattering.");
 	for (int axis = 0; axis < 3; ++axis) {
 		// Throughputs already include sampling compensation. There is no x-y
 		// transport edge, second BSDF, cosine, or division by a full path PDF.
-		value[axis] = double(x.mThroughput[axis]) * scattering[axis] *
-			double(y.mThroughput[axis]) * double(weight) / normalization;
+		value[axis] = double(x.mThroughput[axis]) * scattering[axis] * double(y.mThroughput[axis]);
+		if (!std::isfinite(value[axis]))
+			return Fail("VCM merging evaluated a nonfinite primary contribution.");
+	}
+	return true;
+}
+
+bool MergePair(const Scene& scene, const PathContext& path, double value[3]) {
+	double normalization;
+	if (!ValidateMergePair(path, &normalization)) return false;
+	real weight;
+	if (!ComputeMisWeight(scene, path, path.selected, &weight) || !MergeNumerator(path, value)) return false;
+	for (int axis = 0; axis < 3; ++axis) {
+		value[axis] = value[axis] * double(weight) / normalization;
 		if (!std::isfinite(value[axis]))
 			return Fail("VCM merging evaluated a nonfinite normalized pair.");
 	}
 	return true;
 }
 
+}
+
+bool MergeEstimate(const PathContext& path, std::array<double, 3>* contributionVm) {
+	if (!contributionVm) return Fail("VCM primary merge output is null.");
+	*contributionVm = {};
+	if (!ValidMode(path.mode) || path.selected.technique != Technique::Merging)
+		return Fail("VCM primary merge requires a valid mode and merging technique.");
+	if (!UseVm(path.mode)) return true;
+	double normalization;
+	if (!ValidateMergePair(path, &normalization) || !ValidateMergeGeometry(path)) return false;
+	std::array<double, 3> value{};
+	if (!MergeNumerator(path, value.data())) return false;
+	const double area = std::acos(-1.0) * path.radius * path.radius;
+	for (double& channel : value) {
+		channel /= area;
+		if (!std::isfinite(channel)) return Fail("VCM primary merge estimate is not representable.");
+	}
+	*contributionVm = value;
+	return true;
 }
 
 bool ValidateSubpath(const Scene& scene, const std::vector<PathVertex>& path, bool camera) {
