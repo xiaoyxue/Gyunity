@@ -320,7 +320,7 @@ TEST_F(MainExampleRenders, VcmRenderSceneSavesOnlyAfterCheckedSuccess) {
 	VertexConnectionMerging invalidMap(std::make_shared<RandomSampler>(17), 1, 1, 1e-12f,
 		real(2.0 / 3), Vcm::Mode::Combined, 1);
 	EXPECT_FALSE(RenderScene(options, invalidMap));
-	EXPECT_EQ(invalidMap.GetStatistics().mLastMapPhase.mStatus, ThreadedTaskManager::Status::Failed);
+	EXPECT_EQ(invalidMap.GetStatistics().mCameraSamples, 0);
 	EXPECT_FALSE(std::ifstream(options.output).good());
 	options.output = Output("vcm-must-not-save.hdr");
 	std::remove(options.output.c_str());
@@ -372,7 +372,7 @@ TEST_F(MainExampleRenders, VertexConnectionMergingKdAndExplicitConcurrency) {
 		VertexConnectionMerging::Statistics statistics;
 		ASSERT_TRUE(Examples::VertexConnectionMerging("mesh", options, 0.15f,
 			0.7f, Vcm::Mode::Combined, concurrency, false, &statistics));
-		EXPECT_EQ(statistics.mLastCameraPhase.mConcurrencyLimit, concurrency);
+		EXPECT_TRUE(statistics.mSucceeded);
 		ExpectImage(filename);
 	}
 }

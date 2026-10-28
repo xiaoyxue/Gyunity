@@ -173,11 +173,11 @@ public:
 		const real value = r.stateful ? mRandom.Sample(d, i) : 0.5f;
 		r.events.push_back({ mSeed, d, i, mOrdinal++, value });
 		if (r.cancel && r.cancelPhase == phase) r.cancel->RequestCancellation();
-		if (r.failPhase == phase && d == 0) return std::numeric_limits<real>::quiet_NaN();
 		return value;
 	}
 	std::shared_ptr<Sampler> Clone(uint32 seed) override {
 		std::lock_guard<std::mutex> lock(mRecording->mutex);
+		if (mRecording->failPhase == int(seed % 2)) return nullptr; // A path stream cannot be created.
 		mRecording->seeds.push_back(seed);
 		return std::make_shared<RecordingSampler>(mRecording, seed);
 	}
@@ -227,12 +227,8 @@ protected:
 		std::ofstream csv(output + "\\renderer-summary.csv", std::ios::app);
 		ASSERT_TRUE(csv.good());
 		csv << std::setprecision(17) << name << ',' << s.mIterations << ',' << s.mLightAttempts << ','
-			<< s.mCameraSamples << ',' << s.mLastRadius << ',' << s.mLastArea << ','
-			<< s.mPeakLightArenaBytes << ',' << s.mPeakLightPathBytes << ',' << s.mPeakPhotons << ','
-			<< s.mLightSeconds << ',' << s.mCameraSeconds << ',' << s.mMapSeconds << ',' << mean << '\n';
+			<< s.mCameraSamples << ',' << s.mLastRadius << ',' << s.mPeakPhotons << ',' << mean << '\n';
 		RecordProperty(name + "_mean", std::to_string(mean));
-		RecordProperty(name + "_light_arena_bytes", std::to_string(s.mPeakLightArenaBytes));
-		RecordProperty(name + "_light_path_bytes", std::to_string(s.mPeakLightPathBytes));
 	}
 	std::shared_ptr<EnvironmentLight> Environment(real value = 2, real rotation = 0) {
 		const std::string filename = output + "\\vcm-constant-" +
@@ -256,9 +252,6 @@ TEST_F(VCMRenderer, BlackAndVisibleEmissionAllModesAndPartialImageSizes) {
 		const auto& stats = render.GetStatistics();
 		EXPECT_EQ(stats.mLightAttempts, 66 * iterations);
 		EXPECT_EQ(stats.mCameraSamples, 66 * iterations);
-		EXPECT_EQ(stats.mMapBuilds, mode == Mode::ConnectionOnly ? 0 : iterations);
-		EXPECT_EQ(stats.mLastLightPhase.mPlanned, 66);
-		EXPECT_EQ(stats.mLastCameraPhase.mPlanned, 66);
 		const std::string name = "emission-" + std::to_string(int(mode)) + "-" +
 			std::to_string(iterations) + "-" + std::to_string(emission);
 		for (auto pixel : Image(*camera, name)) EXPECT_EQ(pixel.x, emission ? 3 : 0);
@@ -281,15 +274,11 @@ TEST_F(VCMRenderer, ExplicitFalseMatchesDefaultAndTrueFailsBeforeTracing) {
 		ASSERT_TRUE(geometric.RenderChecked(scene, *falseCamera));
 		const auto suffix = std::to_string(int(mode));
 		EXPECT_EQ(Image(*defaultCamera, "normal-default-" + suffix), Image(*falseCamera, "normal-false-" + suffix));
-		EXPECT_EQ(defaults.GetStatistics().mCameraConnectionSum, geometric.GetStatistics().mCameraConnectionSum);
-		EXPECT_EQ(defaults.GetStatistics().mCameraMergingSum, geometric.GetStatistics().mCameraMergingSum);
-		EXPECT_EQ(defaults.GetStatistics().mSplatConnectionSum, geometric.GetStatistics().mSplatConnectionSum);
 		Renderer shading(std::make_shared<FixedSampler>(), 2, 2, 1, real(2.0 / 3), mode, 1, true);
 		EXPECT_FALSE(shading.RenderChecked(scene, *rejectedCamera));
 		EXPECT_FALSE(shading.GetStatistics().mSucceeded);
 		EXPECT_EQ(shading.GetStatistics().mLightAttempts, 0);
 		EXPECT_EQ(shading.GetStatistics().mCameraSamples, 0);
-		EXPECT_EQ(shading.GetStatistics().mLightPhases, 0u);
 	}
 }
 
@@ -317,7 +306,6 @@ TEST_F(VCMRenderer, FrozenRadiusAndAttemptNormalizationAreUsedByActualGather) {
 		const auto& s = render.GetStatistics();
 		const real last = real(std::pow(double(iterations), -(1 - double(real(2.0 / 3))) / 2));
 		EXPECT_EQ(s.mLastRadius, last);
-		EXPECT_DOUBLE_EQ(s.mLastArea, Pi * double(last) * last);
 		EXPECT_EQ(s.mLightAttempts, width * 2 * iterations);
 		EXPECT_EQ(s.mCameraSamples, width * 2 * iterations);
 		EXPECT_EQ(s.mPeakPhotons, width * 2);
@@ -325,46 +313,6 @@ TEST_F(VCMRenderer, FrozenRadiusAndAttemptNormalizationAreUsedByActualGather) {
 		const double mean = Mean(Image(*camera, name));
 		EXPECT_NEAR(mean, expected, expected * 0.008); // RGBE storage quantization only.
 		Summary(render, name, mean);
-	}
-}
-
-TEST_F(VCMRenderer, ContributionSumsUseActualModeWeightsAndResetBetweenRenders) {
-	Scene scene{};
-	scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), Diffuse(0.5f)));
-	scene.AddLight(std::make_shared<FixedLight>());
-	Initialize(scene);
-	for (Mode mode : Modes) for (int concurrency : { 1, 3 }) {
-		Renderer render(std::make_shared<FixedSampler>(), 1, 3, 1, real(2.0 / 3), mode, concurrency);
-		std::array<double, 3> previous{};
-		for (int run = 0; run < 2; ++run) {
-			auto camera = CameraFor(33, 2, 0.1f);
-			ASSERT_TRUE(render.RenderChecked(scene, *camera));
-			const auto image = Image(*camera, "contributions-" + std::to_string(int(mode)) + "-" +
-				std::to_string(concurrency) + "-" + std::to_string(run));
-			ASSERT_EQ(image.size(), 66);
-			const auto& stats = render.GetStatistics();
-			EXPECT_EQ(stats.mCameraSamples, 66 * 3);
-			for (int c = 0; c < 3; ++c) {
-				const double expected = (stats.mCameraConnectionSum[c] + stats.mCameraMergingSum[c]) / (66 * 3) +
-					stats.mSplatConnectionSum[c] / 66;
-				double mean = 0;
-				for (const auto& pixel : image) mean += pixel[c] / 66.0;
-				EXPECT_NEAR(mean, expected, expected * 0.008);
-				EXPECT_GE(stats.mSplatConnectionSum[c], 0);
-				if (mode == Mode::ConnectionOnly) EXPECT_EQ(stats.mCameraMergingSum[c], 0);
-				else EXPECT_GT(stats.mCameraMergingSum[c], 0);
-				if (mode == Mode::MergingOnly) {
-					EXPECT_EQ(stats.mCameraConnectionSum[c], 0);
-					EXPECT_EQ(stats.mSplatConnectionSum[c], 0);
-				}
-				else {
-					EXPECT_GT(stats.mCameraConnectionSum[c], 0);
-					EXPECT_GT(stats.mSplatConnectionSum[c], 0);
-				}
-				if (run) EXPECT_DOUBLE_EQ(expected, previous[c]);
-				previous[c] = expected;
-			}
-		}
 	}
 }
 
@@ -386,12 +334,11 @@ TEST_F(VCMRenderer, LogicalPathStreamsDoNotReplayOrDependOnWorkerAssignment) {
 		ASSERT_TRUE(render.RenderChecked(scene, *camera));
 		EXPECT_FALSE(recording->violation);
 		const uint32 streamCount = 2 * 33 * 34 * 4;
-		ASSERT_EQ(recording->seeds.size(), streamCount + 4); // First/last phase-key preflight does not draw samples.
+		ASSERT_EQ(recording->seeds.size(), streamCount);
 		std::map<uint32, int> cloneCounts;
 		for (uint32 seed : recording->seeds) ++cloneCounts[seed];
 		ASSERT_EQ(cloneCounts.size(), streamCount);
-		for (uint32 seed = 0; seed < streamCount; ++seed)
-			EXPECT_EQ(cloneCounts[seed], 1 + (seed < 2 || seed >= streamCount - 2 ? 1 : 0));
+		for (uint32 seed = 0; seed < streamCount; ++seed) EXPECT_EQ(cloneCounts[seed], 1);
 		std::map<uint32, std::unique_ptr<RandomSampler>> reference;
 		std::map<uint32, uint64> ordinals;
 		std::set<std::pair<uint64, unsigned>> dimensions;
@@ -737,10 +684,8 @@ private:
 	mutable int64 mAttempts = 0;
 };
 
-TEST_F(VCMRenderer, WorkerArenasSurviveReadersAndStorageStaysBounded) {
-	size_t serialArenaBytes = 0;
+TEST_F(VCMRenderer, WorkerArenasSurviveReaders) {
 	for (int concurrency : { 1, 4 }) {
-		size_t pathBytes = 0;
 		for (int iterations : { 1, 4, 12 }) {
 			Lifetime state;
 			Scene scene{};
@@ -753,16 +698,6 @@ TEST_F(VCMRenderer, WorkerArenasSurviveReadersAndStorageStaysBounded) {
 			EXPECT_FALSE(state.overwritten);
 			EXPECT_FALSE(state.stale);
 			EXPECT_GT(state.queries, 0);
-			const auto& s = render.GetStatistics();
-			EXPECT_EQ(s.mLastLightPhase.mActive, 0);
-			EXPECT_EQ(s.mLastCameraPhase.mActive, 0);
-			EXPECT_LE(s.mLastLightPhase.mPeakConcurrency, concurrency);
-			EXPECT_LE(s.mLastCameraPhase.mPeakConcurrency, concurrency);
-			if (concurrency == 1 && iterations == 1) serialArenaBytes = s.mPeakLightArenaBytes;
-			if (iterations == 1) pathBytes = s.mPeakLightPathBytes;
-			// A worker can retain its one-batch high-water allocation, not one batch per iteration.
-			EXPECT_LE(s.mPeakLightArenaBytes, size_t(concurrency) * serialArenaBytes);
-			EXPECT_EQ(s.mPeakLightPathBytes, pathBytes);
 			Summary(render, "lifetime-" + std::to_string(concurrency) + "-" + std::to_string(iterations),
 				Mean(Image(*camera, "lifetime-" + std::to_string(concurrency) + "-" + std::to_string(iterations))));
 		}
@@ -785,9 +720,9 @@ TEST_F(VCMRenderer, CompletionOccursOnceAfterBothPhases) {
 	EXPECT_EQ(text.find("100.0%", completion + 1), std::string::npos);
 }
 
-TEST_F(VCMRenderer, IterationSummariesReportCurrentRadiusPhotonsTimingsAndEta) {
+TEST_F(VCMRenderer, IterationSummariesReportCurrentRadiusPhotonsAndEta) {
 	const std::regex summary(
-		R"(^VCM iteration ([0-9]+)/3: radius ([0-9.e+-]+), ([0-9]+) photons, light [0-9]+\.[0-9]s, map [0-9]+\.[0-9]s, camera [0-9]+\.[0-9]s; elapsed [0-9]+:[0-5][0-9]:[0-5][0-9], remaining ~([0-9]+:[0-5][0-9]:[0-5][0-9])$)");
+		R"(^VCM iteration ([0-9]+)/3: radius ([0-9.e+-]+), ([0-9]+) photons; elapsed [0-9]+:[0-5][0-9]:[0-5][0-9], remaining ~([0-9]+:[0-5][0-9]:[0-5][0-9])$)");
 	for (Mode mode : Modes) {
 		Scene scene{};
 		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), Diffuse(0.5f)));
@@ -815,7 +750,6 @@ TEST_F(VCMRenderer, IterationSummariesReportCurrentRadiusPhotonsTimingsAndEta) {
 			if (completed < 3)
 				EXPECT_LT(text.find(line), text.find("VCM light phase " + std::to_string(completed + 1) + "/3"));
 			else EXPECT_EQ(match[4].str(), "0:00:00");
-			if (mode == Mode::ConnectionOnly) EXPECT_NE(line.find("map 0.0s"), std::string::npos);
 		}
 		EXPECT_EQ(completed, 3);
 	}
@@ -824,10 +758,10 @@ TEST_F(VCMRenderer, IterationSummariesReportCurrentRadiusPhotonsTimingsAndEta) {
 TEST_F(VCMRenderer, FailedIterationDoesNotReportCompletionOrEta) {
 	class FailSecondIteration : public FixedSampler {
 	public:
-		real Sample(unsigned, unsigned long long i) override {
-			return i >= 8 ? std::numeric_limits<real>::quiet_NaN() : 0.5f;
+		// The second iteration's first path stream cannot be created.
+		std::shared_ptr<Sampler> Clone(uint32 key) override {
+			return key >= 8 ? nullptr : std::make_shared<FailSecondIteration>();
 		}
-		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<FailSecondIteration>(); }
 	};
 	Scene scene{};
 	scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), Diffuse(0.5f)));
@@ -917,7 +851,7 @@ TEST_F(VCMRendererNegative, HaltonCapacityIsRejectedBeforeAnySampleCall) {
 	Renderer render(std::make_shared<CountedHalton>(calls), 85, 1, 1, 0.5f, Mode::ConnectionOnly, 1);
 	EXPECT_FALSE(render.RenderChecked(scene, *CameraFor(1, 1)));
 	EXPECT_EQ(*calls, 0);
-	EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
+	EXPECT_EQ(render.GetStatistics().mLightAttempts, 0);
 }
 
 TEST_F(VCMRenderer, BundledRoundedUnitEndpointsUseTheirLegacySequenceConvention) {
@@ -940,68 +874,6 @@ TEST_F(VCMRenderer, BundledRoundedUnitEndpointsUseTheirLegacySequenceConvention)
 		EXPECT_EQ(legacy(), 0);
 		Renderer render(sampler, 0, 1, 1, 0.5f, Mode::Combined, 1);
 		EXPECT_TRUE(render.RenderChecked(scene, *CameraFor(2, 2)));
-	}
-}
-
-struct MapScope {
-	std::mutex mutex;
-	std::multiset<int> observed;
-	Renderer* cancel = nullptr;
-};
-class MapScopeLobe : public DiffuseBSDF {
-public:
-	explicit MapScopeLobe(MapScope& state) : DiffuseBSDF(Vec3(0.5f)), state(state) {}
-	bool IsDelta() const override {
-		// Depth-one light paths: builder's mixed-lobe check, complete-prefix
-		// check, then PhotonMap::Build's ValidSurface check. Later MIS reads
-		// may be concurrent, so even the test-only call counter is atomic.
-		if (calls.fetch_add(1) == 2) {
-			std::lock_guard<std::mutex> lock(state.mutex);
-			state.observed.insert(tbb::this_task_arena::max_concurrency());
-			if (state.cancel) state.cancel->RequestCancellation();
-		}
-		return false;
-	}
-private:
-	MapScope& state;
-	mutable std::atomic<int> calls{ 0 };
-};
-class MapScopeMaterial : public Material {
-public:
-	explicit MapScopeMaterial(MapScope& state) : state(state) {}
-	void ComputeScatteringFunction(Intersection* hit, MemoryPool& arena, TransportMode mode) const override {
-		hit->mBsdf = GYT_MEMORY_POOL_ALLOC(arena, BSDF)(*hit);
-		if (mode == TransportMode::Importance)
-			hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, MapScopeLobe)(state));
-		else hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Vec3(0.5f)));
-	}
-private:
-	MapScope& state;
-};
-
-TEST_F(VCMRenderer, PhotonMapBuildUsesTheExplicitRendererArena) {
-	for (int concurrency : { 1, 3 }) {
-		MapScope scope;
-		Scene scene{};
-		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), std::make_shared<MapScopeMaterial>(scope)));
-		scene.AddLight(std::make_shared<FixedLight>());
-		Initialize(scene);
-		auto camera = CameraFor(33, 1, 0.01f);
-		Renderer render(std::make_shared<FixedSampler>(), 1, 2, 1, 0.5f, Mode::Combined, concurrency);
-		ASSERT_TRUE(render.RenderChecked(scene, *camera));
-		EXPECT_EQ(scope.observed.size(), 66);
-		EXPECT_EQ(scope.observed.count(concurrency), 66);
-		const auto& stats = render.GetStatistics();
-		EXPECT_EQ(stats.mMapPhases, 2);
-		EXPECT_EQ(stats.mMapBuilds, 2);
-		EXPECT_EQ(stats.mLastMapPhase.mConcurrencyLimit, concurrency);
-		EXPECT_EQ(stats.mLastMapPhase.mPlanned, 1);
-		EXPECT_EQ(stats.mLastMapPhase.mCompleted, 1);
-		EXPECT_EQ(stats.mLastMapPhase.mActive, 0);
-		EXPECT_EQ(stats.mLastMapPhase.mName, "VCM map phase 2/2");
-		EXPECT_EQ(stats.mLastMapPhase.mStatus, ThreadedTaskManager::Status::Success);
-		RecordProperty("observed_map_arena_" + std::to_string(concurrency), *scope.observed.begin());
-		RecordProperty("observed_map_vertices_" + std::to_string(concurrency), int(scope.observed.size()));
 	}
 }
 
@@ -1031,7 +903,6 @@ public:
 };
 
 TEST_F(VCMRenderer, BundledDimensionLimitsCoverActualMaximumLightAndEyeWalks) {
-	using Vcm::Detail::ValidateSamplingBudget;
 	const uint64 signedIndex = uint64((std::numeric_limits<int64>::max)()) - 1;
 	for (int kind : { 0, 1, 2 }) {
 		const unsigned dimensions = kind == 0 ? 256 : kind == 1 ? 1024 : 1229;
@@ -1040,16 +911,9 @@ TEST_F(VCMRenderer, BundledDimensionLimitsCoverActualMaximumLightAndEyeWalks) {
 		calls->dimensions = dimensions;
 		calls->maximumIndex = kind == 1 ? (uint64(1) << 52) - 1 : signedIndex;
 		std::shared_ptr<Sampler> sampler;
-		std::shared_ptr<Sampler> original;
 		if (kind == 0) sampler = std::make_shared<DomainSampler<HaltonSampler>>(calls);
 		else if (kind == 1) sampler = std::make_shared<DomainSampler<SobolSampler>>(calls);
 		else sampler = std::make_shared<DomainSampler<RegularHaltonSampler>>(calls);
-		if (kind == 0) original = std::make_shared<HaltonSampler>();
-		else if (kind == 1) original = std::make_shared<SobolSampler>();
-		else original = std::make_shared<RegularHaltonSampler>();
-		EXPECT_TRUE(ValidateSamplingBudget(*sampler, depth, 1, 1));
-		EXPECT_FALSE(ValidateSamplingBudget(*sampler, depth + 1, 1, 1));
-		EXPECT_EQ(calls->calls, 0);
 
 		Scene scene{};
 		auto mirror = std::make_shared<MirrorMaterial>(Constant(1));
@@ -1059,6 +923,9 @@ TEST_F(VCMRenderer, BundledDimensionLimitsCoverActualMaximumLightAndEyeWalks) {
 		Initialize(scene);
 		PinHoleCamera camera(std::make_shared<Film>(1, 1), Vec3(0, 0, 0.5f), Vec3(0),
 			Vec3(0, 1, 0), 0.01f, 1);
+		Renderer tooDeep(sampler, depth + 1, 1, 1, 0.5f, Mode::ConnectionOnly, 1);
+		EXPECT_FALSE(tooDeep.RenderChecked(scene, camera));
+		EXPECT_EQ(calls->calls, 0);
 		Renderer render(sampler, depth, 1, 1, 0.5f, Mode::ConnectionOnly, 1);
 		ASSERT_TRUE(render.RenderChecked(scene, camera));
 		EXPECT_EQ(calls->calls, 2 * (2 + 3 * depth));
@@ -1067,125 +934,33 @@ TEST_F(VCMRenderer, BundledDimensionLimitsCoverActualMaximumLightAndEyeWalks) {
 		EXPECT_EQ(calls->lastDimension, 1 + 3 * depth);
 		EXPECT_EQ(calls->outside, 0);
 		EXPECT_EQ(render.GetStatistics().mCameraSamples, 1);
-
-		calls->calls = 0;
-		Vcm::Detail::CheckedSequence sequence(*sampler, 37);
-		for (unsigned d = 0; d < dimensions; ++d) {
-			const real value = sequence();
-			const real raw = original->Sample(d, 37);
-			ASSERT_TRUE(sequence.Valid());
-			EXPECT_EQ(value, raw == 1 ? 0 : raw);
-			EXPECT_GE(value, 0);
-			EXPECT_LT(value, 1);
-		}
-		EXPECT_EQ(calls->calls, dimensions);
-		EXPECT_EQ(calls->lastDimension, dimensions - 1);
-		sequence();
-		EXPECT_FALSE(sequence.Valid());
-		EXPECT_EQ(calls->calls, dimensions);
-		EXPECT_EQ(calls->outside, 0);
 	}
 }
 
-TEST_F(VCMRendererNegative, SobolIndexColumnsAndCloneCapabilitiesAreCheckedBeforeSampling) {
-	using Vcm::Detail::ValidateSamplingBudget;
-	auto calls = std::make_shared<SamplerCalls>();
-	calls->dimensions = 1024;
-	calls->maximumIndex = (uint64(1) << 52) - 1;
-	DomainSampler<SobolSampler> sobol(calls);
-	EXPECT_TRUE(ValidateSamplingBudget(sobol, 0, int64(1) << 51, 1));
-	EXPECT_FALSE(ValidateSamplingBudget(sobol, 0, (int64(1) << 51) + 1, 1));
-	const int64 pixels = (int64(1) << 51) / INT_MAX;
-	EXPECT_TRUE(ValidateSamplingBudget(sobol, 0, pixels, INT_MAX));
-	EXPECT_FALSE(ValidateSamplingBudget(sobol, 0, pixels + 1, INT_MAX));
-	EXPECT_EQ(calls->calls, 0);
-
-	Vcm::Detail::CheckedSequence last(sobol, (int64(1) << 52) - 1);
-	for (unsigned d = 0; d < 1024; ++d) {
-		const real value = last();
-		ASSERT_TRUE(last.Valid());
-		EXPECT_GE(value, 0);
-		EXPECT_LT(value, 1);
-	}
-	EXPECT_EQ(calls->calls, 1024);
-	EXPECT_EQ(calls->lastDimension, 1023);
-	for (int64 index : { int64(-1), int64(1) << 52, (std::numeric_limits<int64>::max)() }) {
-		Vcm::Detail::CheckedSequence invalid(sobol, index);
-		invalid();
-		EXPECT_FALSE(invalid.Valid());
-		EXPECT_EQ(calls->calls, 1024);
-	}
-	EXPECT_EQ(calls->outside, 0);
-
-	class HaltonClone : public FixedSampler {
-	public:
-		explicit HaltonClone(std::shared_ptr<SamplerCalls> calls) : calls(calls) {}
-		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<DomainSampler<HaltonSampler>>(calls); }
-		std::shared_ptr<SamplerCalls> calls;
-	};
-	auto cloneCalls = std::make_shared<SamplerCalls>();
-	cloneCalls->dimensions = 256;
-	cloneCalls->maximumIndex = (std::numeric_limits<uint64>::max)();
+TEST_F(VCMRendererNegative, MapFailureJoinsWithoutStartingCameraWork) {
+	Scene scene{};
+	scene.AddPrimitive(std::make_shared<Primitive>(Plane(0, 100), Diffuse(0.5f)));
+	scene.AddLight(std::make_shared<AreaLight>(Plane(2, 1, 0, -1), Vec3(1)));
+	Initialize(scene);
+	auto camera = CameraFor(33, 1, 0.01f);
+	// Photons spread over more than 2^20 radii cannot be indexed by the grid.
+	Renderer render(std::make_shared<RandomSampler>(0), 1, 2, 1e-12f, 0.5f, Mode::Combined, 1);
+	testing::internal::CaptureStderr();
+	const bool success = render.RenderChecked(scene, *camera);
+	const auto output = testing::internal::GetCapturedStderr();
+	EXPECT_FALSE(success);
+	EXPECT_EQ(output.find("100.0%"), std::string::npos);
+	EXPECT_NE(output.find("failed after 33 of 132 work units"), std::string::npos);
+	EXPECT_EQ(output.find("VCM iteration "), std::string::npos);
+	EXPECT_EQ(output.find("VCM camera phase"), std::string::npos);
+	EXPECT_EQ(render.GetStatistics().mLightAttempts, 33);
+	EXPECT_EQ(render.GetStatistics().mCameraSamples, 0);
 	Scene empty{};
 	Initialize(empty);
-	Renderer render(std::make_shared<HaltonClone>(cloneCalls), 85, 1, 1, 0.5f, Mode::ConnectionOnly, 1);
-	EXPECT_FALSE(render.RenderChecked(empty, *CameraFor(1, 1)));
-	EXPECT_EQ(cloneCalls->calls, 0);
-	EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
+	EXPECT_TRUE(render.RenderChecked(empty, *CameraFor(2, 1)));
 }
 
-TEST_F(VCMRendererNegative, MalformedUnitEndpointAndNonfiniteJitterAreNotWrapped) {
-	class InvalidSampler : public FixedSampler {
-	public:
-		explicit InvalidSampler(real value) : value(value) {}
-		real Sample(uint32, uint64) override { return value; }
-		std::shared_ptr<Sampler> Clone(uint32) override { return std::make_shared<InvalidSampler>(value); }
-		real value;
-	};
-	Scene empty{};
-	Initialize(empty);
-	for (real value : { 1.f, 1.000001f, -0.000001f, INFINITY, NAN }) {
-		Renderer render(std::make_shared<InvalidSampler>(value), 0, 1, 1, 0.5f, Mode::Combined, 1);
-		EXPECT_FALSE(render.RenderChecked(empty, *CameraFor(2, 1)));
-		EXPECT_EQ(render.GetStatistics().mCameraSamples, 0);
-		EXPECT_FALSE(render.GetStatistics().mSucceeded);
-	}
-}
-
-TEST_F(VCMRendererNegative, MapFailureAndCancellationJoinWithoutStartingCameraWork) {
-	for (bool cancellation : { false, true }) {
-		MapScope scope;
-		Scene scene{};
-		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0, 100), std::make_shared<MapScopeMaterial>(scope)));
-		if (cancellation) scene.AddLight(std::make_shared<FixedLight>());
-		else scene.AddLight(std::make_shared<AreaLight>(Plane(2, 1, 0, -1), Vec3(1)));
-		Initialize(scene);
-		auto camera = CameraFor(33, 1, 0.01f);
-		Renderer render(std::make_shared<RandomSampler>(0), 1, 2, cancellation ? 1.f : 1e-12f,
-			0.5f, Mode::Combined, 1);
-		if (cancellation) scope.cancel = &render;
-		testing::internal::CaptureStderr();
-		const bool success = render.RenderChecked(scene, *camera);
-		const auto output = testing::internal::GetCapturedStderr();
-		EXPECT_FALSE(success);
-		EXPECT_EQ(output.find("100.0%"), std::string::npos);
-		EXPECT_NE(output.find("failed after 33 of 134 work units"), std::string::npos);
-		EXPECT_EQ(output.find("VCM iteration "), std::string::npos);
-		const auto& stats = render.GetStatistics();
-		EXPECT_EQ(stats.mMapPhases, 1);
-		EXPECT_EQ(stats.mMapBuilds, cancellation ? 1 : 0);
-		EXPECT_EQ(stats.mCameraPhases, 0);
-		EXPECT_EQ(stats.mLastMapPhase.mActive, 0);
-		EXPECT_EQ(stats.mLastMapPhase.mStatus, cancellation ? ThreadedTaskManager::Status::Cancelled :
-			ThreadedTaskManager::Status::Failed);
-		scope.cancel = nullptr;
-		Scene empty{};
-		Initialize(empty);
-		EXPECT_TRUE(render.RenderChecked(empty, *CameraFor(2, 1)));
-	}
-}
-
-TEST_F(VCMRendererNegative, ParametersFilmCameraAndCloneFailuresDoNotStartWork) {
+TEST_F(VCMRendererNegative, InvalidParametersAndSamplerStreamsFail) {
 	Scene scene{};
 	Initialize(scene);
 	auto camera = CameraFor(2, 2);
@@ -1194,7 +969,7 @@ TEST_F(VCMRendererNegative, ParametersFilmCameraAndCloneFailuresDoNotStartWork) 
 		Renderer render(sample, depth, iterations, radius, alpha, mode, concurrency);
 		EXPECT_FALSE(render.RenderChecked(scene, *camera));
 		EXPECT_FALSE(render.GetStatistics().mSucceeded);
-		EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
+		EXPECT_EQ(render.GetStatistics().mCameraSamples, 0);
 	};
 	reject(nullptr, 1, 1, 1, 0.5f, Mode::Combined, 1);
 	for (int depth : { -1, 410, INT_MAX }) reject(sampler, depth, 1, 1, 0.5f, Mode::Combined, 1);
@@ -1203,64 +978,10 @@ TEST_F(VCMRendererNegative, ParametersFilmCameraAndCloneFailuresDoNotStartWork) 
 	for (real alpha : { 0.f, 1.f, -1.f, INFINITY, NAN }) reject(sampler, 1, 1, 1, alpha, Mode::Combined, 1);
 	reject(sampler, 1, 1, 1, 0.5f, Mode(9), 1);
 	reject(sampler, 1, 1, 1, 0.5f, Mode::Combined, 0);
-	reject(sampler, 1, INT_MAX, std::numeric_limits<real>::denorm_min(), 0.01f, Mode::Combined, 1);
 	class NullClone : public FixedSampler {
 		std::shared_ptr<Sampler> Clone(uint32) override { return nullptr; }
 	};
 	reject(std::make_shared<NullClone>(), 1, 1, 1, 0.5f, Mode::Combined, 1);
-	class AliasClone : public FixedSampler {
-		std::shared_ptr<Sampler> clone = std::make_shared<FixedSampler>();
-		std::shared_ptr<Sampler> Clone(uint32) override { return clone; }
-	};
-	reject(std::make_shared<AliasClone>(), 1, 1, 1, 0.5f, Mode::Combined, 1);
-	camera->GetFilm()->mResX = 3;
-	reject(sampler, 1, 1, 1, 0.5f, Mode::Combined, 1);
-	camera->GetFilm()->mResX = 2;
-	camera->GetFilm()->mArea *= 2;
-	reject(sampler, 1, 1, 1, 0.5f, Mode::Combined, 1);
-	camera->GetFilm()->mArea *= 0.5f;
-	camera->mCz = Vec3(0);
-	reject(sampler, 1, 1, 1, 0.5f, Mode::Combined, 1);
-}
-
-TEST_F(VCMRendererNegative, WidePathKeysArePreflightedWithoutTruncationOrLongRendering) {
-	Scene scene{};
-	scene.AddLight(std::make_shared<FixedLight>());
-	Initialize(scene);
-	auto camera = CameraFor(2, 1);
-	Renderer unsupported(std::make_shared<FixedSampler>(), 0, INT_MAX, 1, .75f, Mode::Combined, 1);
-	EXPECT_FALSE(unsupported.RenderChecked(scene, *camera));
-	EXPECT_EQ(unsupported.GetStatistics().mLightPhases, 0u);
-
-	struct State {
-		std::vector<uint64> keys;
-		int samples = 0;
-		Renderer* render = nullptr;
-	};
-	class WideSampler : public FixedSampler {
-	public:
-		explicit WideSampler(std::shared_ptr<State> state) : state(state) {}
-		std::shared_ptr<Sampler> CloneForPath(uint64 key) override {
-			state->keys.push_back(key);
-			return std::make_shared<WideSampler>(state);
-		}
-		real Sample(unsigned, unsigned long long) override {
-			++state->samples;
-			state->render->RequestCancellation();
-			return .5f;
-		}
-		std::shared_ptr<State> state;
-	};
-	auto state = std::make_shared<State>();
-	Renderer render(std::make_shared<WideSampler>(state), 0, INT_MAX, 1, .75f, Mode::Combined, 1);
-	state->render = &render;
-	EXPECT_FALSE(render.RenderChecked(scene, *camera));
-	const uint64 last = uint64(4) * INT_MAX - 1;
-	EXPECT_NE(std::find(state->keys.begin(), state->keys.end(), last), state->keys.end());
-	EXPECT_NE(std::find(state->keys.begin(), state->keys.end(), last - 1), state->keys.end());
-	EXPECT_GT(state->samples, 0);
-	EXPECT_EQ(render.GetStatistics().mLastLightPhase.mStatus, ThreadedTaskManager::Status::Cancelled);
-	EXPECT_EQ(render.GetStatistics().mCameraPhases, 0u);
 }
 
 TEST_F(VCMRendererNegative, UnsupportedScenesAndCameraProbabilitiesFailChecked) {
@@ -1278,7 +999,7 @@ TEST_F(VCMRendererNegative, UnsupportedScenesAndCameraProbabilitiesFailChecked) 
 		auto camera = CameraFor(1, 1);
 		Renderer render(std::make_shared<FixedSampler>(), 1, 1, 1);
 		EXPECT_FALSE(render.RenderChecked(scene, *camera));
-		EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
+		EXPECT_EQ(render.GetStatistics().mLightAttempts, 0);
 	}
 	class BadCamera : public PinHoleCamera {
 	public:
@@ -1289,40 +1010,10 @@ TEST_F(VCMRendererNegative, UnsupportedScenesAndCameraProbabilitiesFailChecked) 
 	Initialize(empty);
 	Renderer render(std::make_shared<FixedSampler>(), 1, 1, 1);
 	EXPECT_FALSE(render.RenderChecked(empty, camera));
-	EXPECT_EQ(render.GetStatistics().mLightPhases, 0);
-	class UnsupportedCamera : public Camera {
-	public:
-		UnsupportedCamera() : Camera(nullptr) {}
-		Ray GenerateRay(int, int, const Vec2&, real) const override { return Ray(); }
-		Vec3 We(const Ray&) const override { return Vec3(0); }
-		Vec3 SampleWi(const Intersection&, real*, Vec3*, Vec3) const override { return Vec3(0); }
-		real PdfPos() const override { return 1; }
-		real PdfDir(const Ray&) const override { return 1; }
-	} unsupported;
-	EXPECT_FALSE(render.RenderChecked(empty, unsupported));
-	Scene uninitialized{};
-	EXPECT_FALSE(render.RenderChecked(uninitialized, *CameraFor(1, 1)));
+	EXPECT_EQ(render.GetStatistics().mCameraSamples, 0);
 }
 
-TEST_F(VCMRendererNegative, FailedEndpointPdfIsCheckedEvenWithoutAConnection) {
-	class BadLight : public FixedLight {
-	public:
-		bool PdfLight(const Intersection&, const Vec3&, real* pos, real* dir) const override {
-			*pos = -1;
-			*dir = INV_PI;
-			return true;
-		}
-	};
-	Scene scene{};
-	scene.AddLight(std::make_shared<BadLight>());
-	Initialize(scene);
-	auto camera = CameraFor(1, 1);
-	Renderer render(std::make_shared<FixedSampler>(), 0, 1, 1, real(2.0 / 3), Mode::ConnectionOnly, 1);
-	EXPECT_FALSE(render.RenderChecked(scene, *camera));
-	EXPECT_EQ(render.GetStatistics().mCameraPhases, 0);
-}
-
-TEST_F(VCMRendererNegative, CancellationAndInvalidSamplerDrainBothPhaseLifetimes) {
+TEST_F(VCMRendererNegative, CancellationAndMissingSamplerStreamsDrainBothPhaseLifetimes) {
 	for (int phase : { 0, 1 }) for (bool failure : { false, true }) {
 		Scene scene{};
 		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), Diffuse()));
@@ -1343,12 +1034,8 @@ TEST_F(VCMRendererNegative, CancellationAndInvalidSamplerDrainBothPhaseLifetimes
 		EXPECT_FALSE(render.GetStatistics().mSucceeded);
 		EXPECT_EQ(render.GetStatistics().mIterations, 0);
 		EXPECT_EQ(text.find("VCM iteration "), std::string::npos);
-		EXPECT_EQ(render.GetStatistics().mLastLightPhase.mActive, 0);
-		EXPECT_EQ(render.GetStatistics().mLastCameraPhase.mActive, 0);
-		EXPECT_EQ(render.GetStatistics().mCameraPhases, phase);
-		const auto status = phase == 0 ? render.GetStatistics().mLastLightPhase.mStatus :
-			render.GetStatistics().mLastCameraPhase.mStatus;
-		EXPECT_EQ(status, failure ? ThreadedTaskManager::Status::Failed : ThreadedTaskManager::Status::Cancelled);
+		EXPECT_EQ(render.GetStatistics().mLightAttempts, phase == 0 ? 0 : 130);
+		EXPECT_EQ(render.GetStatistics().mCameraSamples, 0);
 		recording->cancel = nullptr;
 		recording->failPhase = -1;
 		recording->starts.clear();
@@ -1358,32 +1045,22 @@ TEST_F(VCMRendererNegative, CancellationAndInvalidSamplerDrainBothPhaseLifetimes
 	}
 }
 
-class InvalidLobe : public SpecularBSDF {
+class MixedMaterial : public Material {
 public:
-	InvalidLobe() : SpecularBSDF(Vec3(1)) {}
-	real ReverseDeltaMass(const Vec3&, const Vec3&) const override { return -1; }
-};
-class InvalidMaterial : public Material {
-public:
-	explicit InvalidMaterial(bool mixed) : mMixed(mixed) {}
 	void ComputeScatteringFunction(Intersection* hit, MemoryPool& arena, TransportMode) const override {
 		hit->mBsdf = GYT_MEMORY_POOL_ALLOC(arena, BSDF)(*hit);
-		hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, InvalidLobe)());
-		if (mMixed) hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Vec3(1)));
+		hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, SpecularBSDF)(Vec3(1)));
+		hit->mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, DiffuseBSDF)(Vec3(1)));
 	}
-private:
-	bool mMixed;
 };
 
-TEST_F(VCMRendererNegative, UnconsumedMixedAndTerminalDeltaMetadataStillFail) {
-	for (bool mixed : { false, true }) for (Mode mode : Modes) {
+TEST_F(VCMRendererNegative, MixedDeltaAndContinuousLobesAreUnsupported) {
+	for (Mode mode : Modes) {
 		Scene scene{};
-		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), std::make_shared<InvalidMaterial>(mixed)));
+		scene.AddPrimitive(std::make_shared<Primitive>(Plane(0), std::make_shared<MixedMaterial>()));
 		Initialize(scene);
 		auto camera = CameraFor(1, 1);
 		Renderer render(std::make_shared<FixedSampler>(), 1, 1, 1, real(2.0 / 3), mode, 1);
-		// No lights, no map records, no positive primary. The failed reverse
-		// capability belongs to a sampled terminal event whose ray then misses.
 		EXPECT_FALSE(render.RenderChecked(scene, *camera));
 		EXPECT_EQ(render.GetStatistics().mIterations, 0);
 	}

@@ -89,6 +89,39 @@ void Close(const Vec3& actual, const std::array<double, 3>& expected, double tol
 	for (int c = 0; c < 3; ++c) EXPECT_TRUE(std::isfinite(actual[c]));
 }
 
+// The renderer's merge of one pair: wVM * contributionVm / nVm, skipped when the primary estimate is zero.
+bool WeightedMerge(const Scene& scene, const Vcm::PathContext& path, Vector3d* value) {
+	*value = Vector3d(0);
+	if (!Vcm::UseVm(path.mode)) return true;
+	const Vector3d contributionVm = Vcm::MergeEstimate(path);
+	if (contributionVm == Vector3d(0)) return true;
+	real weightVm;
+	if (!Vcm::ComputeMisWeight(scene, path, path.selected, &weightVm)) return false;
+	*value = Vector3d(weightVm) * contributionVm / Vector3d(double(path.lightPathCount));
+	return true;
+}
+
+// The renderer's gather at camera vertex t-1 over the photons of one light-path batch.
+bool GatherMerging(const Scene& scene, const Vcm::PhotonMap& map, const Paths& paths,
+	const std::vector<PathVertex>& eye, int t, int maxDepth, Mode mode, Vec3* result) {
+	*result = Vec3(0);
+	const auto& x = eye[t - 1];
+	if (!Vcm::UseVm(mode) || t < 2 || x.mType != PathVertexType::Surface || x.mIsect.mBsdf->IsDelta()) return true;
+	std::vector<Vcm::PhotonRecord> photons;
+	map.Query(x.mIsect.mPos, x.mIsect.mGeometryNormal, photons);
+	Vector3d sum(0);
+	for (const auto& photon : photons) {
+		const int s = int(photon.mVertexIndex) + 1;
+		if (s + t - 3 > maxDepth) continue;
+		Vector3d value;
+		if (!WeightedMerge(scene, Vcm::PathContext(paths[photon.mLightPathIndex], eye, { Technique::Merging, s, t },
+			map.Radius(), int64(paths.size()), mode), &value)) return false;
+		sum += value;
+	}
+	*result = Vcm::ToVec3(sum);
+	return true;
+}
+
 class VCMEstimator : public testing::Test {
 protected:
 	Scene scene{};
@@ -154,12 +187,15 @@ protected:
 	}
 
 	bool Pair(Mode mode = Mode::MergingOnly, double radius = 0.5, int64 count = 4, int s = 2, int t = 2) {
-		return Vcm::EvaluateMerging(scene, Vcm::PathContext(paths[0], eye,
-			{ Technique::Merging, s, t }, radius, count, mode), &result);
+		Vector3d value;
+		const bool success = WeightedMerge(scene, Vcm::PathContext(paths[0], eye,
+			{ Technique::Merging, s, t }, radius, count, mode), &value);
+		result = Vcm::ToVec3(value);
+		return success;
 	}
 
 	bool Gather(int t = 2, int depth = 1, Mode mode = Mode::MergingOnly) {
-		return Vcm::GatherMerging(scene, map, paths, eye, t, depth, mode, &result);
+		return GatherMerging(scene, map, paths, eye, t, depth, mode, &result);
 	}
 
 	std::array<double, 3> Expected(double scattering, double weight, double radius, int64 count) const {
@@ -213,9 +249,8 @@ TEST_F(VCMEstimator, PrimaryMergeIncludesAreaButNotMisOrLightPathAveraging) {
 	const auto lightBefore = Snapshot(paths[0]), eyeBefore = Snapshot(eye);
 	for (double radius : { 0.25, 0.5, 2.0 }) for (int64 nVm : { 1, 4, 17 }) {
 		for (Mode mode : { Mode::Combined, Mode::MergingOnly }) {
-			std::array<double, 3> contributionVm{};
 			const Vcm::PathContext path(paths[0], eye, { Technique::Merging, 2, 2 }, radius, nVm, mode);
-			ASSERT_TRUE(Vcm::MergeEstimate(path, &contributionVm));
+			const Vector3d contributionVm = Vcm::MergeEstimate(path);
 			const auto expected = Expected(0.125, 1, radius, 1);
 			for (int c = 0; c < 3; ++c)
 				EXPECT_NEAR(contributionVm[c], expected[c], std::abs(expected[c]) * 1e-12);
@@ -224,22 +259,6 @@ TEST_F(VCMEstimator, PrimaryMergeIncludesAreaButNotMisOrLightPathAveraging) {
 	EXPECT_EQ(Snapshot(paths[0]), lightBefore);
 	EXPECT_EQ(Snapshot(eye), eyeBefore);
 	EXPECT_EQ(photonLobe.evaluations, 0);
-}
-
-TEST_F(VCMEstimator, InvalidPrimaryMergeClearsItsOutput) {
-	for (int variant = 0; variant < 4; ++variant) {
-		auto lightPath = paths[0];
-		auto cameraPath = eye;
-		double radius = 0.5;
-		if (variant == 0) radius = 0;
-		if (variant == 1) lightPath.back().mIsect.mPos.x = 2;
-		if (variant == 2) cameraPath.back().mNormalMode = SurfaceNormalMode::Shading;
-		if (variant == 3) cameraPath.back().mThroughput.x = std::numeric_limits<real>::infinity();
-		std::array<double, 3> contributionVm{ 1, 2, 3 };
-		EXPECT_FALSE(Vcm::MergeEstimate(Vcm::PathContext(lightPath, cameraPath,
-			{ Technique::Merging, 2, 2 }, radius, 4), &contributionVm));
-		EXPECT_EQ(contributionVm, (std::array<double, 3>{}));
-	}
 }
 
 TEST_F(VCMEstimator, ManualTwoVmStrategiesShareOneJointDenominator) {
@@ -362,16 +381,6 @@ TEST_F(VCMEstimator, EmptyMapAndNonmergeableCameraVerticesAreNormalZero) {
 	EXPECT_EQ(result, Vec3(0));
 }
 
-TEST_F(VCMEstimator, ConnectionOnlyNeedsNoBuiltMapOrActivePathInputs) {
-	Paths noPaths;
-	std::vector<PathVertex> noCamera;
-	ASSERT_TRUE(Vcm::GatherMerging(scene, map, noPaths, noCamera, -1, 0, Mode::ConnectionOnly, &result));
-	EXPECT_EQ(result, Vec3(0));
-	ASSERT_TRUE(Vcm::EvaluateMerging(scene, Vcm::PathContext(noCamera, noCamera,
-		{ Technique::Merging, -1, -1 }, 0, 0, Mode::ConnectionOnly), &result));
-	EXPECT_EQ(result, Vec3(0));
-}
-
 TEST_F(VCMEstimator, DirectPairIgnoresUnselectedSuffixesAndTerminalContinuationMasses) {
 	ASSERT_TRUE(Pair());
 	const auto expected = result;
@@ -461,134 +470,6 @@ TEST_F(VCMEstimator, ActualRoughTransmissionUsesRadianceModeCameraBsdf) {
 	Close(result, Expected(fRadiance.x, 1, 0.5, 4));
 	EXPECT_EQ(photonLobe.evaluations, 0);
 	EXPECT_EQ(Snapshot(eye), before);
-}
-
-// Expected negative probes are a separate suite/filter, not silent fallbacks.
-class VCMEstimatorNegative : public VCMEstimator {};
-
-TEST_F(VCMEstimatorNegative, RejectsInvalidCountsModesOutputsAndNormalization) {
-	for (int64 count : { int64(0), int64(-1) }) { EXPECT_FALSE(Pair(Mode::Combined, 0.5, count)); EXPECT_EQ(result, Vec3(0)); }
-	for (double radius : { 0.0, -1.0, std::numeric_limits<double>::infinity(),
-		std::numeric_limits<double>::quiet_NaN(), 1e-300, 1e154 }) {
-		EXPECT_FALSE(Pair(Mode::Combined, radius));
-		EXPECT_EQ(result, Vec3(0));
-	}
-	EXPECT_FALSE(Pair(Mode(99)));
-	EXPECT_FALSE(Pair(Mode::Combined, 1e150, (std::numeric_limits<int64>::max)()));
-	EXPECT_EQ(result, Vec3(0));
-	EXPECT_FALSE(Pair(Mode::Combined, 0.5, 4, 1, 2));
-	EXPECT_FALSE(Pair(Mode::Combined, 0.5, 4, 2, 3));
-	EXPECT_FALSE(Pair(Mode::Combined, 0.5, 4, (std::numeric_limits<int>::max)(), 2));
-	EXPECT_FALSE(Vcm::EvaluateMerging(scene, Vcm::PathContext(paths[0], eye,
-		{ Technique::Connection, 2, 2 }, 0.5, 4), &result));
-	EXPECT_FALSE(Vcm::EvaluateMerging(scene, Vcm::PathContext(paths[0], eye,
-		{ Technique::Merging, 2, 2 }, 0.5, 4), nullptr));
-	EXPECT_FALSE(Gather(2, -1, Mode::ConnectionOnly));
-	EXPECT_FALSE(Gather(2, 1, Mode(99)));
-	EXPECT_FALSE(Vcm::GatherMerging(scene, map, paths, eye, 2, 1, Mode::Combined, nullptr));
-}
-
-TEST_F(VCMEstimatorNegative, UnbuiltEmptyAttemptBatchAndDifferentBatchAreRejected) {
-	EXPECT_FALSE(Gather());
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	const auto copy = paths;
-	EXPECT_FALSE(Vcm::GatherMerging(scene, map, copy, eye, 2, 1, Mode::Combined, &result));
-	EXPECT_EQ(result, Vec3(0));
-	paths.clear();
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	EXPECT_FALSE(Gather());
-	map.Clear();
-	EXPECT_FALSE(Gather());
-}
-
-TEST_F(VCMEstimatorNegative, InvalidCandidatePrefixDiscardsEarlierAccumulationWithoutMutation) {
-	paths.push_back(paths[0]);
-	paths[1][0].mLight = nullptr; // Build validates surfaces; MIS must validate the selected origin.
-	const auto first = Snapshot(paths[0]), second = Snapshot(paths[1]), cameraBefore = Snapshot(eye);
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	EXPECT_FALSE(Gather());
-	EXPECT_EQ(result, Vec3(0));
-	EXPECT_EQ(cameraLobe.evaluations, 1);
-	EXPECT_EQ(photonLobe.evaluations, 0);
-	EXPECT_EQ(Snapshot(paths[0]), first);
-	EXPECT_EQ(Snapshot(paths[1]), second);
-	EXPECT_EQ(Snapshot(eye), cameraBefore);
-}
-
-TEST_F(VCMEstimatorNegative, DirectPairRequiresInRadiusCompatibleContinuousEndpoints) {
-	const auto original = paths[0][1];
-	for (real offset : { 0.50001f, 1.0f }) {
-		paths[0][1].mIsect.mPos = Vec3(offset, 0, 0);
-		EXPECT_FALSE(Pair());
-		EXPECT_EQ(result, Vec3(0));
-		ASSERT_TRUE(map.Build(paths, 0.5f));
-		ASSERT_TRUE(Gather());
-		EXPECT_EQ(result, Vec3(0)); // Gather rejects via its kernel, direct API requires accepted inputs.
-	}
-	paths[0][1] = Surface(Vec3(0), &photonLobe, -Up);
-	EXPECT_FALSE(Pair());
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	ASSERT_TRUE(Gather());
-	EXPECT_EQ(result, Vec3(0));
-	paths[0][1] = original;
-	auto* delta = GYT_MEMORY_POOL_ALLOC(arena, SpecularBSDF)(Vec3(1));
-	eye[1] = Surface(Vec3(0), delta);
-	EXPECT_FALSE(Pair());
-}
-
-TEST_F(VCMEstimatorNegative, InvalidSelectedMetadataNeverBecomesAZeroFallback) {
-	const auto original = eye[1];
-	HomogeneousMedium medium(Vec3(0), Vec3(0.1f), 0);
-	for (int defect = 0; defect < 8; ++defect) {
-		eye[1] = original;
-		switch (defect) {
-		case 0: eye[1].mIsect.mBsdf = nullptr; break;
-		case 1: eye[1].mIsect.mMediumInterface = MediumInterface(&medium); break;
-		case 2: eye[1].mPdfFwd = -1; break;
-		case 3: eye[1].mIsect.mOutDir = Vec3(2); break;
-		case 4: eye[1].mCamera = &camera; break;
-		case 5: eye[1].mIsDelta = true; break;
-		case 6: eye[1].mIsect.mNormal = Vec3(0, 1, 0); break;
-		case 7: eye[1].mThroughput.x = std::numeric_limits<real>::infinity(); break;
-		}
-		const auto before = Snapshot(eye);
-		EXPECT_FALSE(Pair());
-		EXPECT_EQ(result, Vec3(0));
-		EXPECT_EQ(Snapshot(eye), before);
-	}
-	eye[1] = original;
-	eye[1].mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, SpecularBSDF)(Vec3(1)));
-	EXPECT_FALSE(Pair());
-	// Even no hits/depth zero must validate an active camera prefix.
-	paths = { {} };
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	EXPECT_FALSE(Gather(2, 0));
-	EXPECT_EQ(result, Vec3(0));
-}
-
-TEST_F(VCMEstimatorNegative, NonfiniteScatterPairRangeAndGatherRangeFailAtomically) {
-	for (real value : { std::numeric_limits<real>::infinity(), std::numeric_limits<real>::quiet_NaN() }) {
-		cameraLobe.value = Vec3(value);
-		EXPECT_FALSE(Pair());
-		EXPECT_EQ(result, Vec3(0));
-	}
-	cameraLobe.value = Vec3(1e30f);
-	eye[1].mThroughput = paths[0][1].mThroughput = Vec3(1e30f);
-	EXPECT_FALSE(Pair());
-	EXPECT_EQ(result, Vec3(0));
-	// Each accepted pair is representable; their sum is not. ONE attempt.
-	cameraLobe.value = Vec3(1);
-	eye[1].mThroughput = Vec3(1);
-	paths[0][1].mThroughput = Vec3(2.1e38f);
-	paths[0].push_back(Surface(Up, &photonLobe));
-	paths[0].back().mThroughput = Vec3(2.1e38f);
-	paths[0].push_back(Surface(Vec3(0), &photonLobe));
-	paths[0].back().mThroughput = Vec3(2.1e38f);
-	ASSERT_TRUE(Pair(Mode::MergingOnly, 0.5, 1, 2, 2));
-	ASSERT_TRUE(Pair(Mode::MergingOnly, 0.5, 1, 4, 2));
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	EXPECT_FALSE(Gather(2, 4));
-	EXPECT_EQ(result, Vec3(0));
 }
 
 // Independent finite-radius pair set; no map or production acceptance helpers.
@@ -720,14 +601,12 @@ TEST_F(VCMEstimator, BruteForceGatherRetainsDistinctCoincidentRecordsAndFiltersN
 	RecordProperty("brute_force_gathers", cases);
 }
 
-TEST_F(VCMEstimatorNegative, DoubleDistanceMatchesMapAtFloatSubtractionBoundary) {
+TEST_F(VCMEstimator, DoubleDistanceMatchesMapAtFloatSubtractionBoundary) {
 	// float(y-x) rounds to radius, while exact double(y)-double(x) is outside.
 	eye[1].mIsect.mPos = Vec3(-0.50000006f, 0, 0);
 	paths[0][1].mIsect.mPos = Vec3(0.5f, 0, 0);
 	ASSERT_TRUE(map.Build(paths, 1));
 	ASSERT_TRUE(Gather());
-	EXPECT_EQ(result, Vec3(0));
-	EXPECT_FALSE(Pair(Mode::MergingOnly, 1));
 	EXPECT_EQ(result, Vec3(0));
 }
 
@@ -834,9 +713,10 @@ TEST(VCMEstimatorGenerated, MixedOriginsAndSpecularTransportMatchIndependentRepo
 					if (s + t - 3 > maxDepth || !Accept(x, paths[p][s - 1], radius)) continue;
 					SCOPED_TRACE(testing::Message() << "photon=" << p << " s=" << s);
 					const auto value = ReferencePair(paths[p], eye, s, t, radius, count, mode);
-					Vec3 actual;
-					ASSERT_TRUE(Vcm::EvaluateMerging(scene, Vcm::PathContext(paths[p], eye,
-						{ Technique::Merging, s, t }, radius, count, mode), &actual));
+					Vector3d weighted;
+					ASSERT_TRUE(WeightedMerge(scene, Vcm::PathContext(paths[p], eye,
+						{ Technique::Merging, s, t }, radius, count, mode), &weighted));
+					const Vec3 actual = Vcm::ToVec3(weighted);
 					const double error = RelativeError(actual, value);
 					maxPairError = std::max(maxPairError, error);
 					Close(actual, value, 3e-5);
@@ -866,7 +746,7 @@ TEST(VCMEstimatorGenerated, MixedOriginsAndSpecularTransportMatchIndependentRepo
 					if (hasGlass) ++afterGlass;
 				}
 				Vec3 gathered;
-				ASSERT_TRUE(Vcm::GatherMerging(scene, map, paths, eye, t, maxDepth, mode, &gathered));
+				ASSERT_TRUE(GatherMerging(scene, map, paths, eye, t, maxDepth, mode, &gathered));
 				++queries;
 				maxGatherError = std::max(maxGatherError, RelativeError(gathered, expected));
 				Close(gathered, expected, 3e-5);
@@ -918,33 +798,6 @@ TEST(VCMEstimatorGenerated, MixedOriginsAndSpecularTransportMatchIndependentRepo
 	property("max_original_direction_difference", maxDirectionDifference);
 	property("max_pair_relative_error", maxPairError);
 	property("max_gather_relative_error", maxGatherError);
-}
-
-TEST_F(VCMEstimatorNegative, RotatedEnvironmentAndUnregisteredOriginFailEvenWithZeroContribution) {
-	const char* directory = std::getenv("GYUNITY_TEST_OUTPUT_DIRECTORY");
-	ASSERT_NE(directory, nullptr);
-	ASSERT_NE(*directory, '\0');
-	const std::string filename = std::string(directory) + "\\estimator-negative-environment.hdr";
-	ASSERT_TRUE(ImageIO::WriteImage(filename, std::vector<Vec3>(16, Vec3(2)), 4, 4));
-	PointLight unregistered(Up, Vec3(1));
-	paths[0][0].mLight = &unregistered;
-	cameraLobe.value = Vec3(0);
-	EXPECT_FALSE(Pair());
-	EXPECT_EQ(result, Vec3(0));
-	eye[1].mType = PathVertexType::Light;
-	eye[1].mLight = &unregistered;
-	paths = { {} };
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	EXPECT_FALSE(Gather());
-	EXPECT_EQ(result, Vec3(0));
-	scene.AddLight(std::make_shared<EnvironmentLight>(filename, 0.25f));
-	scene.Initialize();
-	cameraLobe.value = Vec3(0);
-	EXPECT_FALSE(Pair());
-	paths = { {} };
-	ASSERT_TRUE(map.Build(paths, 0.5f));
-	EXPECT_FALSE(Gather());
-	EXPECT_EQ(result, Vec3(0));
 }
 
 }

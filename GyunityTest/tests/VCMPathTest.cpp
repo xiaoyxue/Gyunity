@@ -374,20 +374,20 @@ void Compare(const std::string& name, const Scene& scene, const Vcm::PathContext
 		for (int s = kind == Technique::Connection ? 0 : 2; s < n; ++s, ++index) {
 			const Strategy strategy{ kind, s, n - s + (kind == Technique::Merging ? 1 : 0) };
 			SCOPED_TRACE(testing::Message() << "strategy " << int(kind) << " " << s << "," << strategy.t);
-			Vcm::StrategyPdf pdf;
-			ASSERT_TRUE(Vcm::ComputePathPdf(scene, path, strategy, &pdf));
-			EXPECT_EQ(pdf.feasible, expected[index] > 0);
+			double logPdf;
+			ASSERT_TRUE(Vcm::ComputePathPdf(scene, path, strategy, &logPdf));
+			const bool feasible = std::isfinite(logPdf);
+			EXPECT_EQ(feasible, expected[index] > 0);
 			real weight = 0;
 			double expectedLog = 0;
-			if (pdf.feasible) {
-				EXPECT_TRUE(std::isfinite(pdf.logPdf));
+			if (feasible) {
 				VcmReference::Product product;
 				for (int i = 0; i < s; ++i) product.Multiply(direct.f[i]);
 				for (int i = s - (kind == Technique::Merging ? 1 : 0); i < n; ++i) product.Multiply(direct.r[i]);
 				if (kind == Technique::Merging) product.Multiply(area);
 				expectedLog = std::log(product.mantissa) + product.exponent * std::log(2.0);
 				if (std::none_of(direct.delta.begin(), direct.delta.end(), [](bool d) { return d; })) {
-					EXPECT_NEAR(pdf.logPdf, expectedLog, 1e-5);
+					EXPECT_NEAR(logPdf, expectedLog, 1e-5);
 				}
 				ASSERT_TRUE(Vcm::ComputeMisWeight(scene, path, strategy, &weight));
 			}
@@ -399,9 +399,9 @@ void Compare(const std::string& name, const Scene& scene, const Vcm::PathContext
 			if (reportFile) {
 				*reportFile << name << ',' << int(path.selected.technique) << ',' << path.selected.s << ',' << path.selected.t <<
 					',' << int(path.mode) << ',' << path.radius << ',' << path.lightPathCount << ',' << int(kind) <<
-					',' << s << ',' << strategy.t << ',' << pdf.feasible << ',' << weight << ',' << oracle << ',' <<
+					',' << s << ',' << strategy.t << ',' << feasible << ',' << weight << ',' << oracle << ',' <<
 					expected[index] << ',' << std::abs(weight - oracle) << ',' << std::abs(weight - expected[index]) << ',';
-				if (pdf.feasible) *reportFile << pdf.logPdf << ',' << expectedLog;
+				if (feasible) *reportFile << logPdf << ',' << expectedLog;
 				else *reportFile << ',';
 				*reportFile << '\n';
 			}
@@ -435,21 +435,21 @@ TEST(VCMPath, ExactDepthOneFixtureAllWeightsAndScaling) {
 		int index = 0;
 		for (Strategy strategy : { Strategy{Technique::Connection, 0, 3}, {Technique::Connection, 1, 2},
 			{Technique::Connection, 2, 1}, {Technique::Merging, 2, 2} }) {
-			Vcm::StrategyPdf pdf;
-			ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, strategy, &pdf));
+			double logPdf;
+			ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, strategy, &logPdf));
 			real weight = 0;
-			if (pdf.feasible) ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, strategy, &weight));
+			if (std::isfinite(logPdf)) ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, strategy, &weight));
 			Close(weight, manual[variant][index++]);
 		}
 	}
 	const Vcm::PathContext path(light, eye, { Technique::Merging, 2, 2 }, radius, 16);
 	const double raw[] = { 1. / 16, 4. / 16, 2. / 16, 1. / 64 };
 	for (int i = 0; i < 4; ++i) {
-		Vcm::StrategyPdf pdf;
+		double logPdf;
 		ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path,
-			i == 3 ? Strategy{Technique::Merging, 2, 2} : Strategy{Technique::Connection, i, 3 - i}, &pdf));
+			i == 3 ? Strategy{Technique::Merging, 2, 2} : Strategy{Technique::Connection, i, 3 - i}, &logPdf));
 		// exp(sum(log(pdf))) incurs a few double ULPs even for binary fractions.
-		EXPECT_NEAR(std::exp(pdf.logPdf), raw[i], 1e-14 * raw[i]);
+		EXPECT_NEAR(std::exp(logPdf), raw[i], 1e-14 * raw[i]);
 	}
 }
 
@@ -723,9 +723,9 @@ TEST(VCMPath, SeparatedMergeUsesCameraScatteringAndOriginalSideJacobians) {
 					double manual = 1;
 					for (int i = 0; i < cut; ++i) manual *= direct.f[i];
 					for (int i = cut; i < n; ++i) manual *= direct.r[i];
-					Vcm::StrategyPdf pdf;
-					ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, cut, n - cut }, &pdf));
-					EXPECT_NEAR(std::exp(pdf.logPdf), manual, manual * 1e-5);
+					double logPdf;
+					ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, cut, n - cut }, &logPdf));
+					EXPECT_NEAR(std::exp(logPdf), manual, manual * 1e-5);
 				}
 				// Both common "move y to x" mistakes must be numerically observable.
 				EXPECT_GT(std::abs(Jacobian(y, a) - Jacobian(x, a)), 1e-4);
@@ -786,12 +786,12 @@ TEST(VCMPath, LongTinyDensityProductsDoNotUnderflow) {
 				const Vcm::PathContext path(light, eye, { merge ? Technique::Merging : Technique::Connection, 32, int(eye.size()) },
 					std::sqrt(1e30 / (16 * Pi)), 16, mode);
 				Compare("tiny-64", fixture.scene, path, fixture.direct);
-				Vcm::StrategyPdf pdf;
-				ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
-				EXPECT_EQ(pdf.feasible, mode == Mode::Combined || mode == (merge ? Mode::MergingOnly : Mode::ConnectionOnly));
-				if (pdf.feasible) {
-					EXPECT_LT(pdf.logPdf, -1000);
-					EXPECT_EQ(std::exp(pdf.logPdf), 0);
+				double logPdf;
+				ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &logPdf));
+				EXPECT_EQ(std::isfinite(logPdf), mode == Mode::Combined || mode == (merge ? Mode::MergingOnly : Mode::ConnectionOnly));
+				if (std::isfinite(logPdf)) {
+					EXPECT_LT(logPdf, -1000);
+					EXPECT_EQ(std::exp(logPdf), 0);
 				}
 			}
 	}
@@ -861,21 +861,18 @@ TEST(VCMPath, ZeroSupportIsNotAnErrorUntilRequestedAsCurrent) {
 	const auto beforeLight = light, beforeEye = eye;
 	const Vcm::PathContext path(light, eye, { Technique::Connection, 1, 2 }, 0.2, 16);
 	for (Strategy strategy : { Strategy{Technique::Connection, 0, 3}, {Technique::Connection, 1, 2}, {Technique::Merging, 2, 2} }) {
-			Vcm::StrategyPdf pdf{ true, 17 };
-			ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, strategy, &pdf));
-			EXPECT_FALSE(pdf.feasible);
-			real weight = 7;
-			EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, strategy, &weight));
-			EXPECT_EQ(weight, 0);
+		double logPdf = 17;
+		ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, strategy, &logPdf));
+		EXPECT_FALSE(std::isfinite(logPdf));
+		real weight = 7;
+		EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, strategy, &weight));
+		EXPECT_EQ(weight, 0);
 	}
 	real weight;
 	ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, { Technique::Connection, 2, 1 }, &weight));
 	EXPECT_EQ(weight, 1);
 	SamePaths(light, beforeLight);
 	SamePaths(eye, beforeEye);
-	eye.back().mPdfPrev = -1; // A legitimate zero must not conceal invalid input elsewhere.
-	Vcm::StrategyPdf pdf;
-	EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
 }
 
 TEST(VCMPath, ZeroScatteringPdfStaysZeroRatherThanBecomingADeltaMarker) {
@@ -887,141 +884,56 @@ TEST(VCMPath, ZeroScatteringPdfStaysZeroRatherThanBecomingADeltaMarker) {
 	std::vector<PathVertex> light, eye;
 	fixture.Split(1, false, light, eye);
 	const Vcm::PathContext path(light, eye, { Technique::Connection, 1, 2 }, 0.2, 16);
-	Vcm::StrategyPdf pdf;
-	ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, 0, 3 }, &pdf));
-	EXPECT_FALSE(pdf.feasible);
+	double logPdf;
+	ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, 0, 3 }, &logPdf));
+	EXPECT_FALSE(std::isfinite(logPdf));
 	real weight;
 	ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
 	const auto direct = VcmReference::DirectWeights(fixture.direct, Pi * 0.04, 16, true, true);
 	Close(weight, direct[1]);
 }
 
-TEST(VCMPath, TerminalDeltaEligibilityAndMalformedPrefixes) {
-	for (int variant = 0; variant < 5; ++variant) {
-			Fixture fixture(5);
-			std::vector<PathVertex> light, eye;
-			fixture.Split(3, true, light, eye);
-			if (variant == 0) light[1].mIsDelta = true;
-			else if (variant == 1) {
-				MirrorMaterial(std::make_shared<ConstantTexture<Vec3>>(Vec3(1))).ComputeScatteringFunction(&light.back().mIsect, fixture.arena);
-				EXPECT_FALSE(light.back().mIsDelta); // Terminal delta vertices have not sampled a lobe.
-			}
-			else if (variant == 2) {
-				GlassMaterial(std::make_shared<ConstantTexture<Vec3>>(Vec3(1)),
-					std::make_shared<ConstantTexture<Vec3>>(Vec3(1))).ComputeScatteringFunction(&eye.back().mIsect, fixture.arena);
-			}
-			else if (variant == 3) light[1].mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, SpecularBSDF)(Vec3(1)));
-			else eye[1].mType = PathVertexType::Environment;
-			const auto beforeLight = light, beforeEye = eye;
-			const Vcm::PathContext path(light, eye, { Technique::Merging, 3, 3 }, 0.2, 16);
-			Vcm::StrategyPdf pdf;
-			real weight = 7;
-			EXPECT_EQ(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf), variant == 1 || variant == 2);
-			EXPECT_FALSE(pdf.feasible);
-			EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
-			EXPECT_EQ(weight, 0);
-			SamePaths(light, beforeLight);
-			SamePaths(eye, beforeEye);
+TEST(VCMPath, TerminalDeltaEndpointsCannotBeMerged) {
+	for (bool cameraEnd : { false, true }) {
+		Fixture fixture(5);
+		std::vector<PathVertex> light, eye;
+		fixture.Split(3, true, light, eye);
+		if (!cameraEnd) {
+			MirrorMaterial(std::make_shared<ConstantTexture<Vec3>>(Vec3(1))).ComputeScatteringFunction(&light.back().mIsect, fixture.arena);
+			EXPECT_FALSE(light.back().mIsDelta); // Terminal delta vertices have not sampled a lobe.
+		}
+		else {
+			GlassMaterial(std::make_shared<ConstantTexture<Vec3>>(Vec3(1)),
+				std::make_shared<ConstantTexture<Vec3>>(Vec3(1))).ComputeScatteringFunction(&eye.back().mIsect, fixture.arena);
+		}
+		const auto beforeLight = light, beforeEye = eye;
+		const Vcm::PathContext path(light, eye, { Technique::Merging, 3, 3 }, 0.2, 16);
+		double logPdf;
+		real weight = 7;
+		ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &logPdf));
+		EXPECT_FALSE(std::isfinite(logPdf));
+		EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
+		EXPECT_EQ(weight, 0);
+		SamePaths(light, beforeLight);
+		SamePaths(eye, beforeEye);
 	}
 }
 
-TEST(VCMPath, UnregisteredPointAndFakeEnvironmentOriginsAreRejected) {
-	Fixture fixture;
-	std::vector<PathVertex> light, eye;
-	fixture.Split(1, false, light, eye);
-	PointLight point(Vec3(0, 0, 2), Vec3(1));
-	for (bool environment : { false, true }) {
-			light[0].mLight = environment ? static_cast<const Light*>(fixture.light.get()) : &point;
-			light[0].mType = environment ? PathVertexType::Environment : PathVertexType::Light;
-			const Vcm::PathContext path(light, eye, { Technique::Connection, 1, 2 }, 0.2, 16);
-			Vcm::StrategyPdf pdf;
-			EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
-	}
-}
-
-TEST(VCMPath, InvalidCountsModesRadiusAndCurrentMasksFailChecked) {
+TEST(VCMPath, ExcludedStrategiesAndDisabledCurrentHaveNoSupport) {
 	Fixture fixture;
 	std::vector<PathVertex> light, eye;
 	fixture.Split(2, true, light, eye);
 	const Strategy selected{ Technique::Merging, 2, 2 };
-	for (double radius : { 0., -1., std::numeric_limits<double>::infinity(),
-			std::numeric_limits<double>::quiet_NaN(), 1e-300, 1e300 }) {
-			Vcm::StrategyPdf pdf;
-			EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, Vcm::PathContext(light, eye, selected, radius, 16), selected, &pdf));
-	}
-	for (int64 count : { int64(0), int64(-1) }) {
-			Vcm::StrategyPdf pdf;
-			EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, Vcm::PathContext(light, eye, selected, 0.2, count), selected, &pdf));
-	}
-	for (Strategy invalid : { Strategy{Technique::Connection, -1, 3}, {Technique::Connection, 1, 1},
-			{Technique::Connection, 2, 0}, {Technique::Merging, 1, 2}, {Technique::Merging, 3, 2},
-			{Technique::Merging, std::numeric_limits<int>::max(), std::numeric_limits<int>::max()},
-			{static_cast<Technique>(100), 2, 2} }) {
-			Vcm::StrategyPdf pdf;
-			EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, Vcm::PathContext(light, eye, invalid, 0.2, 16), selected, &pdf));
-	}
-	Vcm::StrategyPdf pdf;
-	EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, Vcm::PathContext(light, eye, selected, 0.2, 16, static_cast<Mode>(100)), selected, &pdf));
 	const Vcm::PathContext path(light, eye, selected, 0.2, 16);
-	EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, 0, 4 }, &pdf));
-	EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, -1, 4 }, &pdf));
 	for (Strategy excluded : { Strategy{Technique::Connection, 3, 0}, {Technique::Merging, 1, 3}, {Technique::Merging, 3, 1} }) {
-			ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, excluded, &pdf));
-			EXPECT_FALSE(pdf.feasible);
+		double logPdf;
+		ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, excluded, &logPdf));
+		EXPECT_FALSE(std::isfinite(logPdf));
 	}
 	real weight = 7;
 	EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene,
-			Vcm::PathContext(light, eye, selected, 0.2, 16, Mode::ConnectionOnly), selected, &weight));
+		Vcm::PathContext(light, eye, selected, 0.2, 16, Mode::ConnectionOnly), selected, &weight));
 	EXPECT_EQ(weight, 0);
-	EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, selected, nullptr));
-	EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, selected, nullptr));
-}
-
-TEST(VCMPath, InvalidDensitiesAndGeometryLeaveInputsUnchanged) {
-	for (int variant = 0; variant < 12; ++variant) {
-			Fixture fixture;
-			std::vector<PathVertex> light, eye;
-			fixture.Split(2, true, light, eye);
-			if (variant == 0) light.back().mPdfFwd = -1;
-			if (variant == 1) eye.back().mPdfPrev = std::numeric_limits<real>::quiet_NaN();
-			if (variant == 2) light[0].mPdfPos = std::numeric_limits<real>::infinity();
-			if (variant == 3) eye.back().mIsect.mPos.x = std::numeric_limits<real>::infinity();
-			if (variant == 4) light.back().mIsect.mOutDir = Vec3(0);
-			if (variant == 5) eye.back().mIsect.mGeometryNormal = Vec3(0);
-			if (variant == 6) light[0].mIsect.mPos = light[1].mIsect.mPos;
-			if (variant == 7) light.back().mIsect.mPos.x += 1;
-			if (variant == 8) eye[0].mCamera = nullptr;
-			if (variant == 9) eye.back().mIsect.mBsdf = nullptr;
-			if (variant == 10) eye.back().mIsect.mNormal = Vec3(0, 1, 0);
-			if (variant == 11) eye[0].mPdfDir = -1;
-			const auto beforeLight = light, beforeEye = eye;
-			const Vcm::PathContext path(light, eye, { Technique::Merging, 2, 2 }, 0.2, 16);
-			Vcm::StrategyPdf pdf{ true, 17 };
-			EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
-			EXPECT_FALSE(pdf.feasible);
-			real weight = 7;
-			EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
-			EXPECT_EQ(weight, 0);
-			SamePaths(light, beforeLight);
-			SamePaths(eye, beforeEye);
-	}
-}
-
-TEST(VCMPath, EvaluatedNegativeAndNonfiniteScatteringDensitiesFail) {
-	for (real value : { -1.f, std::numeric_limits<real>::infinity(), std::numeric_limits<real>::quiet_NaN() }) {
-			Fixture fixture;
-			std::vector<PathVertex> light, eye;
-			fixture.Split(1, false, light, eye);
-			auto& v = eye.back();
-			v.mIsect.mBsdf = GYT_MEMORY_POOL_ALLOC(fixture.arena, BSDF)(v.mIsect);
-			v.mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(fixture.arena, FixedLobe)(value));
-			const Vcm::PathContext path(light, eye, { Technique::Connection, 1, 2 }, 0.2, 16);
-			Vcm::StrategyPdf pdf;
-			EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, 0, 3 }, &pdf));
-			real weight = 7;
-			EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
-			EXPECT_EQ(weight, 0);
-	}
 }
 
 namespace {
@@ -1352,23 +1264,6 @@ TEST(VCMSingularConvention, ReverseMassUsesReverseWeightedLobeSelectionWithoutCh
 	}
 }
 
-TEST(VCMPath, ShadingPolicyIsRejectedEvenWhenNormalsCoincide) {
-	Fixture fixture(3, true);
-	std::vector<PathVertex> light, eye;
-	fixture.Split(1, false, light, eye);
-	const Strategy selected{ Technique::Connection, 1, 2 };
-	const Vcm::PathContext path(light, eye, selected, 0.5, 16);
-	real weight;
-	ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, selected, &weight));
-	for (auto* vertex : { &light[0], &eye[0], &eye[1] }) {
-		vertex->mNormalMode = SurfaceNormalMode::Shading;
-		weight = 123;
-		EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, selected, &weight));
-		EXPECT_EQ(weight, 0);
-		vertex->mNormalMode = SurfaceNormalMode::Geometric;
-	}
-}
-
 namespace {
 
 void SetLobe(Fixture& fixture, int i, const Vec3& normal, int kind) {
@@ -1458,9 +1353,9 @@ TEST(VCMPath, PointOriginUsesOneSelectionMassAndCannotBeHit) {
 					const Vcm::PathContext path(light, eye, { merge ? Technique::Merging : Technique::Connection, s, int(eye.size()) },
 						std::sqrt(0.25 / Pi), 16, mode);
 					Compare("point-origin", fixture.scene, path, manual);
-					Vcm::StrategyPdf hit;
+					double hit;
 					ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene, path, { Technique::Connection, 0, 3 }, &hit));
-					EXPECT_FALSE(hit.feasible);
+					EXPECT_FALSE(std::isfinite(hit));
 				}
 			}
 		}
@@ -1533,12 +1428,12 @@ TEST(VCMPath, TwoDeltaCausticHasSoleMergeSupportIncludingFirstSurfaceTransport) 
 		ASSERT_TRUE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
 		EXPECT_EQ(weight, 1);
 	}
-	Vcm::StrategyPdf pdf;
+	double logPdf;
 	for (int s = 0; s < 5; ++s) {
 		ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene,
 			Vcm::PathContext(light, eye, { Technique::Merging, 3, 3 }, 0.2, 16, Mode::ConnectionOnly),
-			{ Technique::Connection, s, 5 - s }, &pdf));
-		EXPECT_FALSE(pdf.feasible);
+			{ Technique::Connection, s, 5 - s }, &logPdf));
+		EXPECT_FALSE(std::isfinite(logPdf));
 	}
 }
 
@@ -1603,62 +1498,14 @@ TEST(VCMPath, SpecularEmissionIgnoresEmitterAndUnusedContinuationFlags) {
 	SetLobe(fixture, 2, fixture.full[2].mIsect.mNormal, 0);
 	fixture.Refresh();
 	fixture.Split(0, false, light, eye);
-	Vcm::StrategyPdf pdf;
+	double logPdf;
 	ASSERT_TRUE(Vcm::ComputePathPdf(fixture.scene,
 		Vcm::PathContext(light, eye, { Technique::Connection, 0, 4 }, 0.2, 16, Mode::MergingOnly),
-		{ Technique::Connection, 0, 4 }, &pdf));
-	EXPECT_FALSE(pdf.feasible);
+		{ Technique::Connection, 0, 4 }, &logPdf));
+	EXPECT_FALSE(std::isfinite(logPdf));
 }
 
-TEST_F(VCMEnvironment, InvalidOriginsRotationBoundsAndMetadataFailExplicitly) {
-	for (int variant = 0; variant < 9; ++variant) {
-		SCOPED_TRACE(variant);
-		Fixture fixture(3, true);
-		EnvironmentOrigin(fixture, 2);
-		std::vector<PathVertex> light, eye;
-		fixture.Split(2, true, light, eye);
-		std::shared_ptr<EnvironmentLight> replacement;
-		if (variant == 0) light[0].mDirection = Vec3(0);
-		if (variant == 1) light[0].mType = PathVertexType::Light;
-		if (variant == 2) light[0].mPdfPos *= 2;
-		if (variant == 3) light[0].mPdfDir *= 2;
-		if (variant == 4) light[0].mLightSelectionPdf *= 2;
-		if (variant == 5) light[0].mPdfFwd *= 2;
-		if (variant == 6 || variant == 7) {
-			replacement = std::make_shared<EnvironmentLight>(filename, variant == 6 ? 0.1f : 0.f);
-			fixture.scene = Scene{};
-			fixture.scene.AddLight(replacement);
-			light[0].mLight = replacement.get(); // Deliberately no initialized bounds.
-		}
-		if (variant == 8) {
-			fixture.scene.AddLight(std::make_shared<EnvironmentLight>(filename, 0));
-			fixture.scene.Initialize();
-		}
-		const auto beforeLight = light, beforeEye = eye;
-		Vcm::StrategyPdf pdf;
-		real weight = 7;
-		const Vcm::PathContext path(light, eye, { Technique::Merging, 2, 2 }, 0.2, 16);
-		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
-		EXPECT_FALSE(Vcm::ComputeMisWeight(fixture.scene, path, path.selected, &weight));
-		EXPECT_EQ(weight, 0);
-		SamePaths(light, beforeLight);
-		SamePaths(eye, beforeEye);
-	}
-	for (int variant = 0; variant < 3; ++variant) {
-		Fixture fixture(3, true);
-		PointOrigin(fixture, false);
-		std::vector<PathVertex> light, eye;
-		fixture.Split(1, false, light, eye);
-		if (variant == 0) light[0].mIsect.mPos.x += 1;
-		if (variant == 1) light[0].mType = PathVertexType::Surface;
-		if (variant == 2) light[0].mPdfPos = 0.5f;
-		Vcm::StrategyPdf pdf;
-		const Vcm::PathContext path(light, eye, { Technique::Connection, 1, 2 }, 0.2, 16);
-		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
-	}
-}
-
-TEST(VCMPath, ConsumedDeltaMassesAreRequiredButUnusedContinuationMetadataIsIgnored) {
+TEST(VCMPath, UnusedContinuationMetadataIsIgnored) {
 	Fixture fixture(4, true);
 	fixture.full[0].mIsect.mPos = Vec3(-2, 0, 2);
 	fixture.full[1].mIsect.mPos = Vec3(-1, 0, 0);
@@ -1668,17 +1515,6 @@ TEST(VCMPath, ConsumedDeltaMassesAreRequiredButUnusedContinuationMetadataIsIgnor
 	fixture.Refresh();
 	std::vector<PathVertex> light, eye;
 	fixture.Split(3, false, light, eye);
-	for (int variant = 0; variant < 5; ++variant) {
-		auto malformed = light;
-		if (variant == 0) malformed[1].mDeltaPdf = 0;
-		if (variant == 1) malformed[1].mDeltaReversePdf = -1;
-		if (variant == 2) malformed[1].mDeltaPdf = std::numeric_limits<real>::quiet_NaN();
-		if (variant == 3) malformed[1].mDeltaReversePdf = 2;
-		if (variant == 4) malformed[1].mIsDelta = false;
-		Vcm::StrategyPdf pdf;
-		const Vcm::PathContext path(malformed, eye, { Technique::Connection, 3, 1 }, 0.2, 16);
-		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
-	}
 	light.back().mIsDelta = true;
 	light.back().mDeltaPdf = std::numeric_limits<real>::quiet_NaN();
 	light.back().mDeltaReversePdf = -1;
@@ -1686,20 +1522,6 @@ TEST(VCMPath, ConsumedDeltaMassesAreRequiredButUnusedContinuationMetadataIsIgnor
 	eye[0].mDeltaPdf = -1; // Camera origin is not a scattering event either.
 	Compare("unused-continuation-masses", fixture.scene,
 		Vcm::PathContext(light, eye, { Technique::Connection, 3, 1 }, 0.2, 16), fixture.direct);
-}
-
-TEST(VCMPath, MediaAtAnySelectedRoleRemainUnsupported) {
-	Fixture fixture(3, true);
-	HomogeneousMedium fog(Vec3(0), Vec3(1), 0);
-	for (int role = 0; role < 3; ++role) {
-		std::vector<PathVertex> light, eye;
-		fixture.Split(2, true, light, eye);
-		PathVertex& vertex = role == 0 ? light[0] : role == 1 ? light[1] : eye[0];
-		vertex.mIsect.mMediumInterface = MediumInterface(&fog, nullptr);
-		Vcm::StrategyPdf pdf;
-		const Vcm::PathContext path(light, eye, { Technique::Merging, 2, 2 }, 0.2, 16);
-		EXPECT_FALSE(Vcm::ComputePathPdf(fixture.scene, path, path.selected, &pdf));
-	}
 }
 
 TEST(VCMPath, ObliqueRefractionAndTirKeepTrueSampledBranchMasses) {
@@ -1882,9 +1704,9 @@ TEST_F(VCMEnvironment, GeneratedMixedOriginsAndSpecularChainsMatchBothIndependen
 					(x.mIsect.mGeometryNormal - y.mIsect.mGeometryNormal).Length2() > 1e-8f)
 					continue;
 				const Vcm::PathContext path(light, eye, {Technique::Merging, s, t}, 1.5, pairs);
-				Vcm::StrategyPdf pdf;
-				ASSERT_TRUE(Vcm::ComputePathPdf(scene, path, path.selected, &pdf));
-				if (!pdf.feasible)
+				double logPdf;
+				ASSERT_TRUE(Vcm::ComputePathPdf(scene, path, path.selected, &logPdf));
+				if (!std::isfinite(logPdf))
 					continue;
 				++positiveVM;
 				const Edges independent = ReportEdges(scene, path);

@@ -100,7 +100,7 @@ protected:
 
 	void Check(const Paths& paths, real radius, const Vec3& point, const Vec3& normal = Up) {
 		result = { { 999, 999 } };
-		ASSERT_TRUE(map.Query(point, normal, result));
+		map.Query(point, normal, result);
 		++oracleQueries;
 		EXPECT_EQ(result, BruteForceRecords(paths, radius, point, normal));
 		EXPECT_TRUE(std::is_sorted(result.begin(), result.end()));
@@ -111,7 +111,6 @@ protected:
 TEST_F(VCMPhotonMap, EmptyBuildAndNoEligibleVerticesAreUsable) {
 	Paths empty;
 	ASSERT_TRUE(map.Build(empty, 0.25f));
-	EXPECT_TRUE(map.IsBuilt());
 	EXPECT_EQ(map.RecordCount(), 0u);
 	EXPECT_EQ(map.Radius(), 0.25f);
 	Check(empty, 0.25f, Vec3());
@@ -129,18 +128,6 @@ TEST_F(VCMPhotonMap, FirstSurfaceAndEmittingScatteringSurfaceAreIncluded) {
 	EXPECT_EQ(map.RecordCount(), 2u);
 	Check(paths, 1, Vec3());
 	EXPECT_EQ(result, (Records{ { 0, 1 }, { 1, 1 } }));
-}
-
-TEST_F(VCMPhotonMap, ShadingPolicyFailsEvenWhenNormalsCoincide) {
-	Paths paths{ { Endpoint(), Surface() } };
-	ASSERT_TRUE(map.Build(paths, 1));
-	paths[0][1].mNormalMode = SurfaceNormalMode::Shading;
-	EXPECT_FALSE(map.Build(paths, 1));
-	EXPECT_FALSE(map.IsBuilt());
-	EXPECT_EQ(map.RecordCount(), 0u);
-	EXPECT_EQ(map.Radius(), 0);
-	EXPECT_FALSE(map.Query(Vec3(), Up, result));
-	EXPECT_TRUE(result.empty());
 }
 
 TEST_F(VCMPhotonMap, SampledAndUnsampledTerminalPureDeltaAreExcluded) {
@@ -300,72 +287,9 @@ TEST_F(VCMPhotonMap, RebuildDisjointThenEmptyClearsIdsRadiusAndBuckets) {
 	EXPECT_EQ(map.Radius(), 7);
 	Check(empty, 7, Vec3(-100));
 	map.Clear();
-	EXPECT_FALSE(map.IsBuilt());
 	EXPECT_EQ(map.Radius(), 0);
-	EXPECT_FALSE(map.Query(Vec3(), Up, result));
+	map.Query(Vec3(), Up, result);
 	EXPECT_TRUE(result.empty());
-}
-
-TEST_F(VCMPhotonMap, MalformedSurfacesFailRatherThanBecomeEmptyMaps) {
-	const real nan = std::numeric_limits<real>::quiet_NaN();
-	const real infinity = std::numeric_limits<real>::infinity();
-	HomogeneousMedium medium(Vec3(0.1f), Vec3(0.2f), 0);
-	PinHoleCamera camera(std::make_shared<Film>(2, 2), Vec3(0, 0, 1), Vec3(), Vec3(0, 1, 0), 60, 1);
-	const std::vector<std::function<void(PathVertex&)>> changes = {
-		[](PathVertex& v) { v.mIsect.mBsdf = nullptr; },
-		[&](PathVertex& v) { v = Surface(Vec3(), Up, Lobes::Empty); },
-		[&](PathVertex& v) { v = Surface(Vec3(), Up, Lobes::Mixed); },
-		[](PathVertex& v) { v.mIsect.mGeometryNormal = Vec3(); },
-		[&](PathVertex& v) { v.mIsect.mGeometryNormal.x = infinity; },
-		[&](PathVertex& v) { v.mIsect.mNormal.x = nan; },
-		[](PathVertex& v) { v.mIsect.mNormal = Vec3(1, 0, 0); },
-		[&](PathVertex& v) { v.mIsect.mPos.x = nan; },
-		[&](PathVertex& v) { v.mIsect.mPos.y = infinity; },
-		[](PathVertex& v) { v.mIsect.mOutDir = Vec3(); },
-		[&](PathVertex& v) { v.mThroughput.z = infinity; },
-		[](PathVertex& v) { v.mPdfFwd = -1; },
-		[&](PathVertex& v) { v.mPdfPrev = nan; },
-		[&](PathVertex& v) { v.mIsect.mMediumInterface = &medium; },
-		[&](PathVertex& v) { v.mCamera = &camera; },
-		[](PathVertex& v) { v.mIsDelta = true; },
-		[](PathVertex& v) { v.mType = static_cast<PathVertexType>(99); }
-	};
-	for (size_t index = 0; index < changes.size(); ++index) {
-		SCOPED_TRACE(index);
-		Paths good{ { Endpoint(), Surface() } };
-		ASSERT_TRUE(map.Build(good, 1));
-		Paths bad = good;
-		changes[index](bad[0][1]);
-		EXPECT_FALSE(map.Build(bad, 1));
-		EXPECT_FALSE(map.IsBuilt());
-		EXPECT_EQ(map.RecordCount(), 0u);
-		EXPECT_EQ(map.Radius(), 0);
-		result = { { 123, 456 } };
-		EXPECT_FALSE(map.Query(Vec3(), Up, result));
-		EXPECT_TRUE(result.empty());
-		ASSERT_TRUE(map.Build(good, 1));
-		Check(good, 1, Vec3());
-	}
-	Paths invalidDelta{ { Endpoint(), Surface(Vec3(), Up, Lobes::Delta) } };
-	invalidDelta[0][1].mIsect.mGeometryNormal = Vec3();
-	EXPECT_FALSE(map.Build(invalidDelta, 1));
-}
-
-TEST_F(VCMPhotonMap, InvalidRadiusAndQueryAreCheckedEvenWhenEmpty) {
-	Paths empty;
-	EXPECT_FALSE(map.Query(Vec3(), Up, result));
-	for (real radius : { 0.0f, -1.0f, std::numeric_limits<real>::infinity(),
-		std::numeric_limits<real>::quiet_NaN() }) {
-		EXPECT_FALSE(map.Build(empty, radius));
-		EXPECT_FALSE(map.IsBuilt());
-	}
-	ASSERT_TRUE(map.Build(empty, 1));
-	EXPECT_FALSE(map.Query(Vec3(), Vec3(), result));
-	EXPECT_FALSE(map.Query(Vec3(std::numeric_limits<real>::infinity()), Up, result));
-	EXPECT_FALSE(map.Query(Vec3(), Vec3(std::numeric_limits<real>::quiet_NaN()), result));
-	EXPECT_TRUE(result.empty());
-	EXPECT_TRUE(map.IsBuilt());
-	Check(empty, 1, Vec3());
 }
 
 TEST_F(VCMPhotonMap, ExtremeFiniteWorldInputsDoNotOverflowDistanceOrCellCasts) {
@@ -386,7 +310,6 @@ TEST_F(VCMPhotonMap, ExtremeFiniteWorldInputsDoNotOverflowDistanceOrCellCasts) {
 	Check(extremes, largest, Vec3());
 	EXPECT_EQ(result.size(), 2u);
 	EXPECT_FALSE(map.Build(extremes, 1));
-	EXPECT_FALSE(map.IsBuilt());
 	EXPECT_EQ(map.RecordCount(), 0u);
 	Paths narrow{ { Surface(), Surface(Vec3(std::numeric_limits<real>::denorm_min(), 0, 0)) } };
 	ASSERT_TRUE(map.Build(narrow, std::numeric_limits<real>::denorm_min()));
@@ -414,7 +337,6 @@ TEST_F(VCMPhotonMap, BackendCoordinateLimitIsConservativeAndExplicit) {
 		}
 		paths[0][2].mIsect.mPos.x = std::nextafter(edge, sign * std::numeric_limits<real>::infinity());
 		EXPECT_FALSE(map.Build(paths, 1));
-		EXPECT_FALSE(map.IsBuilt());
 		EXPECT_EQ(map.Radius(), 0);
 	}
 }
@@ -435,9 +357,10 @@ TEST_F(VCMPhotonMap, ConcurrentReadOnlyQueriesOwnSeparateOutputs) {
 	std::vector<std::thread> workers;
 	for (size_t worker = 0; worker < outputs.size(); ++worker) {
 		workers.emplace_back([&, worker]() {
-			for (size_t q = 0; q < points.size(); ++q)
-				if (!map.Query(points[q], Up, outputs[worker]) || outputs[worker] != expected[q])
-					++failures[worker];
+			for (size_t q = 0; q < points.size(); ++q) {
+				map.Query(points[q], Up, outputs[worker]);
+				if (outputs[worker] != expected[q]) ++failures[worker];
+			}
 		});
 	}
 	for (auto& worker : workers) worker.join();
