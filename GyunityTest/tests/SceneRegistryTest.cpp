@@ -35,6 +35,8 @@ TEST(SceneRegistry, NamesMapToAllBuilders) {
 		{ "empty", CornellBoxScenes::Empty }, { "diffuse", CornellBoxScenes::DiffuseBunny },
 		{ "water", CornellBoxScenes::Water }, { "fog", CornellBoxScenes::FogBunny },
 		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny },
+		{ "smallvcm-mirror-ceiling", CornellBoxScenes::SmallVcmMirrorSphereCeiling },
+		{ "smallvcm-spheres-point", CornellBoxScenes::SmallVcmSpheresPoint },
 		{ "CornellBoxStandard", nullptr }, { "veach-mis", nullptr }, { "veach-bidir", nullptr },
 		{ "matpreview-diffuse", nullptr }, { "matpreview-glass", nullptr }, { "matpreview-copper", nullptr },
 		{ "matpreview-checkerboard", nullptr }, { "matpreview-mirror", nullptr }, { "matpreview-rough-glass", nullptr },
@@ -66,7 +68,12 @@ TEST(SceneRegistry, CamerasMatchOriginalRegressionRays) {
 			auto referenceFilm = std::make_shared<Film>(size.first, size.second);
 			auto camera = scene.camera.Create(film);
 			std::shared_ptr<Camera> reference;
-			if (std::string(scene.name) == "sphere" || std::string(scene.name) == "triangle") {
+			if (std::string(scene.name).find("smallvcm-") == 0) {
+				const Vec3 pos(-0.0439815f, -4.12529f, 0.222539f);
+				reference = std::make_shared<PinHoleCamera>(referenceFilm, pos, pos + Vec3(0.00688625f, 0.998505f, -0.0542161f),
+					Vec3(3.73896e-4f, 0.0542148f, 0.998529f), 45, 1);
+			}
+			else if (std::string(scene.name) == "sphere" || std::string(scene.name) == "triangle") {
 				const Vec3 pos(50, 52, 295.6f);
 				reference = std::make_shared<PinHoleCamera>(referenceFilm, pos,
 					pos + Vec3(0, -0.042612f, -1), Vec3(0, 1, 0), 28.7993f, 1);

@@ -2,7 +2,8 @@
 
 `GyunityApp\scenes\SceneRegistry.h` maps names to builders, default cameras and required
 resources. Names are `mesh`, `slope`, `sphere`, `env`, `triangle`, `textured`,
-`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, `CornellBoxStandard`, `veach-mis`,
+`empty`, `diffuse`, `water`, `lucy-bunny`, `fog`, `smallvcm-mirror-ceiling`,
+`smallvcm-spheres-point`, `CornellBoxStandard`, `veach-mis`,
 and `veach-bidir`, plus the nine `matpreview-*` entries listed in the
 [local preparation recipe](../resources/scenes/matpreview/README.md).
 Matpreview names are listed even before their local assets are imported;
@@ -37,6 +38,29 @@ alpha 0.66666667, per-hit-point shrinking and glossy-ray tracing. Its final
 per-pixel density estimate is not the PT/BDPT reconstruction-filter estimator.
 These differences and the existing SPPM accumulation behavior are not changed
 by exposing it through the scene interface.
+
+## SmallVCM Cornell boxes
+`smallvcm-mirror-ceiling` and `smallvcm-spheres-point` reproduce two scenes of
+[SmallVCM](http://www.smallvcm.com/reports/10sec/) (`scene.hxx`, `LoadCornellBox`)
+for comparing PT, BDPT, SPPM and VCM:
+
+| Name | SmallVCM scene | Contents |
+|---|---|---|
+| `smallvcm-mirror-ceiling` | glossy large mirror sphere + ceiling (area) | glossy floor, mirror sphere (radius 0.8), emitting light box (radiance 25.03) |
+| `smallvcm-spheres-point` | glossy small spheres + point | glossy floor, mirror and glass (IOR 1.6) spheres (radius 0.5), point light of intensity 70/(4 pi) |
+
+Box corners, vertex order, sphere placement, colors and the camera (45-degree
+horizontal field of view, so square images match) are copied from SmallVCM; the
+scenes are z-up. The glossy floor is `PhongMaterial`: diffuse 0.1 plus SmallVCM's
+normalized Phong lobe (0.7, exponent 90), with lobes chosen by albedo as in SmallVCM.
+It has no delta lobe, so VCM can merge on it.
+
+```powershell
+..\x64\Release\GyunityApp.exe --scene smallvcm-mirror-ceiling --integrator bdpt --spp 256 --out "$TestRoot\smallvcm-mirror-ceiling-bdpt.png"
+```
+
+VCM renders these scenes through `Examples::VertexConnectionMerging`; SmallVCM's
+radius is `0.003 * scene bounding radius` with alpha 0.75.
 
 ## Original Veach MIS
 `veach-mis` loads the actual CC0 gallery data, not a procedural recreation.

@@ -292,6 +292,7 @@
     <ClInclude Include="src\visual\Renderer.h" />
     <ClInclude Include="src\visual\Rng.h" />
     <ClInclude Include="src\material\Roughness.h" />
+    <ClInclude Include="src\material\Phong.h" />
     <ClInclude Include="src\material\Plastic.h" />
     <ClInclude Include="src\material\RoughDielectric.h" />
     <ClInclude Include="src\sampler\Sampler.h" />
