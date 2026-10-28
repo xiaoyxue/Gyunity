@@ -3,42 +3,28 @@
 #include "Integrator.h"
 #include "VCMPath.h"
 #include "system/ThreadedTaskManager.h"
-#include <array>
 #include <atomic>
+#include <functional>
 
 GYT_NAMESPACE_BEGIN
 
 namespace Vcm {
 
+// One weighted estimate and its film position.
+// Camera-pixel estimates are averaged into the pixel sample; t = 1 light tracing is splatted.
 struct Contribution {
-	std::array<double, 3> mValue{};
 	Vec2 mRaster;
+	Vector3d mValue = Vector3d(0);
 	bool mIsSplat = false;
 };
 
 struct PathContribution {
 	std::vector<Contribution> mContributions;
+
+	void push_back(const Contribution& contribution) { mContributions.push_back(contribution); }
+	void clear() { mContributions.clear(); }
 };
 
-namespace Detail {
-
-// Renderer-local checks; legacy sampler implementations and outputs are unchanged.
-bool ValidateSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int iterations);
-
-class CheckedSequence : public StateSequence {
-public:
-	CheckedSequence(Sampler& sampler, int64 instance);
-	real Sample() override;
-	bool Valid() const { return mValid; }
-private:
-	Sampler& mSampler;
-	int64 mInstance;
-	unsigned mDimensions;
-	uint64 mMaximumIndex;
-	bool mRoundedUnitEndpoint, mValid = true;
-};
-
-}
 }
 
 class VertexConnectionMerging : public Integrator {
@@ -46,14 +32,8 @@ public:
 	struct Statistics {
 		int mIterations = 0;
 		int64 mLightAttempts = 0, mCameraSamples = 0;
-		size_t mLightPhases = 0, mCameraPhases = 0, mMapPhases = 0, mMapBuilds = 0;
-		size_t mPeakLightArenaBytes = 0, mPeakLightPathBytes = 0, mPeakPhotons = 0;
+		size_t mPeakPhotons = 0;
 		real mLastRadius = 0;
-		double mLastArea = 0, mLightSeconds = 0, mCameraSeconds = 0, mMapSeconds = 0;
-		// Actual mode-weighted RGB sums before film filtering. Camera sums are
-		// unaveraged; splat sums already include 1/iterations. Not separate-mode images.
-		std::array<double, 3> mCameraConnectionSum{}, mCameraMergingSum{}, mSplatConnectionSum{};
-		ThreadedTaskManager::Result mLastLightPhase, mLastCameraPhase, mLastMapPhase;
 		bool mSucceeded = false;
 	};
 
@@ -73,27 +53,23 @@ public:
 
 private:
 	struct Worker;
-	struct PixelTask;
 	struct RenderState;
-	struct SamplerLease;
-	enum class Phase { Light, Camera };
 
 	bool Prepare(RenderState& state) const;
 	bool RenderIteration(RenderState& state);
+	bool TraceLightPaths(RenderState& state);
+	bool BuildPhotonMap(RenderState& state);
+	bool TraceCameraPaths(RenderState& state);
+	bool RenderPixel(RenderState& state, int64 pixel, Worker& worker) const;
+	bool Connect(const RenderState& state, const std::vector<PathVertex>& lightPath,
+		const std::vector<PathVertex>& cameraPath, int t, Vcm::PathContribution& connection) const;
+	bool Merge(const RenderState& state, const std::vector<PathVertex>& cameraPath, int t,
+		Worker& worker, Vcm::PathContribution& merging) const;
+	void WritePathContribution(RenderState& state, const Vec2& raster,
+		const Vcm::PathContribution& connection, const Vcm::PathContribution& merging) const;
+	bool ForEachPixel(RenderState& state, const char* phase, const std::function<bool(int64, Worker&)>& task);
+	std::shared_ptr<Sampler> PathSampler(const RenderState& state, int64 sampleIndex) const;
 	void ReportIteration(const RenderState& state, size_t photons) const;
-	bool TraceLightSubpaths(RenderState& state);
-	bool BuildHashGrid(RenderState& state);
-	bool ForEachPixel(RenderState& state, Phase phase, const std::function<bool(PixelTask&)>& task);
-	bool TraceEyeSubpath(RenderState& state, PixelTask& pixel);
-	bool VertexConnection(const RenderState& state, const std::vector<PathVertex>& lightPath,
-		const std::vector<PathVertex>& cameraPath, real radius, Vcm::PathContribution* weightedContributionVc) const;
-	bool VertexMerging(const RenderState& state, const std::vector<PathVertex>& cameraPath,
-		real radius, Vcm::PathContribution* weightedContributionVm) const;
-	bool Combine(RenderState& state, PixelTask& pixel, const Vcm::PathContribution& weightedContributionVc,
-		const Vcm::PathContribution& weightedContributionVm);
-	bool OpenSampleStream(RenderState& state, Worker& worker, Phase phase,
-		int64 sampleIndex, SamplerLease* stream) const;
-	bool Cancelled(const RenderState& state) const;
 	bool UseVm() const { return Vcm::UseVm(mMode); }
 
 	std::shared_ptr<Sampler> mSampler;

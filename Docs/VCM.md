@@ -1,49 +1,44 @@
 # Progressive surface VCM (opt-in)
 
+References: [Georgiev et al., *Light Transport Simulation with Vertex Connection
+and Merging*, SIGGRAPH Asia 2012](https://iliyan.com/publications/VertexMerging/VertexMerging_SigAsia2012.pdf)
+and [Georgiev, *Implementing Vertex Connection and Merging*, revision 2,
+2013](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf).
+Each iteration runs in stages: trace light paths, build the photon map, then trace
+camera paths. The checking style follows Gyunity's own `BDPT.cpp`.
+
 ## Reading the implementation
 
-`RenderChecked` prepares one render-local `RenderState`, runs `RenderIteration`,
-then clears each iteration's paths only after its task groups have joined.
-The state owns the complete light-path batch, map and worker arenas; it is not a
-new shared renderer base or mutable state retained between renders.
+| File | Content |
+|---|---|
+| `VCM.h/.cpp` | Renderer: boundary checks, the iteration loop, `Connect`, `Merge`, film writes |
+| `VCMPath.h/.cpp` | Path densities, strategy enumeration, MIS weight and the primary merge estimate |
+| `VCMPhotonMap.h/.cpp` | Hash grid over the light vertices of one iteration |
 
-`RenderIteration` directly shows `TraceLightSubpaths`, `BuildHashGrid`, and
-`ForEachPixel`. Each pixel traces an eye path, computes `VertexConnection` and
-`VertexMerging`, then calls `Combine`. The two estimators contain the `s/t` and
-photon loops, using `contributionVc/Vm`, `weightVc/Vm`, `nVc` and `nVm`.
-BDPT still supplies the subpath builders and `EvaluateConnection`.
+One iteration reads top-down. Equation numbers refer to the formulas below and
+appear in the code comments as `Eq. (n)`.
 
-`Contribution` records a weighted RGB value and whether it is a camera-sample
-term or a projected splat. `PathContribution` groups one aggregate camera-sample
-record with any splats; it does not store a record per photon. `Combine` writes
-the splats separately and calls `Film::AddSample` once, even for black results.
-Splats already include `1/iterations`; ordinary terms are averaged by Film.
+```text
+RenderIteration
+  radius r_i                                                      Eq. (1)
+  TraceLightPaths     GenerateLightPath, one attempt per pixel
+  BuildPhotonMap      all continuous light surface vertices (VM modes only)
+  TraceCameraPaths    per pixel: GenerateCameraPath, then for t = 1..nCamera
+    Connect(t)        EvaluateConnection * weightVc / nVc         Eq. (2)
+    Merge(t)          MergeEstimate * weightVm / nVm              Eq. (3), (4)
+  WritePathContribution                                           Eq. (5)
+```
 
-In `VCMPath.cpp`, `ForwardDensity` and `ReverseDensity` follow the light and
-camera sampling directions explicitly. `LightVertex` and `CameraVertex` retain
-the different physical endpoints of a finite-radius merge. `StrategyDensity`
-forms the two prefix products in their original order. `MisPdfs` reuses recorded
-`mPdfFwd/mPdfPrev` values and caches necessary boundary corrections on first use
-within that selected context. `UseVc/UseVm` gate the active strategy families;
-they do not alter recorded densities. `pdfPath` excludes sample counts.
-Each public PDF/MIS entry validates its selected immutable context once; the
-alternatives reuse that validation without evaluating unused densities or
-suffixes. Complete-path, selected-prefix and map-surface validation retain their
-different contracts.
+`Connect` and `Merge` push weighted `Contribution`s into two `PathContribution`s.
+`WritePathContribution` splats the
+`t = 1` light-tracing records (already divided by `iterations`) and adds one camera
+sample: the VC sum plus the VM sum. Values are `Vector3d`; note that `Vector3d`
+scalar operators take `real`, so double factors are passed as `Vector3d(x)`.
 
-`PhotonMap::Build` first collects and validates lightweight `(path, vertex)` IDs,
-then inserts their radius-relative positions into the hash grid. This temporary
-ID vector is released after building; paths/BSDFs are never copied. Querying
-sorts and deduplicates candidate IDs before `WithinRadius` and `CompatibleNormals`
-apply the physical acceptance rule. The checked broad phase is not the kernel.
+BDPT supplies the subpath builders, `EvaluateConnection`, `ConvertDensity` and the
+`Bidirectional` probability helpers. BDPT's own renderer and legacy MIS are not used.
 
-The existing `s`, `t`, descriptive camelCase and member naming conventions are retained.
-BDPT's classes, rendering loop, MIS, BSDFs and public interfaces are unchanged
-by this readability refactor.
-
-## Renderer and example
-
-`integrator\VCM.h` adds the opt-in checked renderer:
+## Usage
 
 ```cpp
 VertexConnectionMerging vcm(sampler, maxDepth, iterations, initialRadius,
@@ -52,547 +47,188 @@ VertexConnectionMerging vcm(sampler, maxDepth, iterations, initialRadius,
 bool success = vcm.RenderChecked(scene, camera);
 ```
 
-`RenderChecked` never saves files; `RenderScene` saves only after success.
-No default example, `main()` selection, or CLI behavior changes. The callable
-example below and renderer-level acceptance tests cover issue #128; bounded
-tests are not a universal convergence or performance claim.
+`RenderChecked` never saves files; `RenderScene` saves only after success. VCM is
+reachable through `Examples::VertexConnectionMerging`; it is not in the CLI or the
+default example. The radius is in scene units. Retained light paths scale with
+resolution times depth, so start small.
 
-The trailing `useShadingNormals` flag defaults to `false`. Both subpaths call
-the current BDPT builders with `SurfaceNormalMode::Geometric`. Setting the flag
-to `true` is currently an explicit failure, before path generation or film writes;
-it does not silently select geometric normals. Low-level VCM path/map operations
-also reject shading-mode records, even when their normals happen to coincide.
-BDPT's independent shading-normal option remains supported and unchanged.
+Modes: `Combined` uses joint VC/VM MIS; `ConnectionOnly` skips the photon map;
+`MergingOnly` keeps VM plus camera-visible `LS*E` emission (every interior event a
+pure delta). The three mode images use different MIS denominators and are not
+additive components. VC depth is `s+t-2`, VM depth is `s+t-3`; there is no `t=0`
+or `(1,1)` strategy.
 
-The callable example follows the current `GyunityApp\Examples.h/.cpp` interface:
+## Validation
 
-```cpp
-bool Examples::VertexConnectionMerging(const std::string& scene = "mesh",
-    const Examples::Options& options = {},
-    real initialRadius = 0.05f, real alpha = real(2.0 / 3.0),
-    Vcm::Mode mode = Vcm::Mode::Combined,
-    int concurrency = ThreadedTaskManager::DefaultConcurrency(),
-    bool useShadingNormals = false,
-    Gyunity::VertexConnectionMerging::Statistics* statistics = nullptr);
-```
+Checks run once, at the boundary, in `Prepare`:
 
-For example:
+- `useShadingNormals` is rejected (only geometric-normal transport is implemented);
+- sampler, depth, iterations, radius, alpha and mode ranges;
+- `Bidirectional::ValidateScene` (lights, media, environment), shared with BDPT;
+- the sampler's dimension and sample-index budget (below).
 
-```cpp
-Examples::Options options;
-options.width = options.height = 32;
-options.iterations = 16;
-options.maxDepth = 6;
-if (!Examples::OutputPath("LucyBunnyVcm.hdr", options.output)) return 1;
-bool ok = Examples::VertexConnectionMerging("lucy-bunny", options, 0.15f,
-    real(2.0 / 3.0), Vcm::Mode::Combined, 1, false);
-```
+After that the renderer trusts its own components: the BDPT path builders, the
+photon map's radius and normal filter, and the recorded edge densities. Zero
+support is an ordinary outcome (`continue`), not an error. The remaining runtime
+failures are genuine: a BDPT helper reporting an invalid density, a sampler that
+cannot create a path stream, a BSDF that mixes delta and continuous lobes, a photon
+extent the grid cannot index, and a current strategy whose density is zero.
 
-The ten legacy surface scenes and compatible native surface scenes use the shared
-`RenderScene` path. `fog`, unknown names, invalid accelerators and unsupported
-materials fail explicitly. Defaults remain 128x128, 16 iterations and depth 8;
-depth zero is supported. Use `options.iterations`, not `options.spp` or
-`options.photonsPerStage`. Dimensions, budgets, missing assets and failed image
-writes propagate checked failures, not normal-control-flow exceptions. The
-optional statistics pointer is reset on entry and copied after rendering returns,
-including failed rendering. A non-null pointer is not needed to render.
+## Sampling
 
-Run from the worktree's `GyunityApp` directory: `..\resources` must contain the
-registry's assets (`meshs\bunny3.obj`, `meshs\Alucy.obj`, `meshs\water.obj` and
-`media\pictures\uffizi-large.hdr` for the representative mesh/env/water scenes).
-Defaults use `Test\CornellBoxVcm.hdr` under the **main checkout**, including from
-nested worktrees. Explicit output paths are unchanged and their parent directory
-must exist. Tests call `Examples::VertexConnectionMerging` directly, without
-including `main.cpp`. VCM is not added to the CLI or automatic example batches;
-existing PT/BDPT/SPPM/VPT routing and no-argument selection are unchanged.
+Each iteration traces `P = width * height` light paths and `P` camera paths. Pixel
+`k` pairs camera path `k` with light path `k` for VC. Sample indices are
+`2 * (iteration * P + pixel) + phase` (light 0, camera 1), independent of threads.
+Built-in Halton, Sobol and RegularHalton samplers are pure functions of
+(dimension, index) and are shared; other samplers get `CloneForPath(index)` per
+path. Paths read samples through BDPT's `RandomStateSequence`.
 
-Start small: retained light paths and BSDF arenas scale with resolution times
-depth, and the map, camera scratch, film and acceleration structures add more
-memory. Increasing iterations does not increase retained path storage, but
-explicit MIS and large photon neighborhoods can be costly. The modest
-128x128/16/depth-8 default is not a promise that 1024x1024/1600 will fit or finish
-quickly. Radius is in **scene units**, never inferred from a scene's bounds.
-
-References: [Georgiev et al., *Light Transport Simulation with Vertex Connection
-and Merging*, SIGGRAPH Asia 2012](https://iliyan.com/publications/VertexMerging/VertexMerging_SigAsia2012.pdf)
-and [Georgiev, *Implementing Vertex Connection and Merging*, revision 2,
-2013](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf).
-The report's recursive `dVCM/dVC/dVM` implementation is a **test-only oracle**;
-production enumerates explicit path densities. Alpha 2/3 satisfies the paper's
-sufficient alpha <= 0.75 condition for its qualified asymptotic rate, not a
-universal rate for all point-light/pinhole specular configurations.
-
-Each iteration attempts exactly `P = width * height` light paths, then traces one
-camera path per pixel, pairing pixel `k` with complete light path `k` for VC.
-VM gathers from all **attempts**, including empty ones. The physical radius is
-`R0 * pow(i + 1, -(1-alpha)/2)`, rounded once to `real`; that same radius and
-`pi*R*R` are used throughout the iteration's map, MIS and normalization.
-Camera contributions go through `Film::AddSample` once, including black samples,
-without division by iterations. Each paired `t=1` contribution is splatted once,
-scaled only by `1/iterations`. The renderer's `MergeEstimate` returns the primary
-estimate including `1/area`; `VertexMerging` applies its per-pair `weightVm/nVm`.
-The existing checked `EvaluateMerging`/`GatherMerging` interfaces remain fully
-weighted and normalized for their callers; never normalize those outputs again.
-
-There are no VCM image tiles. Task indices directly cover `[0,P)`, including
-non-square dimensions and partial image sizes. Sample/path keys are
-`2*(iteration*P + pixel) + phase` (light=0, eye=1), never worker indices.
-Stateful streams are cloned for one path with `CloneForPath(uint64)` and released
-after tracing; they are not retained for every pixel. Standard RandomSampler
-keeps MT, combines the configured seed with the full path key, and leaves its
-legacy `Clone(uint32)` behavior unchanged. Mixing the configured seed before
-the path key prevents different root seeds from merely permuting the same
-nearby path streams.
-
-Exact built-in Halton, Sobol and RegularHalton samplers are index-addressed and
-can reuse worker-local clones. Subclasses are not assumed stateless. Legacy
-custom samplers can use their old Clone for 32-bit keys; larger keys require
-an explicit `CloneForPath` implementation or fail before tracing. First/last
-phase-key preflight checks actual clone capabilities and aliases. Custom clone
-factories are serialized, and simultaneous use of an aliased clone is rejected.
-
-The synchronous named light phase joins before a named map-build task runs in
-the same scoped concurrency model, including its nested hash-grid parallel work.
-The camera phase joins before clearing references and resetting light arenas.
-Separately aligned worker-owned light arenas retain all path BSDFs until then;
-eye scratch resets after each path's consumers. Worker slots select scratch only,
-not random streams. Arena pools retain their per-worker high-water allocation,
-bounded by the render workload and fixed concurrency rather than accumulating
-one batch per iteration. Explicit MIS enumeration remains intentionally expensive.
-
-Removing tiles and reseeding by logical paths intentionally changes the random
-realization. Separate VC/VM accumulation and delayed splat writes can also change
-rounding/order. Fixed-path probability reports remain comparable exactly, but
-old random-render hashes are not the new renderer's acceptance criterion.
-
-Modes reuse `Vcm::Mode`: Combined uses joint VC/VM MIS; ConnectionOnly skips map
-construction; MergingOnly retains VM and camera-visible `LS*E` emission/background
-(zero or only pure-delta interior scatters), not continuous emitter-hit overlap.
-VC depth is `s+t-2`; VM depth is `s+t-3`. No `t=0` or `(1,1)` strategy is included.
-Separate ConnectionOnly/MergingOnly images use different MIS denominators:
-they are **not additive components** of a Combined image. Continuous
-ConnectionOnly weights share BDPT's common domain; singular VCM weights follow
-the report convention and need not equal legacy BDPT weights.
-
-Requirements: initialized surface scene, valid pinhole camera/film storage, finite
-positive radius, positive iterations, `0<alpha<1`, a sampler-supported depth,
-concurrency `-1` or positive, and distinct non-null sampler clones returning
-finite `[0,1)` values (with the bundled rounded-one conventions below). Derived radii, areas,
-budgets, seeds and sample indices are checked. Scene-level checks reject unsupported
-lights, media, null boundaries, duplicate emitters and rotated/multiple
-environments before path storage. Every generated subpath is validated even if
-no contribution consumes it, including encountered mixed lobes, endpoint PDFs,
-and sampled terminal delta-event masses. No fallback or contribution clamping.
-The supported surface/finite-radius limitations of the probability/map layers
-below still apply, including geometric-normal shading and the map's checked
-relative extent and oriented-normal filter.
-
-Sampling-domain checks apply to the parent sampler and actual clones.
-The worst light budget is `max(5,3*depth+2)` draws; the eye budget is
-`3*depth+2`, including jitter. Parent/preflight checks occur before path storage;
-runtime clones are checked before tracing their paths. The renderer-local
-sequence also checks every dimension/index before calling `Sample`.
-
-| Sampler | Dimensions | Maximum renderer depth | Phase sample indices |
+| Sampler | Dimensions | Maximum depth | Sample indices |
 |---|---:|---:|---|
-| `HaltonSampler` (`Halton.h`) | 256 | 84 | below `INT64_MAX` |
-| `SobolSampler` | 1024 | 340 | below `2^52` (52 direction columns) |
-| `RegularHaltonSampler` | 1229 | 409 | below `INT64_MAX`, so `index+1` remains signed-representable |
-| Random/custom samplers | renderer cap 1229 | 409 | below `INT64_MAX` |
+| `HaltonSampler` | 256 | 84 | below `INT64_MAX` |
+| `SobolSampler` | 1024 | 340 | below `2^52` |
+| `RegularHaltonSampler`, random and custom | 1229 | 409 | below `INT64_MAX` |
 
-Opaque custom samplers must support the declared budget and path-key range;
-the existing Clone and Sample interfaces remain unchanged. Sobol's uint32-to-float
-conversion and RegularHalton's float accumulation can round to exactly one. Only these known
-families retain `RandomStateSequence`'s exact-one-to-zero convention. Halton and
-custom adapters returning one fail; all negative/nonfinite/greater-than-one
-values fail. Other generated values are unchanged.
+A light walk draws `max(5, 3*depth + 2)` samples; a camera walk draws `3*depth + 2`.
 
-Valid near-one jitter is checked in double against its intended half-open pixel.
-The unchanged jitter then goes to the pinhole camera, and the same rounded
-`real(pixel)+jitter` goes to the film. This preserves their existing closed-edge
-filter behavior when float addition rounds to `pixel+1`, including the outer film
-edge; it neither clamps nor wraps the valid jitter. Finite raster/storage and
-accumulated-film checks remain active.
+## Estimators
 
-`RequestCancellation()` cooperatively cancels an active render; all tasks drain
-before failure returns. A failed film may contain partial work and must not be
-saved as a successful image. `GetStatistics()` is a bounded post-render summary:
-completed iterations/attempts/samples, last physical radius/area, phase counts
-and times, last task-group results, and peak light-arena/path bytes and photons.
-It is not process RSS and excludes map buckets, eye scratch, sampler clones,
-film, allocator overhead and the diagnostic reduction buffer. One renderer
-instance must not render concurrently.
-Its three RGB diagnostic sums are the actual terms using the selected mode's
-MIS weights: `mCameraConnectionSum` (including retained `LS*E`),
-`mCameraMergingSum` (already kernel/count-normalized), and
-`mSplatConnectionSum` (already divided by iterations). They do not affect film
-arithmetic. For a successful fresh box-filter render with one sample per pixel
-per iteration, divide camera sums by `P*iterations` and splat sums by `P` to
-compare image means (allow float accumulation/RGBE quantization). They are
-**pre-filter diagnostics**, not component images for arbitrary filters or
-rounded boundary samples. Only interpret totals after success; failures can
-contain partial work. Nine double counters per logical pixel retain these sums
-in a worker-independent order (72 bytes/pixel, not growing with iterations);
-reduction occurs only after phase barriers. Each VM-enabled iteration declares
-`2*P+1` progress units (light paths, one map task, camera paths); ConnectionOnly
-declares `2*P`.
-`mLastMapPhase` records the map task's scoped concurrency/status/timing.
-Cancellation or failure in that phase joins and cleans up without starting eye
-work or reporting overall 100%.
-`mMapPhases` counts invoked groups; `mMapBuilds` counts successful constructions,
-including a finished map discarded when cancellation is observed after building.
+Iteration `i` (from 0) uses one radius for the map, MIS and normalization:
 
-After each successful iteration, stderr also reports its physical radius, current
-photon count, light/map/camera phase durations, total elapsed time and estimated
-remaining time. Elapsed time includes preparation and iteration cleanup; ETA uses
-the average completed-iteration time and is approximate as radius/workload change.
-Failed or cancelled iterations do not print a completion summary. ConnectionOnly
-reports zero photons and zero map time. Overall 100% still appears only after
-the entire render succeeds, after the final iteration summary:
+$$r_i = r_0\,(i+1)^{(\alpha-1)/2} \tag{1}$$
+
+A light subpath has `s` vertices $y_0 \ldots y_{s-1}$ (light origin first); a camera
+subpath has `t` vertices $z_0 \ldots z_{t-1}$ (camera first). `mThroughput` is the
+sampling-compensated throughput $\beta$ of each prefix.
+
+**Vertex connection** of light prefix `s` and camera prefix `t`, with
+$f_{VC}$ from BDPT's `EvaluateConnection` (throughputs, both BSDFs, geometry term
+and visibility) and $n_{VC} = 1$:
+
+$$C_{VC}(s,t) = \frac{w_{VC}(s,t)}{n_{VC}}\, f_{VC}(s,t) \tag{2}$$
+
+**Vertex merging** of photon $y = y_{s-1}$ with camera vertex $x = z_{t-1}$ when
+Eq. (12) accepts them. The camera BSDF is evaluated with the photon's original
+incoming direction $\omega_y$ (`y.mOutDir`); there is no photon BSDF, extra cosine,
+visibility ray or division by a full path pdf:
+
+$$C^{prim}_{VM}(s,t) = \frac{\beta_x\, f_x(\omega_x, \omega_y)\, \beta_y}{\pi r_i^2} \tag{3}$$
+
+$$C_{VM}(s,t) = \frac{w_{VM}(s,t)}{n_{VM}}\, C^{prim}_{VM}(s,t), \qquad n_{VM} = P \tag{4}$$
+
+$n_{VM}$ counts light-path **attempts**, including empty ones; it is neither the
+photon count nor the number of query hits.
+
+**Film.** Each camera path adds one sample; light tracing ($t = 1$) splats onto its
+projected pixel, already divided by the iteration count $N$:
+
+$$I_{pixel} \mathrel{+}= \sum_{t \ge 2,\,s} C_{VC}(s,t) + \sum_{t,\,y} C_{VM}(s,t), \qquad
+I_{splat} \mathrel{+}= \frac{C_{VC}(s,1)}{N} \tag{5}$$
+
+Products and sums are in double; each film value is converted to `real` once.
+
+## MIS
+
+Write the full path in light-to-camera order $x_0 \ldots x_{n-1}$, with
+$n = s + t$ for VC and $n = s + t - 1$ for VM (the merge vertex counts once).
+`PathDensities` builds two area densities per vertex: `pdfFwd[i]` samples $x_i$
+from the light side, `pdfPrev[i]` from the camera side,
+
+$$\text{pdfFwd}[i] = p_\omega(x_{i-1} \to x_i \mid x_{i-2})\,
+\frac{|\cos\theta_{x_i}|}{\lVert x_i - x_{i-1}\rVert^2}, \qquad
+\text{pdfPrev}[i] = p_\omega(x_{i+1} \to x_i \mid x_{i+2})\,
+\frac{|\cos\theta_{x_i}|}{\lVert x_i - x_{i+1}\rVert^2} \tag{6}$$
+
+where $\theta$ uses the geometric normal (`ConvertDensity`). `pdfFwd[0]` is the light
+selection probability times the origin's area density (directional density for an
+environment). Recorded `mPdfFwd`/`mPdfPrev` are reused while their source and
+sampled successor remain selected; only the connection or merge boundary is
+recomputed. The path densities of strategy `s` are (report Eq. 10):
+
+$$p_{VC}(s) = \prod_{i=0}^{s-1}\text{pdfFwd}[i] \prod_{i=s}^{n-1}\text{pdfPrev}[i] \tag{7}$$
+
+$$p_{VM}(s) = \pi r_i^2 \prod_{i=0}^{s-1}\text{pdfFwd}[i] \prod_{i=s-1}^{n-1}\text{pdfPrev}[i] \tag{8}$$
+
+A merge samples its vertex $x_{s-1}$ from both sides, so its camera product starts
+at $s-1$. The balance heuristic over all enabled VC strategies ($s = 0 \ldots n-1$)
+and VM strategies ($s = 2 \ldots n-1$) is evaluated in the log domain,
+with $\ell_k = \log(n_k\, p_k)$ and $m = \max_k \ell_k$:
+
+$$w_{cur} = \frac{n_{cur}\, p_{cur}}{\sum_{VC} n_{VC}\, p_{VC}(s) + \sum_{VM} n_{VM}\, p_{VM}(s)}
+= \frac{e^{\ell_{cur} - m}}{\sum_k e^{\ell_k - m}} \tag{9}$$
+
+so long paths do not underflow. `UseVc`/`UseVm` choose which strategies enter the
+sum; they never change the densities. A strategy is infeasible (excluded) when it
+connects or merges at a delta vertex or has a zero factor.
+
+**Finite-radius merge** ([report, Section 4.3 / Figure 3](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf)).
+For light predecessor $a = y_{s-2}$, photon $y$, camera query $x$ and camera
+predecessor $b = z_{t-2}$, both physical endpoints are kept and the BSDF at $x$
+scatters with the original directions; no $x$–$y$ edge is introduced:
+
+$$\text{pdfFwd}[s] = p_x(\omega_y \to \omega_x)\, G(x \to b), \qquad
+\text{pdfPrev}[s-2] = p_x(\omega_x \to \omega_y)\, G(y \to a) \tag{10}$$
+
+with $G(u \to v) = |\cos\theta_v| / \lVert v - u\rVert^2$.
+
+**Singular convention** (approved "report-keep-bdpt", report Eqs. 51-55). At an
+interior delta vertex $x_k$ the singular distribution is removed, but its sampled
+component mass $m$ (`mDeltaPdf` forward, `mDeltaReversePdf` reverse) and geometry
+are kept:
+
+$$\text{pdfFwd}[k+1] = m_{fwd}(x_k)\, G(x_k \to x_{k+1}), \qquad
+\text{pdfPrev}[k-1] = m_{rev}(x_k)\, G(x_k \to x_{k-1}) \tag{11}$$
+
+Continuous-path weights equal legacy BDPT's; singular weights may differ, by design.
+Point origins are position masses and cannot be hit by a camera path.
+
+## Photon map
+
+`PhotonMap::Build` stores `(light path index, vertex index)` records for every
+continuous surface vertex, at radius-relative coordinates
+`(position - firstPhoton) / r`. The grid's broad-phase radius is 2, which
+conservatively contains the physical unit disk while float rounding within `2^20`
+radii stays below 1/8; a larger extent fails. `Query` returns candidates sorted
+and deduplicated in `(path, vertex)` order, then accepts a photon $y$ at camera
+vertex $x$ in double precision when
+
+$$\lVert x - y\rVert^2 \le r_i^2, \qquad \hat n_x \cdot \hat n_y \ge 0.9 \tag{12}$$
+
+with oriented geometric normals. Paths and BSDF arenas must stay alive until the
+last query; each concurrent reader owns its result.
+
+## Concurrency, cancellation and output
+
+Each phase is one `ThreadedTaskManager` group over pixels, limited to `concurrency`;
+the map build runs in a task arena with the same limit. Thread-local workers own
+the light and camera arenas. Camera arenas reset after each pixel; after the camera
+phase the map and paths are cleared before the light arenas reset.
+`RequestCancellation()` is polled once per pixel; all tasks drain before failure
+returns.
+
+`GetStatistics()` reports completed iterations, light attempts, camera samples, the
+last radius and the peak photon count. After each successful iteration stderr prints
 
 ```text
-VCM iteration 64/64: radius 0.00308965, 3804768 photons, light 0.1s, map 1.2s, camera 3.6s; elapsed 0:06:54, remaining ~0:00:00
+VCM iteration 64/64: radius 0.00308965, 3804768 photons; elapsed 0:06:54, remaining ~0:00:00
 ```
 
-`VCMRenderer.*` exercises actual emission/black/environment/specular renders,
-camera/splat normalization, radius-dependent gather arithmetic, persistent RNG
-streams, partial image dimensions, barriers, arena reuse and deterministic path keys.
-`VCMRendererNegative.*` records expected checked failures separately. Tiny HDR
-checks allow RGBE quantization; the diffuse-environment check uses a separately
-declared Monte Carlo/finite-radius tolerance, not a relaxed MIS tolerance.
-`ExpandedEnvironmentBoundsDoNotDimDiffuseIndependentSeeds` uses 48 independent
-seed-pairs, fixed geometry and doubled launch radius in all three modes. Its
-central diffuse disks have no boundary bias; acceptance uses four standard
-errors plus RGBE quantization and a separate precision gate. Photon-sharing
-pixels are not treated as independent samples. `MainExampleRenders` calls the
-real example across all registered surface scenes/modes, KD and explicit
-concurrency, including no-save and filesystem-failure probes.
-Run from `GyunityApp` with `GYUNITY_TEST_OUTPUT_DIRECTORY` pointing to an existing
-main-checkout `Test` directory. No image-hash comparison to PT is an oracle.
-Finite-radius bias, the map's normal-dot cutoff 0.9 and extent limit of 2^20
-radii remain explicit approximations/limits. There is no media, mixed
-delta/continuous BSDF, shading-normal adjoint, new camera, rotated/multiple
-environment, adaptive-radius, independent photon-budget or GPU support.
+## Tests
 
-The renderer exposed an environment PDF round-trip failure near the poles:
-`acos(y)` lost latitude after float rounding. Inverse mapping now uses
-`atan2(sqrt(x*x+z*z),y)` and the transverse length for the PDF Jacobian.
-Emission sampling and its returned density are unchanged; the existing VCM
-endpoint-consistency threshold is not relaxed.
+Run from `GyunityApp` with `GYUNITY_TEST_OUTPUT_DIRECTORY` set to an existing
+main-checkout `Test` directory.
 
-## VCM photon map and local estimator
-`integrator\VCMPhotonMap.h` provides `Vcm::PhotonMap` for issue #128.
-It is **not a VCM renderer or merge-radiance estimator** and has no dependency
-on VCM MIS. `Build(lightPaths, radius)` borrows a
-`const std::vector<std::vector<PathVertex>>&`; complete light paths are stored
-once by the caller. The index stores only radius-relative positions and
-`PhotonRecord { mLightPathIndex, mVertexIndex }` IDs, never copied prefixes,
-BSDF ownership, or mutable photon deposits.
+- `VCMPath*`, `VCMSingularConvention*`: every strategy weight against two test-only
+  oracles, the report's `dVCM/dVC/dVM` recurrence and direct Eq. (10)-(12) products
+  (`vcm-weights-release.csv`, `vcm-singular-gate-release.csv`).
+- `VCMEstimator*`: the renderer's merge against independent Lambertian, manual
+  joint-score and brute-force/report references (`estimator-generated.csv`).
+- `VCMPhotonMap*`: queries against an exhaustive oracle.
+- `VCMRenderer*`: emission, splat and gather normalization, environment, specular,
+  sampler streams, determinism, cancellation and boundary failures.
+- `MainExampleRenders.Vertex*`: the example over every surface scene and mode.
 
-- Keep the paths, their BSDF arenas, and referenced scene objects alive and
-  immutable until every query finishes. Do not resize/move the paths or reset
-  arenas. `Build`, `Clear`, and destruction must not race queries. Returned IDs
-  refer to that generation only.
-- Every valid `Surface` with a non-delta `BSDF::IsDelta()` is indexed, including
-  the first surface and emitting scattering surfaces. Camera/light/environment
-  **endpoint types** are skipped. Sampled and unsampled terminal pure-delta
-  surfaces are excluded. Missing/empty BSDFs, mixed delta-continuous lobes,
-  medium/camera surface metadata, shading-normal transport, inconsistent delta
-  flags, unknown vertex types, invalid position/normal/direction/throughput or
-  surface forward/reverse PDFs fail explicitly. This is not a full path-PDF or
-  scene validator; the paths must come from the checked surface path builders.
-- `Query(position, geometricNormal, output)` returns `bool`, clearing the
-  caller-owned `std::vector<PhotonRecord>` even on failure. Use separate output
-  vectors for concurrent readers; no shared mutable query scratch exists.
-  Raw-bucket identities are sorted/deduplicated **before** filtering. Results
-  have stable `(path, vertex)` order; distinct coincident photons stay distinct.
-- Acceptance is double-precision squared Euclidean distance `<= radius^2` and
-  the dot product of independently normalized, **oriented geometric normals**
-  `>= 0.9`. There is no primitive-ID equality (adjacent coplanar triangles do
-  not acquire seams), visibility ray, geometry term, or BSDF evaluation.
-  Finite-radius neighborhoods remain approximate near boundaries/nearby
-  surfaces; normal compatibility is not a general visibility solution.
-  `GatherMerging` checks camera-surface eligibility separately.
-- The physical radius is never clamped or rescaled. Only the broad phase uses
-  `(position - firstPhotonPosition) / radius`, computed in double. Each indexed
-  component must lie within `[-2^20, 2^20]`; larger extents fail, not silently
-  lose photons. HashGrid receives explicit **broad-phase** radius 2 and cell
-  width 4. Within these bounds float coordinate rounding is at most 1/8;
-  every physical radius-one candidate is therefore inside the expanded box.
-  Monotone backend arithmetic preserves its cell inclusion. Loose query bounds
-  are checked in double before casts, so distant queries return an empty result
-  without unsafe backend indexing. All backend cells are nonnegative and below
-  `2^20`; counts are checked against `INT_MAX` and vector allocation ranges
-  before building.
-- Positions and normals must be finite, with components no larger than
-  `sqrt(DBL_MAX)/4` in magnitude. Geometric-normal squared length and the
-  finite positive radius's square must be normal finite doubles. These checks
-  support the entire finite float position/radius range, including subnormal
-  radii and huge translations where the relative extent permits them. Distance
-  subtraction/squaring uses double, not float. Unsupported numeric ranges fail
-  explicitly; the map does not change the physical kernel to accommodate them.
-- Every build clears the previous points, radii, and buckets first. A failed
-  checked build leaves `IsBuilt()==false`, `RecordCount()==0`, `Radius()==0`
-  and queries failing; a valid empty build succeeds without querying HashGrid.
-  Invalid input logs through `Error(message, false)` and returns false.
-  As elsewhere in the renderer, allocation failures are not converted into
-  status codes.
-
-`RecordCount()` is **not** the attempted light-path count. No photon-count,
-kernel-area, radiance, or MIS normalization is performed here. The shared
-HashGrid change only adds const bucket access and defined uint32-wrap hashing;
-its legacy mutable API, bucket multiplicity, and LT/SPPM behavior are retained.
-
-`VCMPhotonMap.*` compares queries to an independent exhaustive oracle, including
-boundary/nextafter, collisions, rebuild failures, extreme numbers, generated
-path immutability and eight simultaneous readers. `HashGrid.*` checks independent
-uint32 wrapping and legacy raw-bucket multiplicity. Run these with
-`GyunityTest.exe --gtest_filter=VCMPhotonMap.*:HashGrid.*` from `GyunityApp`;
-the regular framework also contains the small SPPM/scene render smoke tests.
-
-### Local VM contribution and gather (not a renderer)
-`integrator\VCMPath.h` now also provides checked `Vcm::EvaluateMerging` and
-`Vcm::GatherMerging`. Both return `bool` and clear the output on failure. Errors
-use `Error(message, false)`, not exception control flow or contribution clamping.
-
-- `EvaluateMerging(scene, pathContext, &contribution)` requires a selected VM
-  strategy with `s >= 2`, `t >= 2`, valid **selected prefixes**, continuous
-  scattering endpoints within the physical radius, and the map's oriented
-  geometric-normal compatibility test. Off-radius/incompatible/pure-delta direct
-  calls fail; this low-level API does not perform a search or enforce a renderer's
-  depth budget. `PathContext::lightPathCount` is the positive **attempted emitted
-  path count**, including empty/missed attempts, supplied by the caller.
-- `GatherMerging(scene, map, lightPaths, cameraPath, cameraPrefixCount, maxDepth,
-  mode, &contribution)` queries **one** camera vertex. Call it at every eligible
-  camera prefix, not just the first hit. The map must have been built from that
-  exact immutable `lightPaths` object (`PhotonMap::References` checks identity).
-  It derives `N_L = lightPaths.size()` after range/zero checks. Keep a complete
-  per-attempt vector; do not remove empty/missed paths. A valid map containing
-  no photons but a positive number of attempts returns zero. A zero-attempt batch
-  is not an estimate. Neither record count nor query-hit count is a denominator.
-- Gather selects `s = photon.mVertexIndex + 1`, `t = cameraPrefixCount`, and keeps
-  physical depth `s + t - 3 <= maxDepth`. Depth zero has no VM; depth one includes
-  first-light-surface/first-camera-surface merging. Camera origins, escapes and
-  pure-delta surfaces return zero, using actual BSDF kind rather than only the
-  sampled `mIsDelta` flag. Continuous surfaces after mirror/glass transport and
-  environment-emitted surface photons are supported.
-- **Normalization is per pair, exactly once, inside the estimator:**
-  `w_VM * beta_camera * f_camera(eyeOut, originalPhotonOut) * beta_light /
-  (N_L * pi * R * R)`. The weight comes from joint VCM MIS once, at that pair's
-  selected counts. The camera path's **radiance-mode** BSDF is evaluated once;
-  the photon BSDF is not evaluated for the local scatter. Throughputs already
-  include sampling/emission compensation. There is no extra cosine, full-path
-  PDF division, light-selection/emission factor, inverse-square factor or
-  visibility ray between the distinct endpoints. Gather only **sums** these
-  already normalized pairs; callers must not normalize its output again.
-- Products, area/count normalization, and the sum use `double`, with a checked
-  final conversion to `real`. Nonfinite or out-of-range results fail, without
-  clipping. A valid zero BSDF/throughput returns zero, but never bypasses active
-  input/MIS validation. `ConnectionOnly` returns zero without requiring a built
-  map or inspecting paths/count/radius; mode/output and selected technique (pair)
-  or nonnegative maxDepth (gather) still must be valid.
-- Inputs must come from successful checked surface path builders. The map
-  validates batch surfaces; MIS validates candidate selected prefixes. Camera
-  prefixes are validated even with no hits. No unselected suffix is used by
-  pair evaluation, and no positions/directions/throughputs/metadata are changed.
-  Unsupported mixed lobes, media, nonzero environment rotation and malformed
-  consumed metadata fail explicitly. MIS requires unit geometric-normal shading.
-  Keep the scene, paths and BSDF arenas alive and immutable through all calls;
-  outputs must not alias paths. Identity checking is not mutation detection:
-  replacing/moving/resizing the borrowed batch in place still violates its
-  lifetime contract.
-
-`VCMEstimator.*` covers independent Lambertian and manual joint-score fixtures,
-camera-side/original-direction scatter, blocked finite-radius neighborhoods,
-normalization/depth/mode contracts, and a brute-force/report reference.
-`VCMEstimatorGenerated.*` exercises real area/point/environment light and camera
-paths, including specular transport. Expected invalid-input probes are separated
-under `VCMEstimatorNegative.*`. Set `GYUNITY_TEST_OUTPUT_DIRECTORY` to an existing
-main-root `Test` subdirectory for generated HDR/CSV fixtures; requested I/O failures
-fail the tests explicitly. This local API does **not** establish renderer,
-iteration scheduling, radius progression, film normalization or convergence
-acceptance.
-
-## Explicit path PDF and MIS
-
-`integrator\VCMPath.h` adds `Vcm::PathContext`, `Strategy`, `ComputePathPdf`, and
-`ComputeMisWeight`. This is **not a VCM renderer** and changes no example, CLI,
-default integrator, BDPT MIS, RNG, or film behavior. The non-owning context keeps
-immutable selected light/eye prefixes; the paths and BSDF arenas must outlive it.
-Area/point origins, one zero-rotation environment, the existing pinhole
-convention, continuous surfaces, and pure mirror/glass chains are supported.
-Mixed delta/continuous lobes, media, new camera models, rotated/multiple
-environments, and malformed endpoint/event metadata fail explicitly.
-
-The evaluator independently enumerates VC at depth `s+t-2` and VM at depth
-`s+t-3`, excluding `t=0` and `(VC,1,1)`. Origin samples are reused, not resampled;
-their stored forward probability already includes light selection exactly once.
-For an emitter hit, the deterministic origin query includes selection once.
-An unchanged reverse density is reused only when its source and sampled successor
-both remain inside the selected prefix. The builder's cached value preserves the
-original offset-ray directions; reconstructing those directions from hit positions
-can change even a continuous-path weight. The two join-adjacent reverse densities
-are still recomputed, never read from unused suffixes or stale terminal caches.
-No roulette is introduced. `ComputePathPdf` returns the effective common
-reduced-measure path density in logarithmic form (including `A=pi*R^2` for VM,
-not its sample count). For continuous paths this is the ordinary density;
-absolute singular density scales are not an additional validation oracle.
-`ComputeMisWeight` uses double log-products and common-maximum subtraction to
-normalize the balance scores `pVC` and `N_L*pVM`. It does **not** hide `1/N_L` in
-the VM weight. `N_L` is attempted light paths, not stored photons or query hits.
-Invalid input returns `false`; ordinary zero/disabled alternatives return
-`true` with `feasible=false`. Read `logPdf` only when feasible. Requesting a
-weight for a zero-support/disabled current strategy fails.
-
-Finite-radius mapping follows [Implementing VCM, revision 2, Section 4.3 /
-Figure 3](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf).
-For light predecessor `a`, photon landing `y`, camera query `x`, and camera
-predecessor `b`, the current VM density is `A*p_L(...,a,y)*p_E(...,b,x)`.
-The density for sampling `a` backwards uses the BSDF **at x** with original
-eye/photon directions, converted along `y->a`; sampling `b` forwards uses
-the same camera interaction with swapped directions, converted along `x->b`.
-The next reverse density at the light predecessor still sees `y`, not `x`.
-The adjacent VC cuts join `a->x` and `y->b`, respectively: their connection
-edges are **unsampled**, so their PDFs are just the corresponding unchanged
-prefix products (one excludes the photon landing density, the other excludes
-the camera-query density). Neither an `x-y` edge nor a universally collapsed
-polyline is introduced. This is the report's finite-radius approximation,
-not an assertion that all techniques sample one identical geometric path.
-
-Combined and connection-only modes use their respective strategy families.
-Merging-only retains VM plus camera-visible `LS*E` emission/background at unit
-weight: **every** interior scattering event in the prefix must be pure delta.
-An emitter hit after any continuous event is not covered by that exemption.
-No local merge estimator, progressive radius schedule, or render loop is added
-by this probability layer.
-
-Point origins are discrete position masses; their light-selection probability
-is included exactly once, and camera-hit-emitter alternatives are impossible.
-An environment origin instead uses light selection times map directional PDF.
-Its first surface arrival uses the projected launch-disk density, without
-helper-distance falloff; reverse arrivals at infinity remain directional.
-The shared checked emission APIs validate initialized bounds, and emitted rays
-travel opposite the map direction. Sampled light-origin `mPdfPos`, `mPdfDir`,
-`mLightSelectionPdf`, and `mPdfFwd` are checked against point/environment
-endpoint metadata. Camera escapes instead query the origin probability and
-use `mDirection`, not `mIsect.mOutDir`; their unused emission fields may be zero.
-Changing the launch disk changes photon arrival frequency (and some weights),
-not the reciprocal emitted-throughput/arrival-density normalization.
-
-`VCMPathTest.cpp` compares every normalized strategy against **two test-only
-computations**: the report's `dVCM/dVC/dVM` initialization/update/final equations
-(31)-(55), and direct Eq. (10)-(12) products (binary-exponent products for long
-paths). The recurrence helper is linked only into `GyunityTest`; production
-never calls it or the old BDPT weight. Its geometry conversions are independent
-of the production helpers. Endpoint reuse sets `p_connect=p_trace`. To align
-the report's conditional-pixel camera density with Gyunity's global-film
-density, the reference supplies `q_pixel=P*q_film` and `n_light=P`, with
-`P=N_L`; these factors cancel in Eq. (31) and (46). When testing a different
-`N_L`, both reference inputs change together, while `eta=N_L*A` changes
-independently in the VC/VM competition. This is a density-convention comparison,
-not an image comparison or a new arbitrary render-budget contract.
-
-Run `GyunityTest.exe --gtest_filter="VCM*"` from the worktree's `GyunityApp`.
-With `GYUNITY_TEST_OUTPUT_DIRECTORY` pointing to an existing directory under
-the main checkout's `Test`, tests also write per-strategy
-`vcm-weights-debug.csv` / `vcm-weights-release.csv`. The exact depth-one fixture,
-noncoincident directional merges, real glossy reflection/transmission, unequal
-light selection, all finite endpoint families, mode/count/radius invariants,
-immutability/errors, and underflowing long products are covered. The positive
-recurrence oracle also applies the report's point-light initialization,
-directional environment measures, pure-delta masks, and singular updates.
-The generated-path integration test additionally traces 16 deterministic light/
-camera pairs through an enclosed diffuse area-lit scene, checks every positive
-VC construction through depth five against BDPT and the independent oracles, and
-requires positive coverage of all four endpoint families. Its XML properties
-record coverage and original-versus-reconstructed direction differences.
-Reporting is optional when the output variable is unset; when configured,
-failure to open or flush the requested CSV fails the test with a diagnostic.
-
-##### Approved singular convention: report weights, unchanged standalone BDPT
-
-The user selected **report-keep-bdpt**. `VCMSingularConvention.*` preserves the
-reproducible difference between legacy BDPT's delta-marker remapping and the
-report's Section 5.4, Eqs. (51)-(55), as a convention regression, not a blocker.
-Per-path old/new weight equality is required only for continuous paths.
-The singular VCM weights are independently checked against the report and
-direct/hand calculations; the legacy numbers are labelled diagnostics.
-Different normalized weights alone do not establish bias in either renderer.
-
-For an interior mirror at index `i`, the report sets the directional mass to
-one, **not the converted arrival factor**: the reduced factors are
-`f[i+1]=g_forward[i+1]` and `r[i-1]=g_reverse[i-1]`. Adjacent connections and
-merging at the mirror are masked out. Legacy BDPT instead remaps both
-delta-generated zero arrival markers to one. A common multiplicative scale
-cannot reconcile these conventions when their geometric factors differ.
-
-The exact `L-D-S-D-E` fixture uses positions `(-3,0,3), (-3,0,4), (0,0,0),
-(6,0,8), (6,0,7)`, a mirror normal `(0,0,1)`, and adjoining distances 5 and 10.
-Both mirror angles have cosine `4/5`. With the fixture's rational continuous
-densities, feasible VC splits `s=0,1,4` have report weights **`(1,4,2)/7`**,
-but legacy weights **`(1,4,8)/13`**. The report recurrence agrees with separate
-direct products and hand-computed expectations, also in combined and
-merging-only modes. Both VC weight sets normalize; that alone is not agreement.
-
-Three real `GenerateLightPath`/`GenerateCameraPath` pairs with ordinary diffuse
-surfaces, a mirror, an area emitter, and a pinhole camera reproduce the conflict
-on nine positive emitter-hit/origin-connection/camera-splat constructions.
-Changing the two mirror-edge distance ratio to `1.5, 2, 3` changes the
-legacy/report ratio-of-ratios to `2.25, 4, 9`. These are depth-three probes,
-not full singular VCM coverage. Separate BSDF probes cover oblique dielectric
-reflection/refraction, TIR, reversed sampling, radiance/importance transport,
-and one/two matching lobes without treating ordinary `Pdf()==0` as a mass.
-
-The compatibility CSV files retain their names
-`vcm-singular-gate-debug.csv` / `vcm-singular-gate-release.csv`; XML properties
-now identify the **resolved** report/legacy convention. No legacy-MIS fallback
-or renderer is introduced.
-
-`BSDF::Sample` has an optional reverse-delta-mass output. The selected BxDF
-provides that event's reverse component probability before its identity is
-lost; both masses include the selected lobe's probability in their respective
-directions. Main's weighted BSDF sampling, event type and group probability stay
-intact; the optional reverse-mass output follows those existing output arguments.
-The reverse selection weights are evaluated at the reverse outgoing direction,
-not reused from the forward mixture.
-Mirror returns mass one; glass uses the actual Fresnel reflection or
-transmission probability in each direction, including TIR. The previous
-`0.25+0.5*Re` line in glass sampling is still overridden by `P=Re`; the sampling
-policy has **not** changed. Eta-squared remains in radiance throughput only.
-`PathVertex::mDeltaPdf/mDeltaReversePdf` retain these successful sampled
-continuations. `mPdfFwd/mPdfPrev` still contain the original BDPT zero markers,
-and no origin-only probability or direction field is repurposed.
-
-For every supported internal delta event, all feasible techniques contain the
-same singular constraint exactly once. Explicit enumeration removes that
-common distribution but retains its orientation's sampled component mass and
-the report geometry. Equal forward/reverse component masses could cancel
-across all scores; production keeps them, so it never assumes such equality.
-VM support is masked independently: it is not an infeasible VC PDF multiplied
-by disk area. Point `L-S-D-S-E` caustics with one eligible merge have weight one.
-Camera, light, and environment records and pure-delta surfaces cannot merge.
-A continuous surface reached through specular transport can merge. The
-actual endpoint BSDF determines eligibility even if it has never sampled a
-continuation. Conversely, emission/camera roles and unused continuations do
-not invent internal scattering events.
-
-Only consumed metadata is required. A missing forward event, unavailable
-reverse mass (a custom delta BxDF without the optional event query), or invalid
-mass fails checked VCM evaluation; standalone BDPT still uses its original
-behavior. These fields are not a generic mixture/material framework.
-
-The extended matrix also traces 64 real mixed-origin pairs through
-diffuse/mirror/glass surfaces: 147 positive VC constructions (118 singular)
-over depths 0-6, five noncoincident same-surface VM constructions after
-specular transport, up to four delta events per subpath, and environment
-escapes using their actual ray directions. Independent reverse-event
-reconstruction does not consume the stored delta masses or reverse densities.
-Additional generated oblique glass reflection/refraction, TIR, and emissive
-mirror cases verify `LS*E` weights and sampling-compensated emission values.
-These probability/primary-estimate tests are separate from the progressive
-renderer acceptance above and do not alone prove convergence or radiance.
-
-Current standalone BDPT interfaces, examples and progress behavior are documented
-in [BDPT](BDPT.md). Historical VCM acceptance counts and metrics above describe the
-pre-main-integration feature snapshot; they do not imply byte-identical images
-across subsequent main-branch BSDF, camera or environment corrections.
+Limitations: no media, shading normals, mixed delta/continuous BSDFs, rotated or
+multiple environments, adaptive radius or independent photon budget. The
+finite-radius kernel, the 0.9 normal cutoff and the `2^20`-radius grid extent are
+explicit approximations. Standalone BDPT is documented in [BDPT](BDPT.md).

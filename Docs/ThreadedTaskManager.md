@@ -2,7 +2,7 @@
 `system\ThreadedTaskManager.h` adds a small, synchronous TBB-backed preparation
 API for future staged renderers. It does not replace `ParallelFor` or migrate
 LT, SPPM, BDPT, their RNGs, `ThreadIndex`, `ThreadsNumber`, or `Spinlock`.
-Like Yuanming's `ThreadedTaskManager`, it wraps scoped `task_arena` and
+It wraps scoped `task_arena` and
 `parallel_for`, not a persistent custom pool, async queue, or dependency graph.
 
 ```cpp
