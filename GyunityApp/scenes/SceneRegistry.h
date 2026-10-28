@@ -25,16 +25,21 @@ struct SceneDescription {
 	const char* preparation = nullptr;
 };
 
-inline const std::array<SceneDescription, 23>& GetSceneRegistry() {
+inline const std::array<SceneDescription, 25>& GetSceneRegistry() {
 	static const SceneCamera standardCamera;
 	static const SceneCamera sphereCamera = {
 		Vec3(50, 52, 295.6f), Vec3(50, 52, 295.6f) + Vec3(0, -0.042612f, -1),
 		Vec3(0, 1, 0), 28.7993f, 1
 	};
+	// SmallVCM's camera (scene.hxx), z-up; its 45-degree horizontal FOV equals fovy for square images.
+	static const SceneCamera smallVcmCamera = {
+		Vec3(-0.0439815f, -4.12529f, 0.222539f), Vec3(-0.0439815f, -4.12529f, 0.222539f) + Vec3(0.00688625f, 0.998505f, -0.0542161f),
+		Vec3(3.73896e-4f, 0.0542148f, 0.998529f), 45, 1
+	};
 	static const char* previewPreparation =
 		"From the repository root, run: uv run --project tools\\gyscene --locked --extra mitsuba "
 		"gyscene import-matpreview <path-to-matpreview.zip> --profile all --max-depth 8 --output-root resources\\scenes";
-	static const std::array<SceneDescription, 23> scenes = {{
+	static const std::array<SceneDescription, 25> scenes = {{
 		{ "mesh", CornellBoxScenes::GlassBunny, standardCamera, false, { "meshs\\bunny3.obj" } },
 		{ "slope", CornellBoxScenes::Slope, standardCamera, false, {} },
 		{ "sphere", CornellBoxScenes::SphereBox, sphereCamera, false, {} },
@@ -49,6 +54,8 @@ inline const std::array<SceneDescription, 23>& GetSceneRegistry() {
 		{ "lucy-bunny", CornellBoxScenes::RoughGlassLucyAndPurpleBunny, standardCamera, false,
 			{ "meshs\\Alucy.obj", "meshs\\bunny3.obj" } },
 		{ "fog", CornellBoxScenes::FogBunny, standardCamera, true, { "meshs\\bunny3.obj" } },
+		{ "smallvcm-mirror-ceiling", CornellBoxScenes::SmallVcmMirrorSphereCeiling, smallVcmCamera, false, {} },
+		{ "smallvcm-spheres-point", CornellBoxScenes::SmallVcmSpheresPoint, smallVcmCamera, false, {} },
 		{ "CornellBoxStandard", nullptr, {}, false, {}, "scenes\\mitsuba\\cornell-box\\scene.json" },
 		{ "veach-mis", nullptr, {}, false, {}, "scenes\\mitsuba\\veach-mis\\scene.json" },
 		{ "veach-bidir", nullptr, {}, false, {}, "scenes\\mitsuba\\veach-bidir\\scene.json" },

@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "bsdf/BSDF.h"
+#include "material/Phong.h"
 #include "material/Plastic.h"
 #include "material/RoughDielectric.h"
 #include "texture/ConstantTexture.h"
@@ -105,6 +106,39 @@ TEST(TestBsdfSample, MultiLobeSampleMatchesPdf) {
 	std::cout << "albedo: BSDF::Sample " << sampled.mean << " +- " << sampled.stdError
 		<< ", uniform " << uniform.mean << " +- " << uniform.stdError << std::endl;
 	EXPECT_NEAR(sampled.mean, uniform.mean, tolerance);
+}
+
+// SmallVCM's diffuse + Phong floor: importance sampling must agree with uniform sampling,
+// and the Phong density must be symmetric and match what Sample reports.
+TEST(TestBsdfSample, PhongSampleMatchesPdfAndUniformAlbedo) {
+	Intersection isect;
+	isect.mNormal = isect.mGeometryNormal = Vec3(0, 0, 1);
+	isect.mShadingDpDu = Vec3(1, 0, 0);
+	isect.mShadingDpDv = Vec3(0, 1, 0);
+	BSDF bsdf(isect);
+	DiffuseBSDF diffuse(Vec3(0.1f));
+	PhongBSDF phong(Vec3(0.7f), 20, 7);
+	bsdf.Add(&diffuse);
+	bsdf.Add(&phong);
+
+	const Vec3 wo = Vec3(0.3f, 0.2f, 0.9f).Norm();
+	std::mt19937 rng(13);
+	const int n = 1 << 20;
+	const Estimate sampled = AlbedoBySampling(bsdf, wo, n, rng);
+	const Estimate uniform = AlbedoByUniformSampling(bsdf, wo, n, rng);
+	EXPECT_NEAR(sampled.mean, uniform.mean,
+		5 * std::sqrt(sampled.stdError * sampled.stdError + uniform.stdError * uniform.stdError));
+
+	std::uniform_real_distribution<real> u(0, 1);
+	for (int i = 0; i < 4096; ++i) {
+		Vec3 wi;
+		real pdf = 0;
+		const Vec3 f = phong.Sample(wo, &wi, &pdf, Vec3(u(rng), u(rng), u(rng)));
+		EXPECT_NEAR(wi.Length2(), 1, 1e-5f);
+		EXPECT_EQ(pdf, phong.Pdf(wo, wi));
+		EXPECT_EQ(f, phong.Evaluate(wo, wi));
+		if (pdf > 0) EXPECT_NEAR(phong.Pdf(wi, wo), pdf, 1e-4f * pdf);
+	}
 }
 
 // A single-lobe BSDF must be unaffected by how lobes are selected.
