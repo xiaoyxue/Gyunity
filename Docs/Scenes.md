@@ -59,8 +59,12 @@ It has no delta lobe, so VCM can merge on it.
 ..\x64\Release\GyunityApp.exe --scene smallvcm-mirror-ceiling --integrator bdpt --spp 256 --out "$TestRoot\smallvcm-mirror-ceiling-bdpt.png"
 ```
 
-VCM renders these scenes through `Examples::VertexConnectionMerging`; SmallVCM's
-radius is `0.003 * scene bounding radius` with alpha 0.75.
+VCM renders these scenes through `Examples::VertexConnectionMerging`. SmallVCM's
+radius rule is `0.003 * scene bounding radius`, about 0.00665 for these boxes,
+with alpha 0.75. At 512x512 and depth 8, roughly equal render times are PT 2048 spp,
+BDPT 256 spp, SPPM 800 iterations and VCM 96 iterations (about 30-130 s each on a
+128-thread machine). PT misses the point light's glass caustic; BDPT shows
+fireflies through the spheres, which VCM and SPPM resolve.
 
 ## Original Veach MIS
 `veach-mis` loads the actual CC0 gallery data, not a procedural recreation.
