@@ -4,8 +4,8 @@ References: [Georgiev et al., *Light Transport Simulation with Vertex Connection
 and Merging*, SIGGRAPH Asia 2012](https://iliyan.com/publications/VertexMerging/VertexMerging_SigAsia2012.pdf)
 and [Georgiev, *Implementing Vertex Connection and Merging*, revision 2,
 2013](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf).
-The structure follows Yuanming Hu's `vcm.cpp` in the legacy Taichi renderer; the
-checking style follows Gyunity's own `BDPT.cpp`.
+Each iteration runs in stages: trace light paths, build the photon map, then trace
+camera paths. The checking style follows Gyunity's own `BDPT.cpp`.
 
 ## Reading the implementation
 
@@ -29,8 +29,8 @@ RenderIteration
   WritePathContribution                                           Eq. (5)
 ```
 
-`Connect` and `Merge` push weighted `Contribution`s into two `PathContribution`s,
-as Yuanming's `connect` and `vertex_merge` do. `WritePathContribution` splats the
+`Connect` and `Merge` push weighted `Contribution`s into two `PathContribution`s.
+`WritePathContribution` splats the
 `t = 1` light-tracing records (already divided by `iterations`) and adds one camera
 sample: the VC sum plus the VM sum. Values are `Vector3d`; note that `Vector3d`
 scalar operators take `real`, so double factors are passed as `Vector3d(x)`.

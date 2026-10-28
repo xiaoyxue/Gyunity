@@ -10,7 +10,7 @@ GYT_NAMESPACE_BEGIN
 
 namespace Vcm {
 
-// One weighted estimate and its film position, as in Yuanming's bidirectional renderer.
+// One weighted estimate and its film position.
 // Camera-pixel estimates are averaged into the pixel sample; t = 1 light tracing is splatted.
 struct Contribution {
 	Vec2 mRaster;
