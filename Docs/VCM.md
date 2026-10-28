@@ -43,7 +43,7 @@ BDPT supplies the subpath builders, `EvaluateConnection`, `DirectionToArea` and 
 ```cpp
 VertexConnectionMerging vcm(sampler, maxDepth, iterations, initialRadius,
     real(2.0 / 3.0), Vcm::Mode::Combined,
-    ThreadedTaskManager::DefaultConcurrency(), false);
+    ThreadedTaskManager::DefaultConcurrency(), useShadingNormals);
 bool success = vcm.RenderChecked(scene, camera);
 ```
 
@@ -62,7 +62,6 @@ or `(1,1)` strategy.
 
 Checks run once, at the boundary, in `Prepare`:
 
-- `useShadingNormals` is rejected (only geometric-normal transport is implemented);
 - sampler, depth, iterations, radius, alpha and mode ranges;
 - `Bidirectional::ValidateScene` (lights, media, environment), shared with BDPT;
 - the sampler's dimension and sample-index budget (below).
@@ -126,6 +125,21 @@ $$I_{pixel} \mathrel{+}= \sum_{t \ge 2,\,s} C_{VC}(s,t) + \sum_{t,\,y} C_{VM}(s,
 I_{splat} \mathrel{+}= \frac{C_{VC}(s,1)}{N} \tag{5}$$
 
 Products and sums are in double; each film value is converted to `real` once.
+
+**Shading normals** (`useShadingNormals = true`) use BDPT's adjoint-corrected
+transport on both subpaths: light-path throughputs carry the importance factor
+$K_{imp}$, camera-path throughputs the radiance factor $K_{rad}$, and VC is BDPT's
+shading-mode `EvaluateConnection`. Densities and MIS still use geometric normals;
+shading normals only mask BSDF support, also at the merge boundary of Eq. (10).
+Merging needs one correction. Photons land with area density
+$p_\omega\,\lvert\omega_y \cdot n_g(y)\rvert / d^2$, so Eq. (3) implicitly carries
+$y$'s geometric cosine, while the VC estimator of the same path carries
+$K_{rad}(x) = \lvert\omega_y \cdot n_s(x)\rvert$ (zero outside the shading
+support). In shading mode Eq. (3) is therefore scaled by
+
+$$\frac{K_{rad}(x;\, \omega_x, \omega_y)}{\lvert \omega_y \cdot n_g(y) \rvert} \tag{13}$$
+
+which is 1 when $n_s = n_g$; geometric mode skips it, so its output is unchanged.
 
 ## MIS
 

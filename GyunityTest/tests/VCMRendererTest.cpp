@@ -1,6 +1,7 @@
 #include "stb/stb_image.h"
 #include "gtest/gtest.h"
 #include "integrator/VCM.h"
+#include "integrator/BDPT.h"
 #include "accelerator/BruteForceAccel.h"
 #include "camera/PinholeCamera.h"
 #include "light/AreaLight.h"
@@ -258,16 +259,17 @@ TEST_F(VCMRenderer, BlackAndVisibleEmissionAllModesAndPartialImageSizes) {
 	}
 }
 
-TEST_F(VCMRenderer, ExplicitFalseMatchesDefaultAndTrueFailsBeforeTracing) {
+TEST_F(VCMRenderer, ExplicitFalseMatchesDefaultAndTrueUsesShadingNormals) {
 	Scene scene{};
-	// Imported shading normals differ from ng; false must still use geometric transport.
+	// Interpolated shading normals differ from ng = +z; false must still use geometric transport.
+	const Vec3 tilted(0.6f, 0, 0.8f);
 	auto surface = std::make_shared<Triangle>(Transform(), Transform(),
-		Vec3(-10, -10, 0), Vec3(10, -10, 0), Vec3(0, 10, 0), Vec3(0.6f, 0, 0.8f));
+		Vec3(-10, -10, 0), Vec3(10, -10, 0), Vec3(0, 10, 0), tilted, tilted, tilted);
 	scene.AddPrimitive(std::make_shared<Primitive>(surface, Diffuse(0.5f)));
 	scene.AddLight(std::make_shared<FixedLight>());
 	Initialize(scene);
 	for (Mode mode : Modes) {
-		auto defaultCamera = CameraFor(4, 4), falseCamera = CameraFor(4, 4), rejectedCamera = CameraFor(4, 4);
+		auto defaultCamera = CameraFor(4, 4), falseCamera = CameraFor(4, 4), shadingCamera = CameraFor(4, 4);
 		Renderer defaults(std::make_shared<FixedSampler>(), 2, 2, 1, real(2.0 / 3), mode, 1);
 		Renderer geometric(std::make_shared<FixedSampler>(), 2, 2, 1, real(2.0 / 3), mode, 1, false);
 		ASSERT_TRUE(defaults.RenderChecked(scene, *defaultCamera));
@@ -275,10 +277,53 @@ TEST_F(VCMRenderer, ExplicitFalseMatchesDefaultAndTrueFailsBeforeTracing) {
 		const auto suffix = std::to_string(int(mode));
 		EXPECT_EQ(Image(*defaultCamera, "normal-default-" + suffix), Image(*falseCamera, "normal-false-" + suffix));
 		Renderer shading(std::make_shared<FixedSampler>(), 2, 2, 1, real(2.0 / 3), mode, 1, true);
-		EXPECT_FALSE(shading.RenderChecked(scene, *rejectedCamera));
-		EXPECT_FALSE(shading.GetStatistics().mSucceeded);
-		EXPECT_EQ(shading.GetStatistics().mLightAttempts, 0);
-		EXPECT_EQ(shading.GetStatistics().mCameraSamples, 0);
+		ASSERT_TRUE(shading.RenderChecked(scene, *shadingCamera));
+		EXPECT_TRUE(shading.GetStatistics().mSucceeded);
+		EXPECT_NE(Image(*shadingCamera, "normal-true-" + suffix), Image(*falseCamera, "normal-false-again-" + suffix));
+	}
+}
+
+// Receiver whose interpolated normal is tilted 36.87 degrees toward +x, a small downward emitter
+// and a wall at x = 3 that catches light scattered along the shading normal.
+std::shared_ptr<Scene> TiltedShadingScene() {
+	const Vec3 tilted(0.6f, 0, 0.8f);
+	auto scene = std::make_shared<Scene>();
+	scene->AddPrimitive(std::make_shared<Primitive>(std::make_shared<Triangle>(Transform(), Transform(),
+		Vec3(-10, -10, 0), Vec3(10, -10, 0), Vec3(0, 10, 0), tilted, tilted, tilted), Diffuse(0.8f)));
+	scene->AddPrimitive(std::make_shared<Primitive>(std::make_shared<Triangle>(Transform(), Transform(),
+		Vec3(3, -20, -1), Vec3(3, 20, -1), Vec3(3, 0, 30), Vec3(-1, 0, 0)), Diffuse(0.8f)));
+	auto emitter = std::make_shared<Triangle>(Transform(), Transform(),
+		Vec3(-1, -1, 2), Vec3(1, -1, 2), Vec3(0, 1, 2), Vec3(0, 0, -1));
+	auto light = std::make_shared<AreaLight>(emitter, Vec3(1));
+	scene->AddLight(light);
+	scene->AddPrimitive(std::make_shared<Primitive>(emitter, Diffuse(0), light));
+	Initialize(*scene);
+	return scene;
+}
+
+TEST_F(VCMRenderer, ShadingNormalsConvergeToBdptInEveryMode) {
+	// Eq. (13): without the merge factor MergingOnly would keep the geometric cosine at x.
+	auto scene = TiltedShadingScene();
+	const auto camera = [] {
+		return std::make_shared<PinHoleCamera>(std::make_shared<Film>(32, 32),
+			Vec3(0, 0, 1), Vec3(0), Vec3(0, 1, 0), 53.130102f, 1);
+	};
+	double reference[2];
+	for (bool shading : { false, true }) {
+		auto view = camera();
+		BidirectionalPathTracing bdpt(std::make_shared<RandomSampler>(7), 3, 256, shading);
+		ASSERT_TRUE(bdpt.RenderChecked(*scene, *view));
+		reference[shading] = Mean(Image(*view, std::string("tilted-bdpt-") + (shading ? "shading" : "geometric")));
+	}
+	EXPECT_GT(std::abs(reference[1] / reference[0] - 1), 0.05) << "the scene must distinguish the normal modes";
+	for (Mode mode : Modes) {
+		auto view = camera();
+		Renderer render(std::make_shared<RandomSampler>(11), 3, 256, real(0.25), real(0.75), mode, 1, true);
+		ASSERT_TRUE(render.RenderChecked(*scene, *view));
+		const std::string name = "tilted-vcm-" + std::to_string(int(mode));
+		const double mean = Mean(Image(*view, name));
+		Summary(render, name, mean);
+		EXPECT_NEAR(mean / reference[1], 1, 0.03) << "mode " << int(mode) << ", bdpt " << reference[1];
 	}
 }
 

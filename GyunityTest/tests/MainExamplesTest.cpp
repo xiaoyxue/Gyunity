@@ -377,22 +377,21 @@ TEST_F(MainExampleRenders, VertexConnectionMergingKdAndExplicitConcurrency) {
 	}
 }
 
-TEST_F(MainExampleRenders, VertexConnectionMergingSupportsNativeSceneAndRejectsShadingWithoutSaving) {
+TEST_F(MainExampleRenders, VertexConnectionMergingSupportsNativeSceneAndShadingNormals) {
 	const auto filename = Output("vcm-native-cornell.hdr");
 	ASSERT_TRUE(Examples::VertexConnectionMerging("CornellBoxStandard", VcmOptions(filename, 32, 24, 2),
 		0.15f, real(2.0 / 3), Vcm::Mode::Combined, 1));
 	ExpectImage(filename);
 	for (auto mode : { Vcm::Mode::Combined, Vcm::Mode::ConnectionOnly, Vcm::Mode::MergingOnly }) {
-		const auto rejected = Output(("vcm-shading-must-not-save-" + std::to_string(int(mode)) + ".hdr").c_str());
-		std::remove(rejected.c_str());
+		const auto shading = Output(("vcm-shading-" + std::to_string(int(mode)) + ".hdr").c_str());
+		std::remove(shading.c_str());
 		VertexConnectionMerging::Statistics statistics;
-		statistics.mSucceeded = true;
-		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(rejected, 4, 4, 1), 0.1f,
+		ASSERT_TRUE(Examples::VertexConnectionMerging("lucy-bunny", VcmOptions(shading, 32, 24, 1), 0.1f,
 			real(2.0 / 3), mode, 1, true, &statistics));
-		EXPECT_FALSE(statistics.mSucceeded);
-		EXPECT_EQ(statistics.mLightAttempts, 0);
-		EXPECT_EQ(statistics.mCameraSamples, 0);
-		EXPECT_FALSE(std::ifstream(rejected).good());
+		EXPECT_TRUE(statistics.mSucceeded);
+		EXPECT_EQ(statistics.mLightAttempts, 32 * 24);
+		EXPECT_EQ(statistics.mCameraSamples, 32 * 24);
+		ExpectImage(shading);
 	}
 }
 
