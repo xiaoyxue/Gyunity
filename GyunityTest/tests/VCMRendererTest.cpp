@@ -91,6 +91,15 @@ TEST(VCMPathSampling, FullWidthPathKeysAreDeterministicAndDoNotChangeLegacySampl
 		otherValues.push_back(other->Sample(d, 7));
 	}
 	EXPECT_NE(firstValues, otherValues);
+	RandomSampler seed0(0), seed2(2);
+	std::vector<real> batch0, batch2;
+	for (uint64 key = 0; key < 16; ++key) {
+		batch0.push_back(seed0.CloneForPath(key)->Sample(0, key));
+		batch2.push_back(seed2.CloneForPath(key)->Sample(0, key));
+	}
+	std::sort(batch0.begin(), batch0.end());
+	std::sort(batch2.begin(), batch2.end());
+	EXPECT_NE(batch0, batch2) << "Changing the root seed must not merely permute the same path samples.";
 }
 
 TEST(VCMPathSampling, LegacyCustomClonesKeepTheirBehaviorAndRejectUnsupportedWideKeys) {

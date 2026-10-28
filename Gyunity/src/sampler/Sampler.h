@@ -94,9 +94,15 @@ public:
 	std::shared_ptr<Sampler> CloneForPath(uint64 pathKey) override {
 		// Subclasses retain their virtual Clone behavior unless they opt into wide path keys.
 		if (typeid(*this) != typeid(RandomSampler)) return Sampler::CloneForPath(pathKey);
-		return std::shared_ptr<Sampler>(new RandomSampler(mSeed ^ pathKey, PathSeed{}));
+		return std::shared_ptr<Sampler>(new RandomSampler(MixPathSeed(pathKey ^ MixPathSeed(mSeed)), PathSeed{}));
 	}
 private:
+	static uint64 MixPathSeed(uint64 seed) {
+		// Mix the parent seed before the path key: changing it must not just permute nearby streams.
+		seed = (seed ^ (seed >> 30)) * 0xbf58476d1ce4e5b9ULL;
+		seed = (seed ^ (seed >> 27)) * 0x94d049bb133111ebULL;
+		return seed ^ (seed >> 31);
+	}
 	struct PathSeed {};
 	RandomSampler(uint64 seed, PathSeed) : mSeed(seed), mRng(seed), mPcg32(seed) {}
 	uint64 mSeed;
