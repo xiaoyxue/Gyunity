@@ -2,7 +2,12 @@ param(
     [Parameter(Mandatory)] [string] $OutputDirectory,
     [Parameter(Mandatory)] [string] $ReferenceDirectory,
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
-    [string[]] $Scenes = @()
+    [string[]] $Scenes = @(),
+    # Small sizes (for example -Width 64 -Height 64 -Spp 4) make an every-scene check fast;
+    # references must have been rendered with the same settings.
+    [ValidateRange(1, 16384)] [int] $Width = 512,
+    [ValidateRange(1, 16384)] [int] $Height = 512,
+    [ValidateRange(1, 1048576)] [int] $Spp = 64
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -33,7 +38,7 @@ try {
         foreach ($accel in 'bvh', 'kd') {
             $image = Join-Path $output "registry.$scene.$accel.png"
             $log = Join-Path $output "registry.$scene.$accel.log"
-            & $exe --scene $scene --accel $accel --out $image --width 512 --height 512 --spp 64 --max-depth 8 *> $log
+            & $exe --scene $scene --accel $accel --out $image --width $Width --height $Height --spp $Spp --max-depth 8 *> $log
             if ($LASTEXITCODE -ne 0) { throw "Render failed: $scene/$accel; see $log" }
             $baseline = Join-Path $reference "old.$scene.$accel.png"
             $identical = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash -eq

@@ -23,6 +23,10 @@ def main() -> int:
     parser.add_argument("--reference-directory", type=Path, required=True)
     parser.add_argument("--configuration", choices=("Debug", "Release"), default="Release")
     parser.add_argument("--scenes", nargs="+", help="Subset of registered names; default: all")
+    # Small sizes make an every-scene check fast; references must use the same settings.
+    parser.add_argument("--width", type=int, default=512)
+    parser.add_argument("--height", type=int, default=512)
+    parser.add_argument("--spp", type=int, default=64)
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -67,8 +71,8 @@ def main() -> int:
                 log = output.joinpath(f"registry.{scene}.{accelerator}.log")
                 command = [
                     str(executable), "--scene", scene, "--accel", accelerator,
-                    "--out", str(image), "--width", "512", "--height", "512",
-                    "--spp", "64", "--max-depth", "8",
+                    "--out", str(image), "--width", str(args.width), "--height", str(args.height),
+                    "--spp", str(args.spp), "--max-depth", "8",
                 ]
                 with log.open("wb") as stream:
                     rendered = subprocess.run(
