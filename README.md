@@ -22,7 +22,7 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 
 ## Some Results
 ### Original scene previews
-Height 1024 with original aspect ratios and 512 samples per pixel.
+Height 1024 with original aspect ratios and 512 samples per pixel (Veach bidir: 1024, BDPT with log-pdf MIS).
 These are generated Gyunity renders with no resizing or reference-image substitution.
 [Settings and image hashes](https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/transport-scenes-shading-rough-glass-1024h.json).
 
@@ -33,7 +33,7 @@ These are generated Gyunity renders with no resizing or reference-image substitu
       CornellBoxStandard
     </td>
     <td align="center" valign="top">
-      <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-bidir-bdpt-shading-1024x1024-spp512-depth7-aces.png?raw=true" alt="Veach bidir"/><br/>
+      <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-bidir-bdpt-shading-logpdf-1024x1024-spp1024-depth7-aces.png?raw=true" alt="Veach bidir"/><br/>
       Veach bidir
     </td>
   </tr>

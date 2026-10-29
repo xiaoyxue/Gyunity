@@ -19,8 +19,9 @@ vertex-evaluation formula.
 The `Bidirectional` connection/PDF helpers are shared with VCM, not duplicated in
 its implementation. They retain the current normal-policy and mixed-lobe behavior.
 VCM currently requests geometric-normal subpaths and rejects mixed-lobe transport.
-The builders also retain successful forward/reverse delta component masses for
-VCM; standalone BDPT still uses its existing sampled-event flags and MIS ratios.
+The builders also retain successful forward/reverse delta component masses. VCM and
+BDPT's optional log-pdf MIS use them; the default ratio MIS keeps its sampled-event flags
+and zero markers. See [MIS](#mis).
 
 `Trace` keeps vertex insertion, random draws and forward/reverse density writes
 visible. `ScatterThroughput` distinguishes a valid continuation, a null event
@@ -106,8 +107,9 @@ The renderer generates both subpaths, evaluates supported connections at
 once by samples per pixel. It does not call the PT direct-light estimator.
 The path builders use the integrator's single normal policy.
 
-`MisWeight` follows the original PBRT-v3 balance heuristic: walk neighboring
-strategies in both directions using forward/reverse density ratios, then evaluate
+`MisWeight` (the default, `BdptMis::Ratio`) follows the original PBRT-v3 balance heuristic; the
+optional `MisWeightLogPdf` is described in [MIS](#mis). The ratio walk visits neighboring
+strategies in both directions using forward/reverse density ratios, then evaluates
 `1 / (1 + sumRatios)`. Scalar accumulation uses double precision. Only temporary
 connection-adjacent densities are changed in separate light/camera MIS snapshots.
 These snapshots replace PBRT's `ScopedAssignment` restoration mechanism: the
@@ -183,6 +185,68 @@ state; the renderer only calls `Advance()` for each finished tile and
 work-unit count without a 100% message. If stderr
 is redirected to a log, monitor that log (for example with `Get-Content -Wait`)
 or use `Tee-Object` to retain both console output and a log.
+
+## MIS
+
+BDPT offers two evaluations of the balance heuristic over the `(s,t)` strategies of a
+path: `BdptMis::Ratio` (default, `MisWeight`) and `BdptMis::LogPdf` (`MisWeightLogPdf`,
+`--bdpt-mis logpdf` in GyunityApp). They agree on every path without an interior delta
+event. Equation numbers below appear in the code comments as `Eq. (n)`.
+
+Write the selected path in light-to-camera order $x_0 \ldots x_{n-1}$, $n = s + t$.
+Each vertex has two area densities (pdfPos), sampled from the light side and from the
+camera side:
+
+$$\text{pdfFwd}[i] = p_\omega(x_{i-1} \to x_i \mid x_{i-2})\, G(x_{i-1} \to x_i), \qquad
+\text{pdfPrev}[i] = p_\omega(x_{i+1} \to x_i \mid x_{i+2})\, G(x_{i+1} \to x_i) \tag{1}$$
+
+with $G(u \to v) = |\cos\theta_v| / \lVert v - u\rVert^2$ on the geometric normal
+(`DirectionToArea`). `pdfFwd[0]` is the light-selection PMF times the origin's pdfPos
+(pdfDir for an environment), and an environment source contributes its launch-disk
+pdfPos times $|\cos\theta_v|$. Recorded `mPdfFwd`/`mPdfPrev` are reused while their source
+and that source's predecessor are selected; only the four densities at the connection
+are recomputed with `PdfPos`/`LightOriginPdf`. Strategy $k$ (light prefix $x_0 \ldots
+x_{k-1}$, camera prefix $x_k \ldots x_{n-1}$) has the path density
+
+$$p(k) = \prod_{i=0}^{k-1}\text{pdfFwd}[i] \prod_{i=k}^{n-1}\text{pdfPrev}[i] \tag{2}$$
+
+and the weight of the sampled strategy $s$, evaluated in the log domain with
+$\ell_k = \log p(k)$ and $m = \max_k \ell_k$, is
+
+$$w_s = \frac{p(s)}{\sum_k p(k)} = \frac{e^{\ell_s - m}}{\sum_k e^{\ell_k - m}} \tag{3}$$
+
+A strategy is excluded when it connects at a vertex that scattered a delta event of the
+path, when `ValidConnection` rejects it, or when a factor is zero. Prefix and suffix sums
+of the logs give all $\ell_k$ in $O(n)$.
+
+**Delta vertices.** At an interior vertex $x_k$ that sampled a delta component, the
+singular distribution is removed but its sampled component mass $m$ (`mDeltaPdfFwd`
+forward, `mDeltaPdfPrev` reverse, including lobe selection) and the edge geometry are kept:
+
+$$\text{pdfFwd}[k+1] = m_{fwd}(x_k)\, G(x_k \to x_{k+1}), \qquad
+\text{pdfPrev}[k-1] = m_{rev}(x_k)\, G(x_k \to x_{k-1}) \tag{4}$$
+
+This is VCM's convention (Docs/VCM.md Eq. (11), report Eqs. 51-55), so `MisWeightLogPdf`
+equals `Vcm::ComputeMisWeight` in `ConnectionOnly` mode on the same subpaths.
+
+**Why the two evaluations differ.** Both densities of Eq. (4) contain a Dirac
+distribution. It is the same reflection or refraction constraint seen from either side,
+so it cancels in the ratio of any two feasible strategies; what remains is
+$m\,G$. The ratio walk instead replaces both densities by 1. That drops the factor
+$m_{fwd}\, G(x_k \to x_{k+1}) / (m_{rev}\, G(x_k \to x_{k-1}))$ from the ratio between
+strategies on the two sides of $x_k$. The result is still unbiased, because every
+strategy of a path is weighted with the same modified densities and the weights still
+sum to one. It is no longer the balance heuristic, though, so its variance is not that of
+the balance heuristic. For example, on the L-D-S-D-E fixture in `VCMPathTest.cpp` the two
+evaluations differ in the strategy ratio by exactly $\text{separation}^2$. Both cost O(n)
+per weighted connection; `LogPdf` also allocates two density vectors and evaluates n logs.
+
+Tests:
+- `BDPTConnectionTest.cpp` checks `MisWeightLogPdf` against hand products for continuous,
+  mirror and mixed-lobe chains.
+- The generated mirror, glass, environment and point-light paths in `VCMPathTest.cpp`
+  require it to equal VCM `ConnectionOnly` on every positive connection.
+- The Plastic highlight render requires both evaluations to match the analytic radiance.
 
 ## Smooth shading normals
 With `useShadingNormals = true` (`--bdpt-normals shading` in GyunityApp), BDPT follows

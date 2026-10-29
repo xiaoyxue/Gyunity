@@ -107,8 +107,13 @@ public:
 		//int offset = std::max(0, int(ptr - mCdf - 1));
 		auto it = std::upper_bound(mCdf.begin(), mCdf.begin() + mCount + 1, u);
 		int offset = std::max(0, int(std::distance(mCdf.begin(), it)) - 1);
-		GYT_DEBUG_ASSERT(offset < mCount);
-		GYT_DEBUG_ASSERT(u >= mCdf[offset] && u < mCdf[offset + 1]);
+		// A non-finite weight leaves a non-finite CDF that no segment contains; report it instead of
+		// asserting, so Debug and Release both fail explicitly.
+		if (offset >= mCount || !(u >= mCdf[offset] && u < mCdf[offset + 1])) {
+			if (pdf) *pdf = 0;
+			GetDefaultLogger()->Error("Discrete distribution has a non-finite CDF.", false);
+			return -1;
+		}
 		if (pdf && !DiscretePdf(offset, pdf)) return -1;
 		return offset;
 	}

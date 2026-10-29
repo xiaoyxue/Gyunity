@@ -63,7 +63,7 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 			option != "--accel" && option != "--width" && option != "--height" &&
 			option != "--spp" && option != "--max-depth" && option != "--out" &&
 			option != "--iterations" && option != "--photons-per-stage" &&
-			option != "--bdpt-normals" && option != "--tonemap" && option != "--max-luminance" &&
+			option != "--bdpt-normals" && option != "--bdpt-mis" && option != "--tonemap" && option != "--max-luminance" &&
 			option != "--tonemap-scale" && option != "--convert")
 			return Error("Unknown option '" + option + "'. Use --help.");
 		if (!seen.insert(option).second) return Error("Duplicate option: " + option);
@@ -95,6 +95,11 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 			if (value == "shading") options.bdptShadingNormals = true;
 			else if (value == "geometric") options.bdptShadingNormals = false;
 			else return Error("Use --bdpt-normals geometric|shading.");
+		}
+		else if (option == "--bdpt-mis") {
+			if (value == "logpdf") options.bdptLogPdfMis = true;
+			else if (value == "ratio") options.bdptLogPdfMis = false;
+			else return Error("Use --bdpt-mis ratio|logpdf.");
 		}
 		else if (option == "--tonemap") {
 			if (!Gyunity::ParseToneMapOperator(value, &options.toneMap.op)) return Error("Use --tonemap none|reinhard|aces.");
@@ -137,6 +142,8 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 		return Error("--iterations and --photons-per-stage require the sppm integrator.");
 	if (options.integrator != "bdpt" && seen.count("--bdpt-normals"))
 		return Error("--bdpt-normals requires the bdpt integrator.");
+	if (options.integrator != "bdpt" && seen.count("--bdpt-mis"))
+		return Error("--bdpt-mis requires the bdpt integrator.");
 	if (options.output.empty()) return Error("--out is required.");
 	if (options.output.size() < 4) return Error("--out must end in .png, .bmp, .hdr or .exr.");
 	const auto suffix = options.output.substr(options.output.size() - 4);
@@ -168,6 +175,8 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 			"  --accel bvh|kd         Accelerator (default bvh)\n"
 			"  --bdpt-normals geometric|shading  BDPT surface normals (default geometric);\n"
 			"                         shading uses adjoint-corrected smooth normals (#148)\n"
+			"  --bdpt-mis ratio|logpdf  BDPT MIS evaluation (default ratio); logpdf keeps\n"
+			"                         delta masses and geometry like VCM\n"
 			"  --tonemap none|reinhard|aces  PBRT imgtool tone mapping for .png/.bmp output\n"
 			"  --max-luminance N      Reinhard white luminance (default 1)\n"
 			"  --tonemap-scale S      Linear scale before tone mapping (default 1)\n"

@@ -13,6 +13,17 @@ using namespace Gyunity;
 
 namespace {
 
+// ConnectPaths with each MIS evaluation, as plain function pointers.
+bool ConnectRatio(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	return ConnectPaths(scene, camera, lightPath, cameraPath, s, t, contribution, raster, BdptMis::Ratio);
+}
+
+bool ConnectLogPdf(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	return ConnectPaths(scene, camera, lightPath, cameraPath, s, t, contribution, raster, BdptMis::LogPdf);
+}
+
 std::shared_ptr<Material> WhiteDiffuse() {
 	return std::make_shared<DiffuseMaterial>(std::make_shared<ConstantTexture<Vec3>>(Vec3(1)));
 }
@@ -286,7 +297,7 @@ TEST_F(BDPTAcceptance, MarkerEnvironmentPreservesLatitudeLongitudeAndEmissionSig
 		escaped[1].mLight = environment.get();
 		escaped[1].mDirection = -emittedDir;
 		escaped[1].mThroughput = Vec3(2, 0.5f, 3);
-		for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+		for (auto evaluate : { &EvaluateConnection, &ConnectRatio, &ConnectLogPdf }) {
 			Vec3 contribution;
 			Vec2 raster;
 			ASSERT_TRUE(evaluate(*scene, camera, {}, escaped, 0, 2, &contribution, &raster));
