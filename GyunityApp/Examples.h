@@ -28,6 +28,9 @@ bool VertexConnectionMerging(const std::string& scene = "mesh", const Options& o
 bool CornellBoxStandard(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Path);
 bool VeachMis(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Path);
 bool VeachBidir(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Bdpt);
+// SmallVCM's veach-bidir VCM comparison: 1024^2, 512 iterations, depth 7, shading normals.
+bool VeachBidirVcm(const Options& options = {},
+	Gyunity::VertexConnectionMerging::Statistics* statistics = nullptr);
 bool Matpreview(const std::string& profile, const Options& options = {},
 	SurfaceIntegrator integrator = SurfaceIntegrator::Path);
 bool FeatureScenes(const Options& options = {});
