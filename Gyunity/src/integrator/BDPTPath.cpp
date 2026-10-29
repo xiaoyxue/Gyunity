@@ -77,18 +77,19 @@ int Trace(const Scene& scene, StateSequence& rand, MemoryPool& arena, Ray ray, V
 
 namespace Bidirectional {
 
-real DirectionToArea(real pdfDir, const PathVertex& from, const PathVertex& to) {
-	if (to.mType == PathVertexType::Environment) return pdfDir;
+real DirectionToArea(real pdf, const PathVertex& from, const PathVertex& to) {
+	if (to.mType == PathVertexType::Environment) return pdf;
 	// A continuous ray cannot sample a point-light position.
 	if (to.mType == PathVertexType::Light && to.mLight && to.mLight->IsDeltaLight()) return 0;
 	if (from.mType == PathVertexType::Environment) {
-		return OnSurface(to) ? pdfDir * std::abs(Dot(to.mIsect.mGeometryNormal, from.mDirection)) : pdfDir;
+		// Launch-disk pdfPos: parallel rays only project onto the receiver.
+		return OnSurface(to) ? pdf * std::abs(Dot(to.mIsect.mGeometryNormal, from.mDirection)) : pdf;
 	}
 	const Vec3 offset = to.mIsect.mPos - from.mIsect.mPos;
 	const real distance2 = offset.Length2();
-	real pdfArea = pdfDir / distance2;
-	if (OnSurface(to)) pdfArea *= std::abs(Dot(to.mIsect.mGeometryNormal, offset / std::sqrt(distance2)));
-	return pdfArea;
+	real pdfPos = pdf / distance2;
+	if (OnSurface(to)) pdfPos *= std::abs(Dot(to.mIsect.mGeometryNormal, offset / std::sqrt(distance2)));
+	return pdfPos;
 }
 
 }
@@ -139,6 +140,7 @@ int GenerateLightPath(const Scene& scene, StateSequence& rand, MemoryPool& arena
 	// Emission is tied to the oriented geometric surface; shapes populate it when sampled.
 	const real cosine = light->IsAreaLight() ? std::abs(Dot(endpoint.mIsect.mGeometryNormal, dir)) : 1;
 	const Vec3 throughput = radiance * cosine / endpoint.mLightSelectionPdf / endpoint.mPdfPos / endpoint.mPdfDir;
+	// An environment's launch-disk pdfPos, not its pdfDir, carries over to the first vertex (BDPTPath.h).
 	return Trace(scene, rand, arena, endpoint.mIsect.SpawnRay(dir), throughput,
 		light->IsEnvironmentLight() ? endpoint.mPdfPos : endpoint.mPdfDir,
 		maxVertices, TransportMode::Importance, normalMode, lightPath);

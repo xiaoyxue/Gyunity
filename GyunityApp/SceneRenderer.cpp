@@ -47,7 +47,8 @@ bool RenderScene(const SceneRenderOptions& options) {
 	auto sampler = std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123);
 	auto samplerEnum = std::make_shared<SamplerEnum>();
 	if (options.integrator == "bdpt") {
-		BidirectionalPathTracing integrator(sampler, options.maxDepth, options.spp, options.bdptShadingNormals);
+		BidirectionalPathTracing integrator(sampler, options.maxDepth, options.spp, options.bdptShadingNormals,
+			options.bdptLogPdfMis ? BdptMis::LogPdf : BdptMis::Ratio);
 		return RenderScene(options, integrator);
 	}
 	if (options.scene && options.scene->usesVolume) {
