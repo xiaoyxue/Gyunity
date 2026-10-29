@@ -213,6 +213,26 @@ bool VeachBidir(const Options& options, SurfaceIntegrator integrator) {
 	return Native("veach-bidir", options, integrator);
 }
 
+// SmallVCM's veach-bidir comparison settings. Its radius is 0.003 times the scene AABB's
+// world-space half-diagonal; that half-diagonal is scene-specific and precomputed here, not
+// derived from the loaded scene.
+bool VeachBidirVcm(const Options& options, Gyunity::VertexConnectionMerging::Statistics* statistics) {
+	constexpr double sceneHalfDiagonal = 6.956186780406363;
+	auto settings = options;
+	if (!settings.width) settings.width = 1024;
+	if (!settings.height) settings.height = 1024;
+	if (!settings.iterations) settings.iterations = 512;
+	if (!settings.maxDepth) settings.maxDepth = 7;
+	if (settings.output.empty()) {
+		const auto filename = "veach-bidir-vcm-shading-" + std::to_string(*settings.width) + 'x' +
+			std::to_string(*settings.height) + "-iters" + std::to_string(*settings.iterations) +
+			"-depth" + std::to_string(*settings.maxDepth) + "-smallvcm-radius.exr";
+		if (!OutputPath(filename, settings.output)) return false;
+	}
+	return VertexConnectionMerging("veach-bidir", settings, real(0.003 * sceneHalfDiagonal), real(0.75),
+		Vcm::Mode::Combined, ThreadedTaskManager::DefaultConcurrency(), true, statistics);
+}
+
 bool Matpreview(const std::string& profile, const Options& options, SurfaceIntegrator integrator) {
 	return Native("matpreview-" + profile, options, integrator);
 }

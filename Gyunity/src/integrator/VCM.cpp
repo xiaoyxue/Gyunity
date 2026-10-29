@@ -73,8 +73,11 @@ struct VertexConnectionMerging::RenderState {
 	const std::shared_ptr<Film> film;
 	const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 	int width = 0, height = 0, iteration = 0;
-	// One light path per pixel and iteration: nVm counts attempts, including empty ones.
-	int64 nVc = 1, nVm = 0;
+	// MIS sample counts of the VCM paper Eq. (9). nVm counts light-path attempts,
+	// including empty ones: neither stored photons nor query hits.
+	int64 nVc = 1;              // Number of light sub-paths connected per camera path
+	int64 nVm = 0;              // Number of light sub-paths
+	int64 screenPixelCount = 0; // Number of pixels
 	real radius = 0;
 	bool indexedSampling = false;
 	ProgressReporter* progress = nullptr;
@@ -95,7 +98,8 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 	RenderState state(scene, camera);
 	if (!Prepare(state)) return false;
 	ProgressReporter progress(fmt::format("Rendering VCM ({} x {}, {} iterations, depth {}, concurrency {})",
-		state.width, state.height, mIterations, mMaxDepth, mConcurrency), 2 * size_t(state.nVm) * size_t(mIterations));
+		state.width, state.height, mIterations, mMaxDepth, mConcurrency),
+		(size_t(state.nVm) + size_t(state.screenPixelCount)) * size_t(mIterations));
 	state.progress = &progress;
 	bool success = true;
 	for (state.iteration = 0; state.iteration < mIterations && success; ++state.iteration) {
@@ -121,9 +125,12 @@ bool VertexConnectionMerging::Prepare(RenderState& state) const {
 	if (!Bidirectional::ValidateScene(state.scene)) return false;
 	state.width = state.film->mResX;
 	state.height = state.film->mResY;
+	// While we have the same number of pixels (camera paths) and light sub-paths, we do
+	// keep them separate for clarity reasons.
+	state.screenPixelCount = int64(state.width) * state.height;
 	state.nVm = int64(state.width) * state.height;
-	if (state.nVm <= 0) return Fail("VCM requires positive image dimensions.");
-	if (!ValidSamplingBudget(*mSampler, mMaxDepth, state.nVm, mIterations)) return false;
+	if (state.screenPixelCount <= 0) return Fail("VCM requires positive image dimensions.");
+	if (!ValidSamplingBudget(*mSampler, mMaxDepth, state.screenPixelCount, mIterations)) return false;
 	state.indexedSampling = IndexedSampler(*mSampler);
 	state.lightPaths.resize(size_t(state.nVm));
 	return true;
@@ -139,12 +146,13 @@ bool VertexConnectionMerging::RenderIteration(RenderState& state) {
 }
 
 bool VertexConnectionMerging::TraceLightPaths(RenderState& state) {
-	if (!ForEachPixel(state, "light", [&](int64 pixel, Worker& worker) {
-		const int64 sampleIndex = 2 * (int64(state.iteration) * state.nVm + pixel);
+	if (!ForEachPath(state, "light", state.nVm, [&](int64 pathIndex, Worker& worker) {
+		// Both phases stride by the same per-iteration path count; light takes the even indices.
+		const int64 sampleIndex = 2 * (int64(state.iteration) * state.screenPixelCount + pathIndex);
 		const auto sampler = PathSampler(state, sampleIndex);
 		if (!sampler) return false;
 		RandomStateSequence random(sampler, sampleIndex);
-		auto& lightPath = state.lightPaths[size_t(pixel)];
+		auto& lightPath = state.lightPaths[size_t(pathIndex)];
 		return GenerateLightPath(state.scene, random, worker.lightArena, mMaxDepth + 1,
 			NormalMode(), lightPath) >= 0 && SupportedPath(lightPath);
 	})) return false;
@@ -162,18 +170,18 @@ bool VertexConnectionMerging::BuildPhotonMap(RenderState& state) {
 }
 
 bool VertexConnectionMerging::TraceCameraPaths(RenderState& state) {
-	if (!ForEachPixel(state, "camera", [&](int64 pixel, Worker& worker) {
+	if (!ForEachPath(state, "camera", state.screenPixelCount, [&](int64 pixel, Worker& worker) {
 		const bool success = RenderPixel(state, pixel, worker);
 		worker.cameraArena.Reset();
 		return success;
 	})) return false;
-	mStatistics.mCameraSamples += state.nVm;
+	mStatistics.mCameraSamples += state.screenPixelCount;
 	return true;
 }
 
 // One camera path: connect it to this pixel's light path and merge it with the photon map.
 bool VertexConnectionMerging::RenderPixel(RenderState& state, int64 pixel, Worker& worker) const {
-	const int64 sampleIndex = 2 * (int64(state.iteration) * state.nVm + pixel) + 1;
+	const int64 sampleIndex = 2 * (int64(state.iteration) * state.screenPixelCount + pixel) + 1;
 	const auto sampler = PathSampler(state, sampleIndex);
 	if (!sampler) return false;
 	RandomStateSequence random(sampler, sampleIndex);
@@ -257,13 +265,13 @@ void VertexConnectionMerging::WritePathContribution(RenderState& state, const Ve
 	state.film->AddSample(raster.x, raster.y, Vcm::ToVec3(pixelVc + pixelVm));
 }
 
-bool VertexConnectionMerging::ForEachPixel(RenderState& state, const char* phase,
+bool VertexConnectionMerging::ForEachPath(RenderState& state, const char* phase, int64 count,
 	const std::function<bool(int64, Worker&)>& task) {
 	const auto name = fmt::format("VCM {} phase {}/{}", phase, state.iteration + 1, mIterations);
 	state.progress->SetPhase(name);
-	const auto result = Tasks::Run(name, 0, size_t(state.nVm), [&](size_t pixel, const Tasks::Context& context) {
+	const auto result = Tasks::Run(name, 0, size_t(count), [&](size_t index, const Tasks::Context& context) {
 		if (mCancelled.load() || context.IsCancellationRequested()) return Tasks::Status::Cancelled;
-		return task(int64(pixel), state.workers.local()) ? Tasks::Status::Success : Tasks::Status::Failed;
+		return task(int64(index), state.workers.local()) ? Tasks::Status::Success : Tasks::Status::Failed;
 	}, mConcurrency, state.progress);
 	return result.mStatus == Tasks::Status::Success && !mCancelled.load();
 }

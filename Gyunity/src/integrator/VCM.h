@@ -68,7 +68,9 @@ private:
 		Worker& worker, Vcm::PathContribution& merging) const;
 	void WritePathContribution(RenderState& state, const Vec2& raster,
 		const Vcm::PathContribution& connection, const Vcm::PathContribution& merging) const;
-	bool ForEachPixel(RenderState& state, const char* phase, const std::function<bool(int64, Worker&)>& task);
+	// Both phases iterate paths: one light path, or one camera path, per pixel and iteration.
+	bool ForEachPath(RenderState& state, const char* phase, int64 count,
+		const std::function<bool(int64, Worker&)>& task);
 	std::shared_ptr<Sampler> PathSampler(const RenderState& state, int64 sampleIndex) const;
 	void ReportIteration(const RenderState& state, size_t photons) const;
 	bool UseVm() const { return Vcm::UseVm(mMode); }
