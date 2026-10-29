@@ -131,8 +131,6 @@ See [INSTRUCTIONS.md](INSTRUCTIONS.md) for cmd.exe, Python/uv, PowerShell and SP
 | [Scene builder](Docs/SceneBuilder.md) | C++ construction API and legacy scene correspondence |
 | [Scenes](Docs/Scenes.md) | Named scene commands, Cornell/Veach data and Matpreview preparation |
 | [Examples](Docs/Examples.md) | C++ helpers, named examples and explicit batch rendering |
-| [VCM](Docs/VCM.md) | Progressive surface rendering, explicit MIS, photon mapping and supported normal policy |
-| [VPT with voxel density](Docs/VPT_Voxel.md) | Minimal delta-tracking, ratio-tracking and volumetric path tracing pseudocode |
 | [Threaded task groups](Docs/ThreadedTaskManager.md) | Scoped TBB execution, cancellation, progress and statistics |
 | [Debugging](Docs/Debugging.md) | Thread-local pixel diagnostics |
 | [Testing](Docs/Testing.md) | Scene regression commands and reference comparisons |
