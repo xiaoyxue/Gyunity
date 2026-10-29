@@ -237,8 +237,7 @@ bool VertexConnectionMerging::Connect(const RenderState& state, const std::vecto
 		real weightVc;
 		if (!Vcm::ComputeMisWeight(state.scene, path, strategy, &weightVc)) return false;
 		if (t == 1)
-			connection.push_back({ raster, Vcm::ToVector3d(contributionVc * weightVc) *
-				Vector3d(SplatScale(state)), true });
+			connection.push_back({ raster, Vcm::ToVector3d(contributionVc * weightVc) * Vector3d(SplatScale(state)), true });
 		else
 			connection.push_back({ Vec2(), Vcm::ToVector3d(contributionVc) * Vector3d(weightVc) / Vector3d(double(state.nVc)) });
 	}
