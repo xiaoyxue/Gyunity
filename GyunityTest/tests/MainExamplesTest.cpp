@@ -420,7 +420,7 @@ TEST_F(MainExampleRenders, VertexConnectionMergingRejectsParametersWithoutSaving
 	invalid.spp = 1;
 	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", invalid));
 	invalid = valid;
-	invalid.photonsPerStage = 1;
+	invalid.photonsPerStage = 0;
 	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", invalid));
 	EXPECT_FALSE(std::ifstream(filename).good());
 	EXPECT_FALSE(Examples::VertexConnectionMerging("empty",

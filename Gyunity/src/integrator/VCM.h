@@ -39,9 +39,11 @@ public:
 
 	VertexConnectionMerging(std::shared_ptr<Sampler> sampler, int maxDepth, int iterations,
 		real initialRadius, real alpha = real(2.0 / 3.0), Vcm::Mode mode = Vcm::Mode::Combined,
-		int concurrency = ThreadedTaskManager::DefaultConcurrency(), bool useShadingNormals = false)
+		int concurrency = ThreadedTaskManager::DefaultConcurrency(), bool useShadingNormals = false,
+		int64 samplesPerIteration = 0)
 		: mSampler(sampler), mMaxDepth(maxDepth), mIterations(iterations), mInitialRadius(initialRadius),
-		mAlpha(alpha), mMode(mode), mConcurrency(concurrency), mUseShadingNormals(useShadingNormals) {}
+		mAlpha(alpha), mMode(mode), mConcurrency(concurrency), mUseShadingNormals(useShadingNormals),
+		mSamplesPerIteration(samplesPerIteration) {}
 
 	// useShadingNormals = true uses BDPT's adjoint-corrected shading-normal transport on both
 	// subpaths, and the shading-normal merge factor of Docs/VCM.md Eq. (13).
@@ -61,13 +63,17 @@ private:
 	bool TraceLightPaths(RenderState& state);
 	bool BuildPhotonMap(RenderState& state);
 	bool TraceCameraPaths(RenderState& state);
-	bool RenderPixel(RenderState& state, int64 pixel, Worker& worker) const;
+	// Generation and estimation stay fused per sample, as in taichi and SmallVCM, but run as
+	// two named steps: the camera path is never stored beyond the sample that produced it.
+	bool GenerateCameraSample(RenderState& state, int64 sample, Worker& worker, Vec2* raster) const;
+	bool ConnectAndMerge(RenderState& state, int64 sample, const Vec2& raster, Worker& worker) const;
 	bool Connect(const RenderState& state, const std::vector<PathVertex>& lightPath,
 		const std::vector<PathVertex>& cameraPath, int t, Vcm::PathContribution& connection) const;
 	bool Merge(const RenderState& state, const std::vector<PathVertex>& cameraPath, int t,
 		Worker& worker, Vcm::PathContribution& merging) const;
 	void WritePathContribution(RenderState& state, const Vec2& raster,
 		const Vcm::PathContribution& connection, const Vcm::PathContribution& merging) const;
+	double SplatScale(const RenderState& state) const;
 	// Both phases iterate paths: one light path, or one camera path, per pixel and iteration.
 	bool ForEachPath(RenderState& state, const char* phase, int64 count,
 		const std::function<bool(int64, Worker&)>& task);
@@ -84,6 +90,8 @@ private:
 	Vcm::Mode mMode;
 	int mConcurrency;
 	bool mUseShadingNormals;
+	// Camera paths and light paths per iteration. Zero means one per pixel.
+	int64 mSamplesPerIteration;
 	std::atomic<bool> mCancelled{ false };
 	Statistics mStatistics;
 };

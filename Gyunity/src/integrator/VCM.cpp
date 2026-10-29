@@ -43,7 +43,7 @@ bool IndexedSampler(const Sampler& sampler) {
 }
 
 // Light walks draw five emission samples and three per scattering vertex; camera walks also
-// draw two jitter samples. Each pixel uses two sample indices per iteration.
+// draw two jitter samples. Each path uses two sample indices per iteration.
 bool ValidSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int iterations) {
 	uint64 dimensions = 1229, maximumIndex = uint64((std::numeric_limits<int64>::max)()) - 1;
 	if (dynamic_cast<const HaltonSampler*>(&sampler)) dimensions = HaltonSampler::get_num_dimensions();
@@ -76,8 +76,8 @@ struct VertexConnectionMerging::RenderState {
 	// MIS sample counts of the VCM paper Eq. (9). nVm counts light-path attempts,
 	// including empty ones: neither stored photons nor query hits.
 	int64 nVc = 1;              // Number of light sub-paths connected per camera path
-	int64 nVm = 0;              // Number of light sub-paths
-	int64 screenPixelCount = 0; // Number of pixels
+	int64 nVm = 0;              // Number of light sub-paths, and of camera paths
+	int64 screenPixelCount = 0; // Number of pixels, used only to normalize the film
 	real radius = 0;
 	bool indexedSampling = false;
 	ProgressReporter* progress = nullptr;
@@ -99,7 +99,7 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 	if (!Prepare(state)) return false;
 	ProgressReporter progress(fmt::format("Rendering VCM ({} x {}, {} iterations, depth {}, concurrency {})",
 		state.width, state.height, mIterations, mMaxDepth, mConcurrency),
-		(size_t(state.nVm) + size_t(state.screenPixelCount)) * size_t(mIterations));
+		2 * size_t(state.nVm) * size_t(mIterations));
 	state.progress = &progress;
 	bool success = true;
 	for (state.iteration = 0; state.iteration < mIterations && success; ++state.iteration) {
@@ -120,17 +120,17 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 
 bool VertexConnectionMerging::Prepare(RenderState& state) const {
 	if (!mSampler || mMaxDepth < 0 || mIterations <= 0 || !std::isfinite(mInitialRadius) || mInitialRadius <= 0 ||
-		!(mAlpha > 0 && mAlpha < 1) || (!Vcm::UseVc(mMode) && !Vcm::UseVm(mMode)))
+		!(mAlpha > 0 && mAlpha < 1) || (!Vcm::UseVc(mMode) && !Vcm::UseVm(mMode)) || mSamplesPerIteration < 0)
 		return Fail("VCM requires a sampler, nonnegative depth, positive iterations and radius, alpha in (0,1) and a valid mode.");
 	if (!Bidirectional::ValidateScene(state.scene)) return false;
 	state.width = state.film->mResX;
 	state.height = state.film->mResY;
-	// While we have the same number of pixels (camera paths) and light sub-paths, we do
-	// keep them separate for clarity reasons.
 	state.screenPixelCount = int64(state.width) * state.height;
-	state.nVm = int64(state.width) * state.height;
 	if (state.screenPixelCount <= 0) return Fail("VCM requires positive image dimensions.");
-	if (!ValidSamplingBudget(*mSampler, mMaxDepth, state.screenPixelCount, mIterations)) return false;
+	// Camera and light paths share one per-iteration count, as in taichi's VCM, so every camera
+	// path still connects to exactly one light path (nVc = 1) at any budget.
+	state.nVm = mSamplesPerIteration ? mSamplesPerIteration : state.screenPixelCount;
+	if (!ValidSamplingBudget(*mSampler, mMaxDepth, state.nVm, mIterations)) return false;
 	state.indexedSampling = IndexedSampler(*mSampler);
 	state.lightPaths.resize(size_t(state.nVm));
 	return true;
@@ -148,7 +148,7 @@ bool VertexConnectionMerging::RenderIteration(RenderState& state) {
 bool VertexConnectionMerging::TraceLightPaths(RenderState& state) {
 	if (!ForEachPath(state, "light", state.nVm, [&](int64 pathIndex, Worker& worker) {
 		// Both phases stride by the same per-iteration path count; light takes the even indices.
-		const int64 sampleIndex = 2 * (int64(state.iteration) * state.screenPixelCount + pathIndex);
+		const int64 sampleIndex = 2 * (int64(state.iteration) * state.nVm + pathIndex);
 		const auto sampler = PathSampler(state, sampleIndex);
 		if (!sampler) return false;
 		RandomStateSequence random(sampler, sampleIndex);
@@ -170,34 +170,48 @@ bool VertexConnectionMerging::BuildPhotonMap(RenderState& state) {
 }
 
 bool VertexConnectionMerging::TraceCameraPaths(RenderState& state) {
-	if (!ForEachPath(state, "camera", state.screenPixelCount, [&](int64 pixel, Worker& worker) {
-		const bool success = RenderPixel(state, pixel, worker);
-		worker.cameraArena.Reset();
-		return success;
+	if (!ForEachPath(state, "camera", state.nVm, [&](int64 sample, Worker& worker) {
+		Vec2 raster;
+		if (!GenerateCameraSample(state, sample, worker, &raster)) return false;
+		return ConnectAndMerge(state, sample, raster, worker);
 	})) return false;
-	mStatistics.mCameraSamples += state.screenPixelCount;
+	mStatistics.mCameraSamples += state.nVm;
 	return true;
 }
 
-// One camera path: connect it to this pixel's light path and merge it with the photon map.
-bool VertexConnectionMerging::RenderPixel(RenderState& state, int64 pixel, Worker& worker) const {
-	const int64 sampleIndex = 2 * (int64(state.iteration) * state.screenPixelCount + pixel) + 1;
+// The camera budget is free of the resolution: samples are spread over the film by index
+// rather than one per pixel, and Docs/VCM.md Eq. (6) carries the light-tracing normalization.
+bool VertexConnectionMerging::GenerateCameraSample(RenderState& state, int64 sample, Worker& worker,
+	Vec2* raster) const {
+	// The previous sample's path and the BSDFs it owns die here: a camera path never outlives
+	// the ConnectAndMerge that consumed it, so one path per worker is ever live.
+	worker.cameraArena.Reset();
+	const int64 sampleIndex = 2 * (int64(state.iteration) * state.nVm + sample) + 1;
 	const auto sampler = PathSampler(state, sampleIndex);
 	if (!sampler) return false;
 	RandomStateSequence random(sampler, sampleIndex);
+	// Stratified film coverage: sample k of iteration i takes pixel (k + i * nVm) mod P, so a
+	// budget below the pixel count still sweeps the whole image across iterations and the
+	// coverage never depends on the sampler. With nVm == P this is one sample per pixel.
+	const int64 pixel = (sample + int64(state.iteration) * state.nVm) % state.screenPixelCount;
 	const int x = int(pixel % state.width), y = int(pixel / state.width);
 	const real u = random(), v = random();
-	const Vec2 raster(x + u, y + v);
+	*raster = Vec2(x + u, y + v);
 	const Ray ray = state.camera.GenerateRay(x, y, Vec2(u, v), 0);
-	auto& cameraPath = worker.cameraPath;
-	const int nCamera = GenerateCameraPath(state.scene, state.camera, random, worker.cameraArena, ray,
-		mMaxDepth + 2, NormalMode(), cameraPath);
-	if (nCamera < 0 || !SupportedPath(cameraPath)) return false;
+	const int nCamera = GenerateCameraPath(state.scene, state.camera, random, worker.cameraArena,
+		ray, mMaxDepth + 2, NormalMode(), worker.cameraPath);
+	return nCamera >= 0 && SupportedPath(worker.cameraPath);
+}
 
-	const auto& lightPath = state.lightPaths[size_t(pixel)];
+// Eq. (2) and Eq. (4) over this camera path: connect it to its light path, merge it with the
+// photon map, and accumulate the weighted estimates onto the film.
+bool VertexConnectionMerging::ConnectAndMerge(RenderState& state, int64 sample, const Vec2& raster,
+	Worker& worker) const {
+	const auto& cameraPath = worker.cameraPath;
+	const auto& lightPath = state.lightPaths[size_t(sample)];
 	worker.connection.clear();
 	worker.merging.clear();
-	for (int t = 1; t <= nCamera; ++t) {
+	for (int t = 1; t <= int(cameraPath.size()); ++t) {
 		if (!Connect(state, lightPath, cameraPath, t, worker.connection)) return false;
 		if (UseVm() && !Merge(state, cameraPath, t, worker, worker.merging)) return false;
 	}
@@ -223,7 +237,8 @@ bool VertexConnectionMerging::Connect(const RenderState& state, const std::vecto
 		real weightVc;
 		if (!Vcm::ComputeMisWeight(state.scene, path, strategy, &weightVc)) return false;
 		if (t == 1)
-			connection.push_back({ raster, Vcm::ToVector3d(contributionVc * (weightVc / real(mIterations))), true });
+			connection.push_back({ raster, Vcm::ToVector3d(contributionVc * weightVc) *
+				Vector3d(SplatScale(state)), true });
 		else
 			connection.push_back({ Vec2(), Vcm::ToVector3d(contributionVc) * Vector3d(weightVc) / Vector3d(double(state.nVc)) });
 	}
@@ -252,17 +267,27 @@ bool VertexConnectionMerging::Merge(const RenderState& state, const std::vector<
 }
 
 // Eq. (5): splats go to the film directly; the camera-pixel estimates form one sample, VC sum plus VM sum.
+// Light tracing splats onto its own projected pixel, already carrying SplatScale; the camera
+// estimates form one filtered sample at this path's film position, which AddSample averages by
+// the samples a pixel actually received.
 void VertexConnectionMerging::WritePathContribution(RenderState& state, const Vec2& raster,
 	const Vcm::PathContribution& connection, const Vcm::PathContribution& merging) const {
 	Vector3d pixelVc(0), pixelVm(0);
 	for (const auto& contribution : connection.mContributions) {
 		if (contribution.mIsSplat)
-			state.film->AddSplat(contribution.mRaster.x, contribution.mRaster.y, Vcm::ToVec3(contribution.mValue));
+			state.film->AddSplat(contribution.mRaster.x, contribution.mRaster.y,
+				Vcm::ToVec3(contribution.mValue));
 		else
 			pixelVc += contribution.mValue;
 	}
 	for (const auto& contribution : merging.mContributions) pixelVm += contribution.mValue;
 	state.film->AddSample(raster.x, raster.y, Vcm::ToVec3(pixelVc + pixelVm));
+}
+
+// Light tracing sums over all nVm light paths but is read as a per-pixel average, so it carries
+// screenPixelCount / (nVm * iterations) -- LT.h's resX * resY / totalPhotons, per iteration.
+double VertexConnectionMerging::SplatScale(const RenderState& state) const {
+	return double(state.screenPixelCount) / (double(state.nVm) * mIterations);
 }
 
 bool VertexConnectionMerging::ForEachPath(RenderState& state, const char* phase, int64 count,

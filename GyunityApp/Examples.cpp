@@ -181,8 +181,11 @@ bool VertexConnectionMerging(const std::string& scene, const Options& overrides,
 	if (statistics) *statistics = {};
 	const auto* selected = FindScene(scene);
 	if (!selected || selected->usesVolume) return Error("VCM requires a registered non-volume scene.");
-	if (overrides.spp || overrides.photonsPerStage)
-		return Error("VCM uses iterations, not spp or an independent photon budget.");
+	if (overrides.spp) return Error("VCM uses iterations, not spp.");
+	// photonsPerStage is VCM's per-iteration path budget: it drives the light and camera
+	// phases together, so the sample count is independent of the resolution.
+	if (overrides.photonsPerStage && *overrides.photonsPerStage <= 0)
+		return Error("VCM requires a positive photon budget.");
 	if (overrides.accelerator && *overrides.accelerator != SceneAccelerator::Bvh &&
 		*overrides.accelerator != SceneAccelerator::Kd)
 		return Error("VCM example requires BVH or KD acceleration.");
@@ -195,7 +198,8 @@ bool VertexConnectionMerging(const std::string& scene, const Options& overrides,
 	if (!Prepare(scene, settings, "CornellBoxVcm.hdr", options, 0, 0, true)) return false;
 	Gyunity::VertexConnectionMerging integrator(
 		std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123),
-		options.maxDepth, *settings.iterations, initialRadius, alpha, mode, concurrency, useShadingNormals);
+		options.maxDepth, *settings.iterations, initialRadius, alpha, mode, concurrency, useShadingNormals,
+		settings.photonsPerStage.value_or(0));
 	const bool success = ::RenderScene(options, integrator);
 	if (statistics) *statistics = integrator.GetStatistics();
 	return success;
@@ -224,9 +228,11 @@ bool VeachBidirVcm(const Options& options, Gyunity::VertexConnectionMerging::Sta
 	if (!settings.iterations) settings.iterations = 512;
 	if (!settings.maxDepth) settings.maxDepth = 7;
 	if (settings.output.empty()) {
+		const auto budget = settings.photonsPerStage ?
+			"-paths" + std::to_string(*settings.photonsPerStage) : std::string();
 		const auto filename = "veach-bidir-vcm-shading-" + std::to_string(*settings.width) + 'x' +
 			std::to_string(*settings.height) + "-iters" + std::to_string(*settings.iterations) +
-			"-depth" + std::to_string(*settings.maxDepth) + "-smallvcm-radius.exr";
+			"-depth" + std::to_string(*settings.maxDepth) + "-smallvcm-radius" + budget + ".exr";
 		if (!OutputPath(filename, settings.output)) return false;
 	}
 	return VertexConnectionMerging("veach-bidir", settings, real(0.003 * sceneHalfDiagonal), real(0.75),
