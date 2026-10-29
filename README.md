@@ -75,11 +75,13 @@ These are generated Gyunity renders with no resizing or reference-image substitu
   <img width="400px" height="400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/bunny.png?raw=true"/>
 </div>
 
+<!--
 <br/>
 <div align="center">
   <img width="400px" height="400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/coca1.png?raw=true"/>
   <img width="400px" height="400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/coca2.png?raw=true"/>
 </div>
+-->
 
 <br/>
 <div align="center">
@@ -93,11 +95,13 @@ These are generated Gyunity renders with no resizing or reference-image substitu
   <img width="400px" height="400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/water_cornell_box.png?raw=true"/>
 </div>
 
+<!--
 <br/>
 <div align="center">
   <img style = "width: 400px; height: 400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/bunny_envmap_scale_down_1080.gif?raw=true" loop>
   <img style = "width: 400px; height: 400px" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/sppm_cornell_box_area_light_scale_down_1080.gif?raw=true" loop>
 </div>
+-->
 
 ## Build
 Ensure CMake is on `PATH`. Visual Studio 2026 requires CMake 4.2 or newer.
