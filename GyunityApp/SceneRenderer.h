@@ -19,6 +19,8 @@ struct SceneRenderOptions {
 	SppmSettings sppm;
 	// BDPT only: smooth shading normals with adjoint-corrected transport (#148).
 	bool bdptShadingNormals = false;
+	// BDPT only: log-pdf MIS (VCM's delta convention) instead of the PBRT-v3 ratio walk.
+	bool bdptLogPdfMis = false;
 	// Low-dynamic-range outputs only: pbrt imgtool tone mapping with 8-bit sRGB encoding.
 	Gyunity::ToneMapSettings toneMap;
 };

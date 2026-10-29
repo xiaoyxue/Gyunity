@@ -16,6 +16,17 @@ using namespace Gyunity;
 
 namespace {
 
+// ConnectPaths with each MIS evaluation, as plain function pointers.
+bool ConnectRatio(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	return ConnectPaths(scene, camera, lightPath, cameraPath, s, t, contribution, raster, BdptMis::Ratio);
+}
+
+bool ConnectLogPdf(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	return ConnectPaths(scene, camera, lightPath, cameraPath, s, t, contribution, raster, BdptMis::LogPdf);
+}
+
 class EnvironmentBDPT : public testing::Test {
 protected:
 	std::shared_ptr<Scene> scene;
@@ -176,7 +187,7 @@ TEST_F(EnvironmentBDPT, SharedHelpersPreserveEnvironmentDirectionAndLaunchMeasur
 	real pmf, originPdf, surfacePdf;
 	ASSERT_TRUE(scene->LightSelectionPdf(0, &pmf));
 	ASSERT_TRUE(Bidirectional::LightOriginPdf(*scene, light[0], eye.back(), &originPdf));
-	ASSERT_TRUE(Bidirectional::PdfArea(light[0], nullptr, eye.back(), &surfacePdf));
+	ASSERT_TRUE(Bidirectional::PdfPos(light[0], nullptr, eye.back(), &surfacePdf));
 	EXPECT_NEAR(originPdf, pmf * mapPdf, 1e-7f);
 	EXPECT_NEAR(surfacePdf, 1 / (200 * PI), 1e-8f);
 	Vec3 dir, primary, distantPrimary;
@@ -202,7 +213,7 @@ TEST_F(EnvironmentBDPT, BlockedEnvironmentConnectionSkipsMis) {
 	std::vector<PathVertex> light, eye;
 	BuildPaths(1, &light, &eye);
 	eye[0].mPdfFwd = -1;
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+	for (auto evaluate : { &EvaluateConnection, &ConnectRatio, &ConnectLogPdf }) {
 		Vec3 contribution(7);
 		Vec2 raster(7);
 		ASSERT_TRUE(evaluate(*scene, *camera, light, eye, 1, 2, &contribution, &raster));

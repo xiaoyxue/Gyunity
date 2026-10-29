@@ -33,7 +33,7 @@ bool Delta(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Surface && vertex.mIsect.mBsdf && vertex.mIsect.mBsdf->IsDelta();
 }
 
-// Eq. (10) BSDF density at the merge vertex x; shading normals mask its support as in PdfArea.
+// Eq. (10) BSDF density at the merge vertex x; shading normals mask its support as in PdfPos.
 real MergePdf(const PathVertex& x, const Vec3& wo, const Vec3& wi) {
 	const bool supported = x.mNormalMode == SurfaceNormalMode::Geometric ||
 		(Bidirectional::ShadingSupport(x.mIsect, wo) && Bidirectional::ShadingSupport(x.mIsect, wi));
@@ -86,7 +86,7 @@ bool ForwardDensity(const Scene& scene, const PathContext& path, int i, real* pd
 		return true;
 	}
 	if (i == 0) return Bidirectional::LightOriginPdf(scene, CameraVertex(path, 0), CameraVertex(path, 1), pdf);
-	return Bidirectional::PdfArea(CameraVertex(path, source),
+	return Bidirectional::PdfPos(CameraVertex(path, source),
 		i >= 2 ? &CameraVertex(path, i - 2) : nullptr, CameraVertex(path, i), pdf);
 }
 
@@ -119,7 +119,7 @@ bool ReverseDensity(const PathContext& path, int i, real* pdf) {
 		*pdf = Bidirectional::DirectionToArea(MergePdf(x, x.mIsect.mOutDir, y.mIsect.mOutDir), y, LightVertex(path, i));
 		return true;
 	}
-	return Bidirectional::PdfArea(LightVertex(path, source),
+	return Bidirectional::PdfPos(LightVertex(path, source),
 		i + 2 < n ? &LightVertex(path, i + 2) : nullptr, LightVertex(path, i), pdf);
 }
 

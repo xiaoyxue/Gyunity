@@ -18,6 +18,17 @@ using namespace Gyunity;
 
 namespace {
 
+// ConnectPaths with each MIS evaluation, as plain function pointers.
+bool ConnectRatio(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	return ConnectPaths(scene, camera, lightPath, cameraPath, s, t, contribution, raster, BdptMis::Ratio);
+}
+
+bool ConnectLogPdf(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	return ConnectPaths(scene, camera, lightPath, cameraPath, s, t, contribution, raster, BdptMis::LogPdf);
+}
+
 class FiniteBDPT : public testing::Test {
 protected:
 	std::shared_ptr<Scene> scene;
@@ -78,7 +89,13 @@ protected:
 		}
 	}
 
-	void CheckMixedChain(bool sampledDelta, int split) {
+	static bool Weight(BdptMis mis, const Scene& scene, const std::vector<PathVertex>& lightPath,
+		const std::vector<PathVertex>& cameraPath, int s, int t, real* weight) {
+		return mis == BdptMis::LogPdf ? MisWeightLogPdf(scene, lightPath, cameraPath, s, t, weight) :
+			MisWeight(scene, lightPath, cameraPath, s, t, weight);
+	}
+
+	void CheckMixedChain(bool sampledDelta, int split, BdptMis mis = BdptMis::Ratio) {
 		auto chainCamera = std::make_shared<PinHoleCamera>(std::make_shared<Film>(16, 16),
 			Vec3(1, 0, -1), Vec3(1, 0, 1), Vec3(0, 1, 0), 53.13010235415597f, 1);
 		std::array<PathVertex, 4> chain = { full[0], full[1], full[1], full[2] };
@@ -89,6 +106,7 @@ protected:
 		chain[1].mIsect.mBsdf->Add(GYT_MEMORY_POOL_ALLOC(arena, SpecularBSDF)(Vec3(0.5f)));
 		ASSERT_TRUE(chain[1].mIsect.mBsdf->HasMixedDeltaLobes());
 		chain[1].mIsDelta = sampledDelta;
+		if (sampledDelta) chain[1].mDeltaPdfFwd = chain[1].mDeltaPdfPrev = 0.5f;
 		chain[2].mIsect.mPos = Vec3(1, 0, 1);
 		chain[2].mIsect.mNormal = chain[2].mIsect.mGeometryNormal = Vec3(0, 0, -1);
 		chain[2].mIsect.mShadingDpDv = Vec3(0, -1, 0);
@@ -103,11 +121,15 @@ protected:
 			sampledDelta ? 0 : 1 / (8 * PI), 1 / (4 * PI) };
 		const std::array<real, 4> r = { sampledDelta ? 0 : 1 / (4 * std::sqrt(2.f) * PI),
 			1 / (4 * PI), chainCamera->PdfDir(Ray(chainCamera->mPos, Vec3(0, 0, 1))) / 4, 1 };
+		// Ratio counts the delta edges as 1. LogPdf keeps the lobe mass 1/2 and the edge
+		// geometry, G(M -> L) = 1/2 and G(M -> D) = 1/(2 sqrt 2).
+		const bool keep = mis == BdptMis::LogPdf;
+		const double deltaReverse = keep ? 0.5 * 0.5 : 1, deltaForward = keep ? 0.5 / (2 * std::sqrt(2.0)) : 1;
 		const double probabilities[] = {
-			(sampledDelta ? 1 : double(r[0])) * r[1] * r[2],
+			(sampledDelta ? deltaReverse : double(r[0])) * r[1] * r[2],
 			sampledDelta ? 0 : double(f[0]) * r[1] * r[2],
 			sampledDelta ? 0 : double(f[0]) * f[1] * r[2],
-			double(f[0]) * f[1] * (sampledDelta ? 1 : double(f[2]))
+			double(f[0]) * f[1] * (sampledDelta ? deltaForward : double(f[2]))
 		};
 		const double total = probabilities[0] + probabilities[1] + probabilities[2] + probabilities[3];
 		std::vector<PathVertex> lightPath, cameraPath;
@@ -124,7 +146,7 @@ protected:
 			cameraPath.push_back(vertex);
 		}
 		real weight;
-		ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, split, 4 - split, &weight));
+		ASSERT_TRUE(Weight(mis, *scene, lightPath, cameraPath, split, 4 - split, &weight));
 		EXPECT_NEAR(weight, probabilities[split] / total, 1e-6) << "split=" << split;
 		for (const auto& path : { lightPath, cameraPath }) {
 			for (const auto& vertex : path) {
@@ -147,6 +169,15 @@ TEST_F(FiniteBDPT, InternalLightMixedDeltaExcludesAdjacentSplits) {
 
 TEST_F(FiniteBDPT, InternalMixedContinuousKeepsAllFourSplits) {
 	for (int split = 0; split < 4; ++split) CheckMixedChain(false, split);
+}
+
+TEST_F(FiniteBDPT, LogPdfKeepsMixedDeltaMassAndGeometry) {
+	CheckMixedChain(true, 0, BdptMis::LogPdf);
+	CheckMixedChain(true, 3, BdptMis::LogPdf);
+}
+
+TEST_F(FiniteBDPT, LogPdfMatchesRatioOnContinuousMixedChain) {
+	for (int split = 0; split < 4; ++split) CheckMixedChain(false, split, BdptMis::LogPdf);
 }
 
 TEST_F(FiniteBDPT, MixedDeltaReflectionHasOnlyCameraHitStrategy) {
@@ -203,6 +234,27 @@ TEST_F(FiniteBDPT, BalanceWeightsMatchIndependentProductsAndSumToOne) {
 				EXPECT_EQ(actual.mCamera, original.mCamera);
 			}
 		}
+	}
+	EXPECT_NEAR(weightSum, 1, 1e-6);
+}
+
+TEST_F(FiniteBDPT, LogPdfWeightsMatchIndependentProductsAndSumToOne) {
+	const double probabilities[] = {
+		double(reverse[0]) * reverse[1] * reverse[2],
+		double(forward[0]) * reverse[1] * reverse[2],
+		double(forward[0]) * forward[1] * reverse[2]
+	};
+	const double total = probabilities[0] + probabilities[1] + probabilities[2];
+	double weightSum = 0;
+	for (int s = 0; s < 3; ++s) {
+		std::vector<PathVertex> lightPath, cameraPath;
+		Split(s, &lightPath, &cameraPath);
+		real weight, ratio;
+		ASSERT_TRUE(MisWeightLogPdf(*scene, lightPath, cameraPath, s, 3 - s, &weight));
+		ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, s, 3 - s, &ratio));
+		EXPECT_NEAR(weight, probabilities[s] / total, 1e-6);
+		EXPECT_NEAR(weight, ratio, 1e-6);
+		weightSum += weight;
 	}
 	EXPECT_NEAR(weightSum, 1, 1e-6);
 }
@@ -279,7 +331,7 @@ TEST_F(FiniteBDPT, ZeroStrategiesDoNotReadMisDensities) {
 	std::vector<PathVertex> lightPath, cameraPath;
 	Split(1, &lightPath, &cameraPath);
 	cameraPath[0].mPdfFwd = -1;
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+	for (auto evaluate : { &EvaluateConnection, &ConnectRatio, &ConnectLogPdf }) {
 		for (int s : { 0, 1 }) {
 			Vec3 contribution(7);
 			Vec2 raster(7);
@@ -290,7 +342,7 @@ TEST_F(FiniteBDPT, ZeroStrategiesDoNotReadMisDensities) {
 		}
 	}
 	cameraPath.back().mThroughput = Vec3(0);
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+	for (auto evaluate : { &EvaluateConnection, &ConnectRatio, &ConnectLogPdf }) {
 		Vec3 contribution(7);
 		Vec2 raster(7);
 		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
@@ -312,7 +364,7 @@ TEST_F(FiniteBDPT, BlockedConnectionContributesZero) {
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
 	cameraPath[0].mPdfFwd = -1;
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+	for (auto evaluate : { &EvaluateConnection, &ConnectRatio, &ConnectLogPdf }) {
 		contribution = Vec3(7);
 		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 1, 2, &contribution, &raster));
 		EXPECT_EQ(contribution, Vec3(0));
@@ -326,7 +378,7 @@ TEST_F(FiniteBDPT, BlockedCameraConnectionRetainsProjectedRasterAndSkipsMis) {
 	std::vector<PathVertex> lightPath, cameraPath;
 	Split(2, &lightPath, &cameraPath);
 	cameraPath[0].mPdfFwd = -1;
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+	for (auto evaluate : { &EvaluateConnection, &ConnectRatio, &ConnectLogPdf }) {
 		Vec3 contribution(7);
 		Vec2 raster(7);
 		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 2, 1, &contribution, &raster));
@@ -363,7 +415,7 @@ TEST_F(FiniteBDPT, CameraConnectionRejectsOffFilmBeforeSplatClamping) {
 	ASSERT_TRUE(ConnectPaths(*scene, *camera, lightPath, cameraPath, 2, 1, &contribution, &raster));
 	EXPECT_EQ(contribution, Vec3(0));
 	cameraPath[0].mPdfFwd = -1;
-	for (auto evaluate : { &EvaluateConnection, &ConnectPaths }) {
+	for (auto evaluate : { &EvaluateConnection, &ConnectRatio, &ConnectLogPdf }) {
 		raster = Vec2(7);
 		ASSERT_TRUE(evaluate(*scene, *camera, lightPath, cameraPath, 2, 1, &contribution, &raster));
 		EXPECT_EQ(contribution, Vec3(0));
@@ -455,6 +507,7 @@ TEST_F(FiniteBDPT, MirrorChainKeepsOnlyTheTwoValidSplits) {
 	MirrorMaterial(std::make_shared<ConstantTexture<Vec3>>(Vec3(1))).ComputeScatteringFunction(
 		&chain[1].mIsect, arena);
 	chain[1].mIsDelta = true;
+	chain[1].mDeltaPdfFwd = chain[1].mDeltaPdfPrev = 1;
 	chain[2] = full[1];
 	chain[2].mIsect.mPos = Vec3(1, 0, 1);
 	chain[2].mIsect.mNormal = chain[2].mIsect.mGeometryNormal = Vec3(0, 0, -1);
@@ -467,31 +520,37 @@ TEST_F(FiniteBDPT, MirrorChainKeepsOnlyTheTwoValidSplits) {
 	const std::array<real, 4> f = { 0.5f, 1 / (2 * std::sqrt(2.f) * PI), 0, 1 / (4 * PI) };
 	const std::array<real, 4> r = { 0, 1 / (4 * PI),
 		chainCamera->PdfDir(Ray(chainCamera->mPos, Vec3(0, 0, 1))) / 4, 1 };
-	const double cameraProduct = double(r[1]) * r[2];
-	const double lightProduct = double(f[0]) * f[1];
-	double sum = 0;
-	for (int split = 0; split < 4; ++split) {
-		std::vector<PathVertex> lightPath, cameraPath;
-		for (int i = 0; i < split; ++i) {
-			auto vertex = chain[i];
-			vertex.mPdfFwd = f[i];
-			vertex.mPdfPrev = r[i];
-			lightPath.push_back(vertex);
+	// Ratio counts the mirror edges as 1. LogPdf keeps mass 1 with G(M -> L) = 1/2 and
+	// G(M -> D) = 1/(2 sqrt 2), which changes the ratio of the two splits.
+	for (BdptMis mis : { BdptMis::Ratio, BdptMis::LogPdf }) {
+		SCOPED_TRACE(mis == BdptMis::LogPdf ? "log-pdf" : "ratio");
+		const bool keep = mis == BdptMis::LogPdf;
+		const double cameraProduct = (keep ? 0.5 : 1) * double(r[1]) * r[2];
+		const double lightProduct = double(f[0]) * f[1] * (keep ? 1 / (2 * std::sqrt(2.0)) : 1);
+		double sum = 0;
+		for (int split = 0; split < 4; ++split) {
+			std::vector<PathVertex> lightPath, cameraPath;
+			for (int i = 0; i < split; ++i) {
+				auto vertex = chain[i];
+				vertex.mPdfFwd = f[i];
+				vertex.mPdfPrev = r[i];
+				lightPath.push_back(vertex);
+			}
+			for (int i = 3; i >= split; --i) {
+				auto vertex = chain[i];
+				vertex.mPdfFwd = r[i];
+				vertex.mPdfPrev = f[i];
+				cameraPath.push_back(vertex);
+			}
+			real weight;
+			ASSERT_TRUE(Weight(mis, *scene, lightPath, cameraPath, split, 4 - split, &weight));
+			const double expected = split == 0 ? cameraProduct / (cameraProduct + lightProduct) :
+				split == 3 ? lightProduct / (cameraProduct + lightProduct) : 0;
+			EXPECT_NEAR(weight, expected, 1e-6);
+			sum += weight;
 		}
-		for (int i = 3; i >= split; --i) {
-			auto vertex = chain[i];
-			vertex.mPdfFwd = r[i];
-			vertex.mPdfPrev = f[i];
-			cameraPath.push_back(vertex);
-		}
-		real weight;
-		ASSERT_TRUE(MisWeight(*scene, lightPath, cameraPath, split, 4 - split, &weight));
-		const double expected = split == 0 ? cameraProduct / (cameraProduct + lightProduct) :
-			split == 3 ? lightProduct / (cameraProduct + lightProduct) : 0;
-		EXPECT_NEAR(weight, expected, 1e-6);
-		sum += weight;
+		EXPECT_NEAR(sum, 1, 1e-6);
 	}
-	EXPECT_NEAR(sum, 1, 1e-6);
 }
 
 TEST(FiniteBDPTRender, DirectEmissionIsIndependentOfSampleCount) {
@@ -546,20 +605,21 @@ TEST(FiniteBDPTRender, MixedPlasticMirrorHighlightMatchesAnalyticRadiance) {
 	const double rs = (ci - 1.5 * ct) / (ci + 1.5 * ct);
 	const double rp = (1.5 * ci - ct) / (1.5 * ci + ct);
 	const double expected = 25 * (rs * rs + rp * rp);
-	std::array<Vec3, 2> radiance;
-	for (int bdpt = 0; bdpt < 2; ++bdpt) {
+	// 0: PT, 1: BDPT ratio MIS, 2: BDPT log-pdf MIS (keeps the coat's delta mass).
+	std::array<Vec3, 3> radiance;
+	for (int bdpt = 0; bdpt < 3; ++bdpt) {
 		auto film = std::make_shared<Film>(1, 1);
 		PinHoleCamera camera(film, Vec3(0, -offset, 1), Vec3(0), Vec3(0, 0, 1), 1, 1);
 		auto sampler = std::make_shared<RandomSampler>(123);
 		if (bdpt) {
-			BidirectionalPathTracing integrator(sampler, 3, 16384);
+			BidirectionalPathTracing integrator(sampler, 3, 16384, false, bdpt == 2 ? BdptMis::LogPdf : BdptMis::Ratio);
 			ASSERT_TRUE(integrator.RenderChecked(*scene, camera));
 		} else {
 			PathTracing integrator(16384, 3, sampler, std::make_shared<SamplerEnum>());
 			ASSERT_TRUE(integrator.RenderChecked(*scene, camera));
 		}
 		const std::string path = std::string(output) + "\\mixed-plastic-highlight-" +
-			(bdpt ? "bdpt.exr" : "pt.exr");
+			(bdpt == 2 ? "bdpt-logpdf.exr" : bdpt ? "bdpt.exr" : "pt.exr");
 		film->SetFileName(path);
 		ASSERT_TRUE(film->SaveImage());
 		std::vector<Vec3> image;
@@ -573,6 +633,7 @@ TEST(FiniteBDPTRender, MixedPlasticMirrorHighlightMatchesAnalyticRadiance) {
 		}
 	}
 	EXPECT_NEAR(radiance[1].x / radiance[0].x, 1, 0.06);
+	EXPECT_NEAR(radiance[2].x / radiance[0].x, 1, 0.06);
 }
 
 TEST(FiniteBDPTRender, TinyCornellBoxRunsBothSubpathsAndConnections) {

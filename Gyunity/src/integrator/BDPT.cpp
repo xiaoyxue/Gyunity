@@ -84,8 +84,9 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 		}
 		y = maxY;
 	}
-	ProgressReporter progress(fmt::format("Rendering BDPT ({} x {}, {} spp, depth {}{})",
-		width, height, mSpp, mMaxDepth, mUseShadingNormals ? ", shading normals" : ""), tiles.size());
+	ProgressReporter progress(fmt::format("Rendering BDPT ({} x {}, {} spp, depth {}{}{})",
+		width, height, mSpp, mMaxDepth, mUseShadingNormals ? ", shading normals" : "",
+		mMis == BdptMis::LogPdf ? ", log-pdf MIS" : ""), tiles.size());
 	const SurfaceNormalMode normalMode = mUseShadingNormals ? SurfaceNormalMode::Shading : SurfaceNormalMode::Geometric;
 	std::atomic<bool> success(true);
 	ParallelFor(size_t(0), tiles.size(), [&](size_t tileIndex) {
@@ -111,7 +112,7 @@ bool BidirectionalPathTracing::RenderChecked(const Scene& scene, const Camera& c
 							if (depth < 0 || depth > mMaxDepth || (s == 1 && t == 1)) continue;
 							Vec3 contribution;
 							Vec2 raster;
-							if (!ConnectPaths(scene, camera, lightPath, cameraPath, s, t, &contribution, &raster)) {
+							if (!ConnectPaths(scene, camera, lightPath, cameraPath, s, t, &contribution, &raster, mMis)) {
 								success = false;
 								break;
 							}

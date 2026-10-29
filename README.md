@@ -9,7 +9,7 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 - Stochastic progressive photon mapping (SPPM)
 - LightTracing (LT)
 - Bidirectional PathTracing (BDPT)
-- Surface Vertex Connection and Merging (VCM, opt-in geometric normals)
+- Vertex Connection and Merging (VCM)
 - Volume PathTracing (VPT)
 - Equi-angular sampling
 - Multiple importance sampling (MIS)
@@ -22,7 +22,7 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 
 ## Some Results
 ### Original scene previews
-Height 1024 with original aspect ratios and 512 samples per pixel.
+Height 1024 with original aspect ratios and 512 samples per pixel (Veach bidir: 1024, BDPT with log-pdf MIS).
 These are generated Gyunity renders with no resizing or reference-image substitution.
 [Settings and image hashes](https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/transport-scenes-shading-rough-glass-1024h.json).
 
@@ -33,7 +33,7 @@ These are generated Gyunity renders with no resizing or reference-image substitu
       CornellBoxStandard
     </td>
     <td align="center" valign="top">
-      <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-bidir-bdpt-shading-1024x1024-spp512-depth7-aces.png?raw=true" alt="Veach bidir"/><br/>
+      <img width="400" src="https://github.com/xiaoyxue/GyunityAssets/blob/main/GyunityAssets/Gallery/veach-bidir-bdpt-shading-logpdf-1024x1024-spp1024-depth7-aces.png?raw=true" alt="Veach bidir"/><br/>
       Veach bidir
     </td>
   </tr>
@@ -132,6 +132,7 @@ See [INSTRUCTIONS.md](INSTRUCTIONS.md) for cmd.exe, Python/uv, PowerShell and SP
 | [Scenes](Docs/Scenes.md) | Named scene commands, Cornell/Veach data and Matpreview preparation |
 | [Examples](Docs/Examples.md) | C++ helpers, named examples and explicit batch rendering |
 | [VCM](Docs/VCM.md) | Progressive surface rendering, explicit MIS, photon mapping and supported normal policy |
+| [VPT with voxel density](Docs/VPT_Voxel.md) | Minimal delta-tracking, ratio-tracking and volumetric path tracing pseudocode |
 | [Threaded task groups](Docs/ThreadedTaskManager.md) | Scoped TBB execution, cancellation, progress and statistics |
 | [Debugging](Docs/Debugging.md) | Thread-local pixel diagnostics |
 | [Testing](Docs/Testing.md) | Scene regression commands and reference comparisons |

@@ -1,6 +1,9 @@
 #include "BDPT.h"
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <limits>
+#include <vector>
 
 GYT_NAMESPACE_BEGIN
 
@@ -35,16 +38,17 @@ bool LightOriginPdf(const Scene& scene, const PathVertex& light, const PathVerte
 	return true;
 }
 
-bool PdfArea(const PathVertex& vertex, const PathVertex* previous, const PathVertex& next, real* pdfArea) {
+bool PdfPos(const PathVertex& vertex, const PathVertex* previous, const PathVertex& next, real* pdfPos) {
 	const Vec3 wi = DirectionTo(vertex, next);
-	real pdfPos, pdfDir = 0;
+	real emitterPdfPos, pdfDir = 0;
 	if (vertex.mType == PathVertexType::Environment) {
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &pdfPos, &pdfDir)) return false;
-		*pdfArea = DirectionToArea(pdfPos, vertex, next);
+		// Parallel rays from the launch disk: the disk's pdfPos, not pdfDir, carries over to `next`.
+		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &emitterPdfPos, &pdfDir)) return false;
+		*pdfPos = DirectionToArea(emitterPdfPos, vertex, next);
 		return true;
 	}
 	if (vertex.mType == PathVertexType::Light || (!previous && vertex.mLight)) {
-		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &pdfPos, &pdfDir)) return false;
+		if (!vertex.mLight->PdfLight(vertex.mIsect, wi, &emitterPdfPos, &pdfDir)) return false;
 	}
 	else if (vertex.mType == PathVertexType::Camera) {
 		pdfDir = vertex.mCamera->PdfDir(Ray(vertex.mIsect.mPos, wi));
@@ -56,7 +60,7 @@ bool PdfArea(const PathVertex& vertex, const PathVertex* previous, const PathVer
 			(ShadingSupport(vertex.mIsect, wo) && ShadingSupport(vertex.mIsect, wi));
 		pdfDir = supported && !vertex.mIsect.mBsdf->IsDelta() ? vertex.mIsect.mBsdf->Pdf(wo, wi) : 0;
 	}
-	*pdfArea = DirectionToArea(pdfDir, vertex, next);
+	*pdfPos = DirectionToArea(pdfDir, vertex, next);
 	return true;
 }
 
@@ -75,9 +79,10 @@ bool ValidConnection(const PathVertex* lightEnd, const PathVertex& cameraEnd, si
 namespace {
 
 using Bidirectional::DirectionTo;
+using Bidirectional::DirectionToArea;
 using Bidirectional::Connectible;
 using Bidirectional::LightOriginPdf;
-using Bidirectional::PdfArea;
+using Bidirectional::PdfPos;
 using Bidirectional::ScatteringCosine;
 using Bidirectional::ValidConnection;
 
@@ -240,17 +245,17 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 	// Recompute the camera-side connection densities.
 	if (s == 0) {
 		if (!LightOriginPdf(scene, cameraEnd, *cameraPrevious, &cameraMis[t - 1].pdfPrev) ||
-			!PdfArea(cameraEnd, nullptr, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
+			!PdfPos(cameraEnd, nullptr, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
 	}
 	else {
-		if (!PdfArea(*lightEnd, lightPrevious, cameraEnd, &cameraMis[t - 1].pdfPrev)) return false;
+		if (!PdfPos(*lightEnd, lightPrevious, cameraEnd, &cameraMis[t - 1].pdfPrev)) return false;
 		if (cameraPrevious &&
-			!PdfArea(cameraEnd, lightEnd, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
+			!PdfPos(cameraEnd, lightEnd, *cameraPrevious, &cameraMis[t - 2].pdfPrev)) return false;
 
 		// Recompute the light-side connection densities.
-		if (!PdfArea(cameraEnd, cameraPrevious, *lightEnd, &lightMis[s - 1].pdfPrev)) return false;
+		if (!PdfPos(cameraEnd, cameraPrevious, *lightEnd, &lightMis[s - 1].pdfPrev)) return false;
 		if (lightPrevious &&
-			!PdfArea(*lightEnd, &cameraEnd, *lightPrevious, &lightMis[s - 2].pdfPrev)) return false;
+			!PdfPos(*lightEnd, &cameraEnd, *lightPrevious, &lightMis[s - 2].pdfPrev)) return false;
 	}
 
 	// PBRT-v3 balance heuristic: walk alternative splits in both directions.
@@ -267,6 +272,129 @@ bool MisWeight(const Scene& scene, const std::vector<PathVertex>& lightPath,
 			ValidConnection(i > 0 ? &lightPath[i - 1] : nullptr, lightPath[i], i, count - i)) sumRatios += ratio;
 	}
 	*weight = static_cast<real>(1 / (1 + sumRatios));
+	return true;
+}
+
+// Log-pdf balance heuristic; equation numbers refer to Docs/BDPT.md "MIS". The densities mirror
+// Vcm::PathDensities (Docs/VCM.md Eqs. (6) and (11)) without merging, so these weights equal
+// Vcm::ComputeMisWeight in ConnectionOnly mode on the same subpaths.
+namespace {
+
+constexpr double Infeasible = -std::numeric_limits<double>::infinity();
+
+bool Fail(const char* message) {
+	GetDefaultLogger()->Error(message, false);
+	return false;
+}
+
+// The selected path x_0 .. x_{n-1} in light-to-camera order, n = s + t.
+struct JoinedPath {
+	const std::vector<PathVertex>& light;
+	const std::vector<PathVertex>& camera;
+	int s, t;
+
+	int Count() const { return s + t; }
+	const PathVertex& operator[](int i) const { return i < s ? light[i] : camera[s + t - 1 - i]; }
+};
+
+// A delta event at x_k that generated a neighbor of this path. The connection endpoints
+// x_{s-1} and x_s scatter through the connection instead; a flag left there by their unused
+// continuation does not count, as in CopyMisState.
+bool SampledDelta(const JoinedPath& path, int k) {
+	return k > 0 && k < path.Count() - 1 && k != path.s - 1 && k != path.s && path[k].mIsDelta;
+}
+
+// Eq. (4): the sampled component mass with the edge geometry G(from -> to); only the singular
+// distribution is removed. A negative reverse mass marks an unsupported component.
+real DeltaDensity(real mass, const PathVertex& from, const PathVertex& to) {
+	return mass > 0 ? DirectionToArea(mass, from, to) : 0;
+}
+
+// Eq. (1): pdfFwd[i], x_i sampled from x_{i-1}. Recorded densities are reused while their source
+// and its predecessor are selected; only the connection boundary is recomputed.
+bool ForwardDensity(const Scene& scene, const JoinedPath& path, int i, real* pdf) {
+	const int n = path.Count(), s = path.s, source = i - 1;
+	if (SampledDelta(path, source)) {
+		// Light vertices store masses in light-to-camera order, camera vertices in reverse.
+		const PathVertex& vertex = path[source];
+		*pdf = DeltaDensity(source < s ? vertex.mDeltaPdfFwd : vertex.mDeltaPdfPrev, vertex, path[i]);
+		return true;
+	}
+	if (i < s) {
+		*pdf = path.light[i].mPdfFwd;
+		return true;
+	}
+	if (n - 1 - i < path.t - 2) {
+		*pdf = path.camera[n - 1 - i].mPdfPrev;
+		return true;
+	}
+	if (i == 0) return LightOriginPdf(scene, path[0], path[1], pdf);
+	return PdfPos(path[source], i >= 2 ? &path[i - 2] : nullptr, path[i], pdf);
+}
+
+// Eq. (1): pdfPrev[i], x_i sampled from x_{i+1}.
+bool ReverseDensity(const JoinedPath& path, int i, real* pdf) {
+	const int n = path.Count(), s = path.s, source = i + 1;
+	if (SampledDelta(path, source)) {
+		const PathVertex& vertex = path[source];
+		*pdf = DeltaDensity(source < s ? vertex.mDeltaPdfPrev : vertex.mDeltaPdfFwd, vertex, path[i]);
+		return true;
+	}
+	if (i >= s) {
+		*pdf = path.camera[n - 1 - i].mPdfFwd;
+		return true;
+	}
+	if (i < s - 2) {
+		*pdf = path.light[i].mPdfPrev;
+		return true;
+	}
+	return PdfPos(path[source], i + 2 < n ? &path[i + 2] : nullptr, path[i], pdf);
+}
+
+// Strategy k joins x_{k-1} and x_k. It cannot reproduce the path when either endpoint
+// scattered a delta event of the path, or when the connection itself is unsupported.
+bool Feasible(const JoinedPath& path, int k) {
+	return !SampledDelta(path, k - 1) && !SampledDelta(path, k) &&
+		ValidConnection(k > 0 ? &path[k - 1] : nullptr, path[k], k, path.Count() - k);
+}
+
+}
+
+bool MisWeightLogPdf(const Scene& scene, const std::vector<PathVertex>& lightPath,
+	const std::vector<PathVertex>& cameraPath, int s, int t, real* weight) {
+	*weight = 0;
+	if (!ValidConnection(s > 0 ? &lightPath[s - 1] : nullptr, cameraPath[t - 1], s, t)) return true;
+	if (s + t == 2) { *weight = 1; return true; }
+	const JoinedPath path{ lightPath, cameraPath, s, t };
+	const int n = path.Count();
+	std::vector<real> pdfFwd(n, 0), pdfPrev(n, 0);
+	for (int i = 0; i + 1 < n; ++i)
+		if (!ForwardDensity(scene, path, i, &pdfFwd[i])) return false;
+	for (int i = 0; i < n; ++i)
+		if (!ReverseDensity(path, i, &pdfPrev[i])) return false;
+
+	// Eq. (2) for every strategy at once: light[k] = log prod_{i<k} pdfFwd[i] and
+	// camera[k] = log prod_{i>=k} pdfPrev[i]. A zero factor makes the strategy infeasible.
+	std::vector<double> light(n, 0), camera(n + 1, 0);
+	for (int k = 1; k < n; ++k)
+		light[k] = light[k - 1] == Infeasible || !(pdfFwd[k - 1] > 0) ? Infeasible : light[k - 1] + std::log(double(pdfFwd[k - 1]));
+	for (int k = n - 1; k >= 0; --k)
+		camera[k] = camera[k + 1] == Infeasible || !(pdfPrev[k] > 0) ? Infeasible : camera[k + 1] + std::log(double(pdfPrev[k]));
+	std::vector<double> logPdf(n);
+	double maximum = Infeasible;
+	for (int k = 0; k < n; ++k) {
+		const bool feasible = Feasible(path, k) && light[k] != Infeasible && camera[k] != Infeasible;
+		logPdf[k] = feasible ? light[k] + camera[k] : Infeasible;
+		maximum = std::max(maximum, logPdf[k]);
+	}
+	// The sampled strategy's factors are all recorded or delta masses, so they are positive.
+	if (logPdf[s] == Infeasible) return Fail("BDPT current strategy has zero path density.");
+
+	// Eq. (3): balance heuristic normalized against the largest log pdf, so long paths do not underflow.
+	double sum = 0;
+	for (double value : logPdf)
+		if (value != Infeasible) sum += std::exp(value - maximum);
+	*weight = static_cast<real>(std::exp(logPdf[s] - maximum) / sum);
 	return true;
 }
 
@@ -297,13 +425,15 @@ bool EvaluateConnection(const Scene& scene, const Camera& camera, const std::vec
 }
 
 bool ConnectPaths(const Scene& scene, const Camera& camera, const std::vector<PathVertex>& lightPath,
-	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster) {
+	const std::vector<PathVertex>& cameraPath, int s, int t, Vec3* contribution, Vec2* raster, BdptMis mis) {
 	*contribution = Vec3(0);
 	Vec3 unweightedContribution(0);
 	if (!EvaluateConnection(scene, camera, lightPath, cameraPath, s, t, &unweightedContribution, raster)) return false;
 	if (unweightedContribution == Vec3(0)) return true;
 	real weight;
-	if (!MisWeight(scene, lightPath, cameraPath, s, t, &weight)) return false;
+	const bool weighted = mis == BdptMis::LogPdf ? MisWeightLogPdf(scene, lightPath, cameraPath, s, t, &weight) :
+		MisWeight(scene, lightPath, cameraPath, s, t, &weight);
+	if (!weighted) return false;
 	*contribution = unweightedContribution * weight;
 	return true;
 }

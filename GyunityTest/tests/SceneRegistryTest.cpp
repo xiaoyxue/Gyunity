@@ -163,6 +163,18 @@ TEST(SceneCommandLine, ShadingNormalsRemainAnExplicitBdptOption) {
 		"--bdpt-normals", "shading", "--out", "unused.png" }));
 }
 
+TEST(SceneCommandLine, LogPdfMisIsAnExplicitBdptOption) {
+	EXPECT_FALSE(Parse({ "--scene", "empty", "--integrator", "bdpt", "--out", "unused.exr" }).render.bdptLogPdfMis);
+	EXPECT_TRUE(Parse({ "--scene", "empty", "--integrator", "bdpt",
+		"--bdpt-mis", "logpdf", "--out", "unused.exr" }).render.bdptLogPdfMis);
+	EXPECT_FALSE(Parse({ "--scene", "empty", "--integrator", "bdpt",
+		"--bdpt-mis", "ratio", "--out", "unused.exr" }).render.bdptLogPdfMis);
+	EXPECT_FALSE(Parses({ "--scene", "empty", "--integrator", "bdpt",
+		"--bdpt-mis", "power", "--out", "unused.exr" }));
+	EXPECT_FALSE(Parses({ "--scene", "empty", "--integrator", "path",
+		"--bdpt-mis", "logpdf", "--out", "unused.png" }));
+}
+
 TEST(SceneCommandLine, ExistingDisplayOperatorsKeepTheirNamesAndSettings) {
 	for (const auto& entry : {
 		std::make_pair("none", Gyunity::ToneMapOperator::None),

@@ -1668,14 +1668,17 @@ TEST_F(VCMEnvironment, GeneratedMixedOriginsAndSpecularChainsMatchBothIndependen
 					Compare("generated-mixed-" + std::to_string(sample), scene,
 							Vcm::PathContext(light, eye, path.selected, path.radius, pairs, mode), independent);
 				}
-				if (!singular) {
-					real legacy, weight;
-					ASSERT_TRUE(MisWeight(scene, light, eye, s, t, &legacy));
-					ASSERT_TRUE(Vcm::ComputeMisWeight(scene,
-													  Vcm::PathContext(light, eye, path.selected, path.radius, pairs, Mode::ConnectionOnly),
-													  path.selected, &weight));
+				real legacy, weight, logPdf;
+				ASSERT_TRUE(MisWeight(scene, light, eye, s, t, &legacy));
+				ASSERT_TRUE(MisWeightLogPdf(scene, light, eye, s, t, &logPdf));
+				ASSERT_TRUE(Vcm::ComputeMisWeight(scene,
+												  Vcm::PathContext(light, eye, path.selected, path.radius, pairs, Mode::ConnectionOnly),
+												  path.selected, &weight));
+				// BDPT's log-pdf MIS shares VCM's singular convention on every path; the
+				// legacy ratio walk agrees only on continuous paths.
+				Close(logPdf, weight);
+				if (!singular)
 					Close(weight, legacy);
-				}
 				if (singular && !checkedSuffix && s < int(light.size()) && t < int(eye.size())) {
 					auto extendedLight = light, extendedEye = eye;
 					for (auto pair : {std::make_pair(&extendedLight, s), std::make_pair(&extendedEye, t)}) {
