@@ -9,7 +9,7 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 - Stochastic progressive photon mapping (SPPM)
 - LightTracing (LT)
 - Bidirectional PathTracing (BDPT)
-- Surface Vertex Connection and Merging (VCM, opt-in geometric normals)
+- Vertex Connection and Merging (VCM)
 - Volume PathTracing (VPT)
 - Equi-angular sampling
 - Multiple importance sampling (MIS)
@@ -132,6 +132,7 @@ See [INSTRUCTIONS.md](INSTRUCTIONS.md) for cmd.exe, Python/uv, PowerShell and SP
 | [Scenes](Docs/Scenes.md) | Named scene commands, Cornell/Veach data and Matpreview preparation |
 | [Examples](Docs/Examples.md) | C++ helpers, named examples and explicit batch rendering |
 | [VCM](Docs/VCM.md) | Progressive surface rendering, explicit MIS, photon mapping and supported normal policy |
+| [VPT with voxel density](Docs/VPT_Voxel.md) | Minimal delta-tracking, ratio-tracking and volumetric path tracing pseudocode |
 | [Threaded task groups](Docs/ThreadedTaskManager.md) | Scoped TBB execution, cancellation, progress and statistics |
 | [Debugging](Docs/Debugging.md) | Thread-local pixel diagnostics |
 | [Testing](Docs/Testing.md) | Scene regression commands and reference comparisons |
