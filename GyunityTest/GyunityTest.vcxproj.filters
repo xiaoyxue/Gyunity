@@ -67,9 +67,6 @@
     <ClCompile Include="tests\HashGridTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
-    <ClCompile Include="tests\VCMPhotonMapTest.cpp">
-      <Filter>tests</Filter>
-    </ClCompile>
     <ClCompile Include="tests\BDPTShadingNormalTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>

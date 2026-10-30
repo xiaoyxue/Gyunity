@@ -1,15 +1,27 @@
 #pragma once
 
-#include "VCMPhotonMap.h"
+#include "PathVertex.h"
 
 GYT_NAMESPACE_BEGIN
 
 namespace Vcm {
 
-// SmallVCM-style photon grid of one light-path batch (Docs/VCM.md, "Photon grid"), used by
-// RecursiveVertexConnectionMerging. It has PhotonMap's interface and accepts exactly the same
-// photons by Eq. (12); only the order of a query's results differs. Cells are 2r wide and each
-// photon is stored once, with its position and normal, in one array sorted by bucket.
+// A mergeable light vertex: lightPaths[mLightPathIndex][mVertexIndex].
+struct PhotonRecord {
+	size_t mLightPathIndex, mVertexIndex;
+
+	bool operator==(const PhotonRecord& other) const {
+		return mLightPathIndex == other.mLightPathIndex && mVertexIndex == other.mVertexIndex;
+	}
+	bool operator<(const PhotonRecord& other) const {
+		return mLightPathIndex < other.mLightPathIndex ||
+			(mLightPathIndex == other.mLightPathIndex && mVertexIndex < other.mVertexIndex);
+	}
+};
+
+// SmallVCM-style photon grid over the continuous surface vertices of one light-path batch
+// (Docs/VCM.md, "Photon grid"), used by both VCM integrators. Cells are 2r wide and each photon
+// is stored once, with its position and normal, in one array sorted by bucket.
 // It borrows nothing from the paths after Build, but its records index them.
 class PhotonGrid {
 public:

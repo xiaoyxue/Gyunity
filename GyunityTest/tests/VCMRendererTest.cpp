@@ -988,8 +988,8 @@ TEST_F(VCMRendererNegative, MapFailureJoinsWithoutStartingCameraWork) {
 	scene.AddLight(std::make_shared<AreaLight>(Plane(2, 1, 0, -1), Vec3(1)));
 	Initialize(scene);
 	auto camera = CameraFor(33, 1, 0.01f);
-	// Photons spread over more than 2^20 radii cannot be indexed by the grid.
-	Renderer render(std::make_shared<RandomSampler>(0), 1, 2, 1e-12f, 0.5f, Mode::Combined, 1);
+	// Photons whose cell coordinates reach 2^62 cannot be indexed by the grid.
+	Renderer render(std::make_shared<RandomSampler>(0), 1, 2, 1e-30f, 0.5f, Mode::Combined, 1);
 	testing::internal::CaptureStderr();
 	const bool success = render.RenderChecked(scene, *camera);
 	const auto output = testing::internal::GetCapturedStderr();

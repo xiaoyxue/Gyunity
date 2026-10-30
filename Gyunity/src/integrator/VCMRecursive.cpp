@@ -84,7 +84,7 @@ struct RecursiveVertexConnectionMerging::RenderState {
 	ProgressReporter* progress = nullptr;
 	std::vector<std::vector<PathVertex>> lightPaths;
 	std::vector<std::vector<Vcm::MisVertex>> lightMis;
-	Vcm::PhotonGrid photonMap; // SmallVCM-style grid; VertexConnectionMerging keeps PhotonMap
+	Vcm::PhotonGrid photonMap;
 	tbb::enumerable_thread_specific<Worker> workers;
 
 	RenderState(const Scene& scene, const Camera& camera) : scene(scene), camera(camera), film(camera.GetFilm()) {}

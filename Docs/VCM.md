@@ -13,9 +13,8 @@ camera paths. The checking style follows Gyunity's own `BDPT.cpp`.
 |---|---|
 | `VCM.h/.cpp` | Renderer: boundary checks, the iteration loop, `Connect`, `Merge`, film writes |
 | `VCMPath.h/.cpp` | Path densities, strategy enumeration, MIS weight and the primary merge estimate |
-| `VCMPhotonMap.h/.cpp` | Hash grid over the light vertices of one iteration |
-| `VCMPhotonGrid.h/.cpp` | Compact parallel photon grid of the recursive integrator |
-| `VCMRecursive.h/.cpp` | `RecursiveVertexConnectionMerging`: the same renderer with recursive MIS and `PhotonGrid` |
+| `VCMPhotonGrid.h/.cpp` | Photon grid over the light vertices of one iteration |
+| `VCMRecursive.h/.cpp` | `RecursiveVertexConnectionMerging`: the same renderer with recursive MIS |
 | `VCMRecursiveMis.h/.cpp` | The report's dVCM/dVC/dVM recurrence, Eqs. (14)-(16) |
 
 One iteration reads top-down. Equation numbers refer to the formulas below and
@@ -273,26 +272,18 @@ for $s = 1$; here $s = 1$ connects to the light path's own origin and is one mor
 The summary is an O(n) pass after each subpath is traced. A connection then evaluates two to
 four `PdfPos` densities and a merge two BSDF densities; nothing is allocated.
 
-## Photon map
+## Photon grid
 
-`PhotonMap::Build` stores `(light path index, vertex index)` records for every
-continuous surface vertex, at radius-relative coordinates
-`(position - firstPhoton) / r`. The grid's broad-phase radius is 2, which
-conservatively contains the physical unit disk while float rounding within `2^20`
-radii stays below 1/8; a larger extent fails. `Query` returns candidates sorted
-and deduplicated in `(path, vertex)` order, then accepts a photon $y$ at camera
-vertex $x$ in double precision when
+Both integrators store their photons in `PhotonGrid`, after SmallVCM's `hashgrid.hxx`.
+`PhotonGrid::Build` stores every continuous surface vertex of the iteration's light paths as a
+`(light path index, vertex index)` record, and `Query` accepts a photon $y$ at camera vertex $x$
+in double precision when
 
 $$\lVert x - y\rVert^2 \le r_i^2, \qquad \hat n_x \cdot \hat n_y \ge 0.9 \tag{12}$$
 
-with oriented geometric normals. Paths and BSDF arenas must stay alive until the
-last query; each concurrent reader owns its result.
-
-## Photon grid
-
-`RecursiveVertexConnectionMerging` stores its photons in `PhotonGrid`, after SmallVCM's
-`hashgrid.hxx`; `VertexConnectionMerging` keeps `PhotonMap`. Both accept exactly the photons of
-Eq. (12); only the order of a query's results differs.
+with oriented geometric normals. Results come in bucket order, deterministic for a given build.
+The records index the paths, so they must stay alive until the last merge; each concurrent reader
+owns its result.
 
 - **Cells.** A photon at $p$ lies in cell $\lfloor p / 2r \rfloor$ per axis and is stored once.
   A query at $x$ visits the cells from $\lfloor (x - r') / 2r \rfloor$ to
@@ -304,12 +295,18 @@ Eq. (12); only the order of a query's results differs.
   `bucket << 32 | index`, sorted with `tbb::parallel_sort`, and indexed by per-bucket ranges in a
   power-of-two table. Keys are unique, so the order is deterministic and queries need no sort.
   `Clear` keeps the storage for the next iteration.
-- Cell coordinates must stay below $2^{62}$; there is no `2^20`-radius extent limit.
+- Cell coordinates must stay below $2^{62}$; a build beyond that fails.
 
-On veach-bidir (1024^2, f = 1, depth 7, 128 threads) one iteration takes 10.5 s with
-`VertexConnectionMerging`, 8.3 s with recursive MIS and `PhotonMap`, and 2.0 s with `PhotonGrid`.
-Before the grid, photon queries were about 80% of the camera phase, a query sorted and then
-dereferenced about 20 times more candidates than it accepted, and the build ran on one core.
+The grid replaced `PhotonMap`, a `HashGrid` with 8 cell entries per photon and radius-relative
+coordinates limited to $2^{20}$ radii, whose queries sorted and then dereferenced about 20 times
+more candidates than they accepted, and whose build ran on one core. Both accept the same
+photons; only the floating-point summation order of Eq. (4) changed. On veach-bidir (1024^2,
+f = 1, depth 7, 128 threads), iterations 4-16 take on average:
+
+| Integrator | `PhotonMap` | `PhotonGrid` |
+|---|---|---|
+| `VertexConnectionMerging` | 8.67 s | 4.17 s |
+| `RecursiveVertexConnectionMerging` | | 2.15 s |
 
 ## Concurrency, cancellation and output
 
@@ -337,9 +334,9 @@ main-checkout `Test` directory.
   (`vcm-weights-release.csv`, `vcm-singular-gate-release.csv`).
 - `VCMEstimator*`: the renderer's merge against independent Lambertian, manual
   joint-score and brute-force/report references (`estimator-generated.csv`).
-- `VCMPhotonMap*`: queries against an exhaustive oracle.
-- `VCMPhotonGrid*`: accepted sets equal `PhotonMap` and the exhaustive oracle at random,
-  radius-boundary and cell-wall queries; deterministic order, rebuilds, failures.
+- `VCMPhotonGrid*`: accepted sets against an exhaustive oracle at random, radius-boundary,
+  cell-wall and extreme-scale queries; eligibility, deterministic order, rebuilds, cell limits,
+  concurrent readers.
 - `VCMRecursive*`: every connection and merge weight of generated paths (closed and open
   box, mirror and glass walls, area, point and environment origins, both normal modes, all
   three modes) against `ComputeMisWeight`, and renders of both integrators.

@@ -317,7 +317,7 @@ TEST_F(MainExampleRenders, VcmRenderSceneSavesOnlyAfterCheckedSuccess) {
 	EXPECT_TRUE(std::ifstream(options.output).good());
 	options.output = Output("vcm-map-must-not-save.hdr");
 	std::remove(options.output.c_str());
-	VertexConnectionMerging invalidMap(std::make_shared<RandomSampler>(17), 1, 1, 1e-12f,
+	VertexConnectionMerging invalidMap(std::make_shared<RandomSampler>(17), 1, 1, 1e-30f,
 		real(2.0 / 3), Vcm::Mode::Combined, 1);
 	EXPECT_FALSE(RenderScene(options, invalidMap));
 	EXPECT_EQ(invalidMap.GetStatistics().mCameraSamples, 0);
@@ -404,7 +404,7 @@ TEST_F(MainExampleRenders, VertexConnectionMergingRejectsParametersWithoutSaving
 	for (int depth : { -1, 410 })
 		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", VcmOptions(filename, 4, 4, 1, depth)));
 	const auto valid = VcmOptions(filename, 4, 4, 1, 2);
-	for (real radius : { 0.f, -1.f, nan, inf, 1e-12f })
+	for (real radius : { 0.f, -1.f, nan, inf, 1e-30f })
 		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", valid, radius));
 	for (real alpha : { 0.f, 1.f, nan, inf })
 		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", valid, 0.1f, alpha));

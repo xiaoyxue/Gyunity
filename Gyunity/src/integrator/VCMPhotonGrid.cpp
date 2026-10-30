@@ -23,12 +23,13 @@ bool Fail(const char* message) {
 	return false;
 }
 
-// Every continuous surface vertex is a photon, as in PhotonMap::Build.
+// Every continuous surface vertex is a photon: the first surface and emitting surfaces included,
+// pure-delta vertices excluded.
 bool Stored(const PathVertex& vertex) {
 	return vertex.mType == PathVertexType::Surface && !vertex.mIsect.mBsdf->IsDelta();
 }
 
-// Eq. (12), exactly as PhotonMap evaluates it.
+// Eq. (12) in double precision on the stored float inputs.
 bool WithinRadius(const Vec3& x, const Vec3& y, double radius2) {
 	double distance2 = 0;
 	for (int axis = 0; axis < 3; ++axis) {
