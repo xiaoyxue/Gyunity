@@ -3,6 +3,7 @@
 #include "integrator/BDPT.h"
 #include "integrator/PT.h"
 #include "integrator/VPT.h"
+#include "integrator/VCMRecursive.h"
 #include "sampler/SamplerEnum.h"
 #include <cerrno>
 #include <cstdlib>
@@ -195,13 +196,21 @@ bool VertexConnectionMerging(const std::string& scene, const Options& overrides,
 	if (!settings.maxDepth) settings.maxDepth = 8;
 	SceneRenderOptions options;
 	if (!Prepare(scene, settings, "CornellBoxVcm.hdr", options, 0, 0, true)) return false;
-	Gyunity::VertexConnectionMerging integrator(
-		std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123),
-		options.maxDepth, *settings.iterations, initialRadius, alpha, mode, concurrency, useShadingNormals,
-		settings.stageFrequency.value_or(1));
-	const bool success = ::RenderScene(options, integrator);
-	if (statistics) *statistics = integrator.GetStatistics();
-	return success;
+	const auto sampler = std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123);
+	const int frequency = settings.stageFrequency.value_or(1);
+	const auto render = [&](auto& integrator) {
+		const bool success = ::RenderScene(options, integrator);
+		if (statistics) *statistics = integrator.GetStatistics();
+		return success;
+	};
+	if (settings.recursiveMis) {
+		Gyunity::RecursiveVertexConnectionMerging integrator(sampler, options.maxDepth, *settings.iterations,
+			initialRadius, alpha, mode, concurrency, useShadingNormals, frequency);
+		return render(integrator);
+	}
+	Gyunity::VertexConnectionMerging integrator(sampler, options.maxDepth, *settings.iterations,
+		initialRadius, alpha, mode, concurrency, useShadingNormals, frequency);
+	return render(integrator);
 }
 
 bool CornellBoxStandard(const Options& options, SurfaceIntegrator integrator) {
@@ -227,8 +236,9 @@ bool VeachBidirVcm(const Options& options, Gyunity::VertexConnectionMerging::Sta
 	if (!settings.iterations) settings.iterations = 1024;
 	if (!settings.maxDepth) settings.maxDepth = 7;
 	if (settings.output.empty()) {
-		const auto frequency = settings.stageFrequency ?
-			"-freq" + std::to_string(*settings.stageFrequency) : std::string();
+		const auto frequency = (settings.stageFrequency ?
+			"-freq" + std::to_string(*settings.stageFrequency) : std::string()) +
+			(settings.recursiveMis ? "-recursive" : "");
 		const auto filename = "veach-bidir-vcm-shading-" + std::to_string(*settings.width) + 'x' +
 			std::to_string(*settings.height) + "-iters" + std::to_string(*settings.iterations) +
 			"-depth" + std::to_string(*settings.maxDepth) + "-smallvcm-radius" + frequency + ".exr";
@@ -263,6 +273,11 @@ bool All(const Options& options) {
 
 bool Named(const std::string& name, const Options& options) {
 	if (name == "veach-bidir-vcm") return VeachBidirVcm(options);
+	if (name == "veach-bidir-vcm-recursive") {
+		auto settings = options;
+		settings.recursiveMis = true;
+		return VeachBidirVcm(settings);
+	}
 	if (name == "all") return All(options);
 	if (name == "feature-scenes") return FeatureScenes(options);
 	for (const auto& example : legacyExamples)
@@ -277,6 +292,7 @@ std::vector<std::string> Names() {
 	for (const auto& example : legacyExamples) names.emplace_back(example.name);
 	for (const auto& scene : GetSceneRegistry()) if (scene.file) names.emplace_back(scene.name);
 	names.emplace_back("veach-bidir-vcm");
+	names.emplace_back("veach-bidir-vcm-recursive");
 	names.emplace_back("feature-scenes");
 	names.emplace_back("all");
 	return names;

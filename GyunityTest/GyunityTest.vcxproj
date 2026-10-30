@@ -71,6 +71,7 @@
     <ClCompile Include="tests\VCMPathTest.cpp" />
     <ClCompile Include="tests\VCMEstimatorTest.cpp" />
     <ClCompile Include="tests\VCMRendererTest.cpp" />
+    <ClCompile Include="tests\VCMRecursiveTest.cpp" />
     <ClCompile Include="tests\HashGridTest.cpp" />
     <ClCompile Include="tests\VCMPhotonMapTest.cpp" />
     <ClCompile Include="tests\BDPTShadingNormalTest.cpp" />

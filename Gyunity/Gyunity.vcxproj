@@ -193,6 +193,8 @@
     <ClCompile Include="src\integrator\BDPTPath.cpp" />
     <ClCompile Include="src\integrator\VCMPath.cpp" />
     <ClCompile Include="src\integrator\VCMPhotonMap.cpp" />
+    <ClCompile Include="src\integrator\VCMRecursive.cpp" />
+    <ClCompile Include="src\integrator\VCMRecursiveMis.cpp" />
     <ClCompile Include="src\integrator\VCM.cpp" />
     <ClCompile Include="src\integrator\BDPT.cpp" />
     <ClCompile Include="src\integrator\BDPTConnection.cpp" />
@@ -237,6 +239,8 @@
     <ClInclude Include="src\integrator\BDPTPath.h" />
     <ClInclude Include="src\integrator\VCMPath.h" />
     <ClInclude Include="src\integrator\VCMPhotonMap.h" />
+    <ClInclude Include="src\integrator\VCMRecursive.h" />
+    <ClInclude Include="src\integrator\VCMRecursiveMis.h" />
     <ClInclude Include="src\integrator\VCM.h" />
     <ClInclude Include="src\integrator\BDPT.h" />
     <ClInclude Include="src\integrator\BDPTScattering.h" />
