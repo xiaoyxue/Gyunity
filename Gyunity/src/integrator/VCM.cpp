@@ -44,7 +44,7 @@ bool IndexedSampler(const Sampler& sampler) {
 
 // Light walks draw five emission samples and three per scattering vertex; camera walks also
 // draw two jitter samples. Each path uses two sample indices per iteration.
-bool ValidSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int iterations) {
+bool ValidSamplingBudget(const Sampler& sampler, int maxDepth, int64 paths, int iterations) {
 	uint64 dimensions = 1229, maximumIndex = uint64((std::numeric_limits<int64>::max)()) - 1;
 	if (dynamic_cast<const HaltonSampler*>(&sampler)) dimensions = HaltonSampler::get_num_dimensions();
 	if (dynamic_cast<const SobolSampler*>(&sampler)) {
@@ -53,7 +53,7 @@ bool ValidSamplingBudget(const Sampler& sampler, int maxDepth, int64 pixels, int
 	}
 	if ((std::max)(uint64(5), uint64(3) * maxDepth + 2) > dimensions)
 		return Fail("VCM path dimension budget exceeds the sampler's supported dimensions.");
-	if (uint64(pixels) > ((maximumIndex + 1) / 2) / uint64(iterations))
+	if (uint64(paths) > ((maximumIndex + 1) / 2) / uint64(iterations))
 		return Fail("VCM sample indices exceed the sampler's supported index range.");
 	return true;
 }
@@ -120,16 +120,19 @@ bool VertexConnectionMerging::RenderChecked(const Scene& scene, const Camera& ca
 
 bool VertexConnectionMerging::Prepare(RenderState& state) const {
 	if (!mSampler || mMaxDepth < 0 || mIterations <= 0 || !std::isfinite(mInitialRadius) || mInitialRadius <= 0 ||
-		!(mAlpha > 0 && mAlpha < 1) || (!Vcm::UseVc(mMode) && !Vcm::UseVm(mMode)) || mSamplesPerIteration < 0)
+		!(mAlpha > 0 && mAlpha < 1) || (!Vcm::UseVc(mMode) && !Vcm::UseVm(mMode)))
 		return Fail("VCM requires a sampler, nonnegative depth, positive iterations and radius, alpha in (0,1) and a valid mode.");
 	if (!Bidirectional::ValidateScene(state.scene)) return false;
 	state.width = state.film->mResX;
 	state.height = state.film->mResY;
 	state.screenPixelCount = int64(state.width) * state.height;
 	if (state.screenPixelCount <= 0) return Fail("VCM requires positive image dimensions.");
+	if (mStageFrequency < 1 || mIterations < mStageFrequency)
+		return Fail("VCM requires a positive stage frequency and at least that many iterations.");
 	// Camera and light paths share one per-iteration count, as in taichi's VCM, so every camera
-	// path still connects to exactly one light path (nVc = 1) at any budget.
-	state.nVm = mSamplesPerIteration ? mSamplesPerIteration : state.screenPixelCount;
+	// path still connects to exactly one light path (nVc = 1) at any frequency. Rounding up lets
+	// stageFrequency iterations reach every pixel, so no pixel ends without a camera sample.
+	state.nVm = (state.screenPixelCount + mStageFrequency - 1) / mStageFrequency;
 	if (!ValidSamplingBudget(*mSampler, mMaxDepth, state.nVm, mIterations)) return false;
 	state.indexedSampling = IndexedSampler(*mSampler);
 	state.lightPaths.resize(size_t(state.nVm));
@@ -179,8 +182,8 @@ bool VertexConnectionMerging::TraceCameraPaths(RenderState& state) {
 	return true;
 }
 
-// The camera budget is free of the resolution: samples are spread over the film by index
-// rather than one per pixel, and Docs/VCM.md Eq. (6) carries the light-tracing normalization.
+// A camera sample is placed on the film by its index rather than tied to one pixel, so nVm may
+// differ from the pixel count; Docs/VCM.md Eq. (5) carries the light-tracing normalization.
 bool VertexConnectionMerging::GenerateCameraSample(RenderState& state, int64 sample, Worker& worker,
 	Vec2* raster) const {
 	// The previous sample's path and the BSDFs it owns die here: a camera path never outlives
@@ -190,9 +193,9 @@ bool VertexConnectionMerging::GenerateCameraSample(RenderState& state, int64 sam
 	const auto sampler = PathSampler(state, sampleIndex);
 	if (!sampler) return false;
 	RandomStateSequence random(sampler, sampleIndex);
-	// Stratified film coverage: sample k of iteration i takes pixel (k + i * nVm) mod P, so a
-	// budget below the pixel count still sweeps the whole image across iterations and the
-	// coverage never depends on the sampler. With nVm == P this is one sample per pixel.
+	// Stratified film coverage: sample k of iteration i takes pixel (k + i * nVm) mod P, so the
+	// stageFrequency iterations of one pass sweep the whole image and the coverage never
+	// depends on the sampler. With a frequency of one this is one sample per pixel.
 	const int64 pixel = (sample + int64(state.iteration) * state.nVm) % state.screenPixelCount;
 	const int x = int(pixel % state.width), y = int(pixel / state.width);
 	const real u = random(), v = random();

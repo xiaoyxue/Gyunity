@@ -420,14 +420,43 @@ TEST_F(MainExampleRenders, VertexConnectionMergingRejectsParametersWithoutSaving
 	invalid.spp = 1;
 	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", invalid));
 	invalid = valid;
-	invalid.photonsPerStage = 0;
+	invalid.photonsPerStage = 1;
 	EXPECT_FALSE(Examples::VertexConnectionMerging("empty", invalid));
+	for (int frequency : { 0, -1, 2 }) {
+		invalid = valid;
+		invalid.stageFrequency = frequency;
+		EXPECT_FALSE(Examples::VertexConnectionMerging("empty", invalid));
+	}
 	EXPECT_FALSE(std::ifstream(filename).good());
 	EXPECT_FALSE(Examples::VertexConnectionMerging("empty",
 		VcmOptions(Output("nonexistent-vcm-example\\failed.hdr"), 4, 4, 1, 2)));
 	const auto direct = Output("vcm-example-depth-zero.hdr");
 	ASSERT_TRUE(Examples::VertexConnectionMerging("empty", VcmOptions(direct, 4, 4, 1, 0)));
 	EXPECT_TRUE(std::ifstream(direct).good());
+}
+
+TEST_F(MainExampleRenders, VertexConnectionMergingStageFrequencySplitsEachFilmPass) {
+	// 32 x 24 = 768 pixels. Each iteration traces ceil(768 / f) light and camera paths, and f
+	// iterations cover every pixel; f = 5 rounds up to 154 paths.
+	for (const auto& [frequency, paths] : std::vector<std::pair<int, int64>>{ { 1, 768 }, { 3, 256 }, { 5, 154 } }) {
+		const auto name = "vcm-stage-frequency-" + std::to_string(frequency) + ".hdr";
+		auto options = VcmOptions(Output(name.c_str()), 32, 24, frequency, 3);
+		options.stageFrequency = frequency;
+		VertexConnectionMerging::Statistics statistics;
+		ASSERT_TRUE(Examples::VertexConnectionMerging("CornellBoxStandard", options, 0.1f,
+			real(2.0 / 3), Vcm::Mode::Combined, ThreadedTaskManager::DefaultConcurrency(), false, &statistics));
+		EXPECT_TRUE(statistics.mSucceeded);
+		EXPECT_EQ(statistics.mIterations, frequency);
+		EXPECT_EQ(statistics.mCameraSamples, paths * frequency);
+		EXPECT_EQ(statistics.mLightAttempts, paths * frequency);
+		ExpectImage(options.output);
+	}
+	const auto names = Examples::Names();
+	EXPECT_NE(std::find(names.begin(), names.end(), "veach-bidir-vcm"), names.end());
+	auto options = VcmOptions(Output("veach-vcm-named.hdr"), 32, 24, 2, 1);
+	options.stageFrequency = 2;
+	ASSERT_TRUE(Examples::Named("veach-bidir-vcm", options));
+	ExpectImage(options.output);
 }
 
 }

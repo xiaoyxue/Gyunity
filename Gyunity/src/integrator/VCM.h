@@ -40,10 +40,10 @@ public:
 	VertexConnectionMerging(std::shared_ptr<Sampler> sampler, int maxDepth, int iterations,
 		real initialRadius, real alpha = real(2.0 / 3.0), Vcm::Mode mode = Vcm::Mode::Combined,
 		int concurrency = ThreadedTaskManager::DefaultConcurrency(), bool useShadingNormals = false,
-		int64 samplesPerIteration = 0)
+		int stageFrequency = 1)
 		: mSampler(sampler), mMaxDepth(maxDepth), mIterations(iterations), mInitialRadius(initialRadius),
 		mAlpha(alpha), mMode(mode), mConcurrency(concurrency), mUseShadingNormals(useShadingNormals),
-		mSamplesPerIteration(samplesPerIteration) {}
+		mStageFrequency(stageFrequency) {}
 
 	// useShadingNormals = true uses BDPT's adjoint-corrected shading-normal transport on both
 	// subpaths, and the shading-normal merge factor of Docs/VCM.md Eq. (13).
@@ -74,7 +74,7 @@ private:
 	void WritePathContribution(RenderState& state, const Vec2& raster,
 		const Vcm::PathContribution& connection, const Vcm::PathContribution& merging) const;
 	double SplatScale(const RenderState& state) const;
-	// Both phases iterate paths: one light path, or one camera path, per pixel and iteration.
+	// Both phases iterate the iteration's nVm paths: light paths, then camera paths.
 	bool ForEachPath(RenderState& state, const char* phase, int64 count,
 		const std::function<bool(int64, Worker&)>& task);
 	std::shared_ptr<Sampler> PathSampler(const RenderState& state, int64 sampleIndex) const;
@@ -90,8 +90,10 @@ private:
 	Vcm::Mode mMode;
 	int mConcurrency;
 	bool mUseShadingNormals;
-	// Camera paths and light paths per iteration. Zero means one per pixel.
-	int64 mSamplesPerIteration;
+	// taichi's stage_frequency: one film pass, a camera path per pixel, is split over this many
+	// iterations, each tracing ceil(pixels / mStageFrequency) light and camera paths. One keeps
+	// the paper's one path per pixel and iteration; larger values bound per-iteration memory.
+	int mStageFrequency;
 	std::atomic<bool> mCancelled{ false };
 	Statistics mStatistics;
 };

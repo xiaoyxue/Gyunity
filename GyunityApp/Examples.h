@@ -10,6 +10,8 @@ enum class SurfaceIntegrator { Path, Bdpt, Sppm };
 struct Options {
 	std::optional<int> width, height, spp, maxDepth;
 	std::optional<int> iterations, photonsPerStage;
+	// VCM only: iterations per film pass (taichi's stage_frequency); each traces pixels / f paths.
+	std::optional<int> stageFrequency;
 	std::optional<SceneAccelerator> accelerator;
 	std::string output, outputDirectory;
 };
@@ -28,7 +30,8 @@ bool VertexConnectionMerging(const std::string& scene = "mesh", const Options& o
 bool CornellBoxStandard(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Path);
 bool VeachMis(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Path);
 bool VeachBidir(const Options& options = {}, SurfaceIntegrator integrator = SurfaceIntegrator::Bdpt);
-// SmallVCM's veach-bidir VCM comparison: 1024^2, 512 iterations, depth 7, shading normals.
+// SmallVCM's veach-bidir VCM comparison: 1024^2, 1024 iterations, depth 7, shading normals,
+// one path per pixel and iteration unless options.stageFrequency splits each pass.
 bool VeachBidirVcm(const Options& options = {},
 	Gyunity::VertexConnectionMerging::Statistics* statistics = nullptr);
 bool Matpreview(const std::string& profile, const Options& options = {},
