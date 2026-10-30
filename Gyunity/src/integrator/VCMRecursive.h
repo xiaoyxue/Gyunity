@@ -4,9 +4,10 @@
 
 GYT_NAMESPACE_BEGIN
 
-// VertexConnectionMerging with recursive MIS (Docs/VCM.md, "Recursive MIS"). Sampling, stage
-// frequency, photon map, estimators and film writes are the same; each subpath is summarized
-// once, so a connection or merge weight costs O(1) instead of a full path-density evaluation.
+// VertexConnectionMerging with recursive MIS (Docs/VCM.md, "Recursive MIS") and a compact photon
+// grid ("Photon grid"). Sampling, stage frequency, estimators and film writes are the same, and the
+// grid accepts the same photons; each subpath is summarized once, so a connection or merge weight
+// costs O(1) instead of a full path-density evaluation.
 // VertexConnectionMerging stays the log-domain reference for these weights.
 class RecursiveVertexConnectionMerging : public Integrator {
 public:

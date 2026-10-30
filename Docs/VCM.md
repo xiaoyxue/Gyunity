@@ -14,7 +14,8 @@ camera paths. The checking style follows Gyunity's own `BDPT.cpp`.
 | `VCM.h/.cpp` | Renderer: boundary checks, the iteration loop, `Connect`, `Merge`, film writes |
 | `VCMPath.h/.cpp` | Path densities, strategy enumeration, MIS weight and the primary merge estimate |
 | `VCMPhotonMap.h/.cpp` | Hash grid over the light vertices of one iteration |
-| `VCMRecursive.h/.cpp` | `RecursiveVertexConnectionMerging`: the same renderer with recursive MIS |
+| `VCMPhotonGrid.h/.cpp` | Compact parallel photon grid of the recursive integrator |
+| `VCMRecursive.h/.cpp` | `RecursiveVertexConnectionMerging`: the same renderer with recursive MIS and `PhotonGrid` |
 | `VCMRecursiveMis.h/.cpp` | The report's dVCM/dVC/dVM recurrence, Eqs. (14)-(16) |
 
 One iteration reads top-down. Equation numbers refer to the formulas below and
@@ -287,6 +288,29 @@ $$\lVert x - y\rVert^2 \le r_i^2, \qquad \hat n_x \cdot \hat n_y \ge 0.9 \tag{12
 with oriented geometric normals. Paths and BSDF arenas must stay alive until the
 last query; each concurrent reader owns its result.
 
+## Photon grid
+
+`RecursiveVertexConnectionMerging` stores its photons in `PhotonGrid`, after SmallVCM's
+`hashgrid.hxx`; `VertexConnectionMerging` keeps `PhotonMap`. Both accept exactly the photons of
+Eq. (12); only the order of a query's results differs.
+
+- **Cells.** A photon at $p$ lies in cell $\lfloor p / 2r \rfloor$ per axis and is stored once.
+  A query at $x$ visits the cells from $\lfloor (x - r') / 2r \rfloor$ to
+  $\lfloor (x + r') / 2r \rfloor$, with $r' = r\,(1 + 10^{-6})$: usually 2x2x2, and each distinct
+  bucket once. The floor is monotone, so every photon within $r$ is in a visited cell.
+- **Records.** Each record holds the position, geometric normal, path and vertex index (32 bytes),
+  so Eq. (12) reads only the record, never the light path.
+- **Build.** Photons are counted and placed per path in parallel, keyed by
+  `bucket << 32 | index`, sorted with `tbb::parallel_sort`, and indexed by per-bucket ranges in a
+  power-of-two table. Keys are unique, so the order is deterministic and queries need no sort.
+  `Clear` keeps the storage for the next iteration.
+- Cell coordinates must stay below $2^{62}$; there is no `2^20`-radius extent limit.
+
+On veach-bidir (1024^2, f = 1, depth 7, 128 threads) one iteration takes 10.5 s with
+`VertexConnectionMerging`, 8.3 s with recursive MIS and `PhotonMap`, and 2.0 s with `PhotonGrid`.
+Before the grid, photon queries were about 80% of the camera phase, a query sorted and then
+dereferenced about 20 times more candidates than it accepted, and the build ran on one core.
+
 ## Concurrency, cancellation and output
 
 Each phase is one `ThreadedTaskManager` group over the iteration's paths, limited to `concurrency`;
@@ -314,6 +338,8 @@ main-checkout `Test` directory.
 - `VCMEstimator*`: the renderer's merge against independent Lambertian, manual
   joint-score and brute-force/report references (`estimator-generated.csv`).
 - `VCMPhotonMap*`: queries against an exhaustive oracle.
+- `VCMPhotonGrid*`: accepted sets equal `PhotonMap` and the exhaustive oracle at random,
+  radius-boundary and cell-wall queries; deterministic order, rebuilds, failures.
 - `VCMRecursive*`: every connection and merge weight of generated paths (closed and open
   box, mirror and glass walls, area, point and environment origins, both normal modes, all
   three modes) against `ComputeMisWeight`, and renders of both integrators.

@@ -74,6 +74,7 @@
     <ClCompile Include="tests\VCMRecursiveTest.cpp" />
     <ClCompile Include="tests\HashGridTest.cpp" />
     <ClCompile Include="tests\VCMPhotonMapTest.cpp" />
+    <ClCompile Include="tests\VCMPhotonGridTest.cpp" />
     <ClCompile Include="tests\BDPTShadingNormalTest.cpp" />
     <ClCompile Include="tests\ToneMapTest.cpp" />
     <ClCompile Include="tests\BDPTConnectionTest.cpp" />

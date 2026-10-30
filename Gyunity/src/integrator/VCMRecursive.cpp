@@ -1,6 +1,6 @@
 #include "VCMRecursive.h"
 #include "BDPT.h"
-#include "VCMPhotonMap.h"
+#include "VCMPhotonGrid.h"
 #include "VCMRecursiveMis.h"
 #include "system/ProgressReporter.h"
 #include "sampler/Halton.h"
@@ -84,7 +84,7 @@ struct RecursiveVertexConnectionMerging::RenderState {
 	ProgressReporter* progress = nullptr;
 	std::vector<std::vector<PathVertex>> lightPaths;
 	std::vector<std::vector<Vcm::MisVertex>> lightMis;
-	Vcm::PhotonMap photonMap;
+	Vcm::PhotonGrid photonMap; // SmallVCM-style grid; VertexConnectionMerging keeps PhotonMap
 	tbb::enumerable_thread_specific<Worker> workers;
 
 	RenderState(const Scene& scene, const Camera& camera) : scene(scene), camera(camera), film(camera.GetFilm()) {}
