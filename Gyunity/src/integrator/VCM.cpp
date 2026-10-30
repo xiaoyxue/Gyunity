@@ -1,6 +1,6 @@
 #include "VCM.h"
 #include "BDPT.h"
-#include "VCMPhotonMap.h"
+#include "VCMPhotonGrid.h"
 #include "system/ProgressReporter.h"
 #include "sampler/Halton.h"
 #include "sampler/Sobol.h"
@@ -82,7 +82,7 @@ struct VertexConnectionMerging::RenderState {
 	bool indexedSampling = false;
 	ProgressReporter* progress = nullptr;
 	std::vector<std::vector<PathVertex>> lightPaths;
-	Vcm::PhotonMap photonMap;
+	Vcm::PhotonGrid photonMap;
 	tbb::enumerable_thread_specific<Worker> workers;
 
 	RenderState(const Scene& scene, const Camera& camera) : scene(scene), camera(camera), film(camera.GetFilm()) {}

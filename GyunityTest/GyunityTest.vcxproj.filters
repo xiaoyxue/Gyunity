@@ -61,10 +61,10 @@
     <ClCompile Include="tests\VCMRecursiveTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
-    <ClCompile Include="tests\HashGridTest.cpp">
+    <ClCompile Include="tests\VCMPhotonGridTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
-    <ClCompile Include="tests\VCMPhotonMapTest.cpp">
+    <ClCompile Include="tests\HashGridTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
     <ClCompile Include="tests\BDPTShadingNormalTest.cpp">

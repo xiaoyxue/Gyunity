@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
 #include "integrator/VCMPath.h"
-#include "integrator/VCMPhotonMap.h"
+#include "integrator/VCMPhotonGrid.h"
 #include "VCMReference.h"
 #include "accelerator/BruteForceAccel.h"
 #include "camera/PinholeCamera.h"
@@ -102,7 +102,7 @@ bool WeightedMerge(const Scene& scene, const Vcm::PathContext& path, Vector3d* v
 }
 
 // The renderer's gather at camera vertex t-1 over the photons of one light-path batch.
-bool GatherMerging(const Scene& scene, const Vcm::PhotonMap& map, const Paths& paths,
+bool GatherMerging(const Scene& scene, const Vcm::PhotonGrid& map, const Paths& paths,
 	const std::vector<PathVertex>& eye, int t, int maxDepth, Mode mode, Vec3* result) {
 	*result = Vec3(0);
 	const auto& x = eye[t - 1];
@@ -130,7 +130,7 @@ protected:
 	std::shared_ptr<FixedLight> light;
 	Paths paths;
 	std::vector<PathVertex> eye;
-	Vcm::PhotonMap map;
+	Vcm::PhotonGrid map;
 	RecordingLobe cameraLobe, photonLobe{ Vec3(7) };
 	Vec3 result;
 
@@ -688,7 +688,7 @@ TEST(VCMEstimatorGenerated, MixedOriginsAndSpecularTransportMatchIndependentRepo
 		++attempts[origin.mType == PathVertexType::Environment ? 2 : origin.mLight->IsDeltaLight() ? 1 : 0];
 		checkOriginal(paths[p]);
 	}
-	Vcm::PhotonMap map;
+	Vcm::PhotonGrid map;
 	ASSERT_TRUE(map.Build(paths, radius));
 	int queries = 0, accepted = 0, positive = 0, zero = 0, escapes = 0, deltaQueries = 0;
 	int afterMirror = 0, afterGlass = 0, firstSurface = 0, laterCamera = 0;
