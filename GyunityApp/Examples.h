@@ -12,6 +12,8 @@ struct Options {
 	std::optional<int> iterations, photonsPerStage;
 	// VCM only: iterations per film pass (taichi's stage_frequency); each traces pixels / f paths.
 	std::optional<int> stageFrequency;
+	// VCM only: RecursiveVertexConnectionMerging (O(1) recursive MIS) instead of the log-domain reference.
+	bool recursiveMis = false;
 	std::optional<SceneAccelerator> accelerator;
 	std::string output, outputDirectory;
 };

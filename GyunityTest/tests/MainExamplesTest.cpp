@@ -459,4 +459,22 @@ TEST_F(MainExampleRenders, VertexConnectionMergingStageFrequencySplitsEachFilmPa
 	ExpectImage(options.output);
 }
 
+TEST_F(MainExampleRenders, VertexConnectionMergingRecursiveMisRendersLikeTheReference) {
+	VertexConnectionMerging::Statistics expected, actual;
+	auto reference = VcmOptions(Output("vcm-example-reference-mis.hdr"), 32, 24, 2, 3);
+	auto recursive = VcmOptions(Output("vcm-example-recursive-mis.hdr"), 32, 24, 2, 3);
+	recursive.recursiveMis = true;
+	ASSERT_TRUE(Examples::VertexConnectionMerging("CornellBoxStandard", reference, 0.1f, real(2.0 / 3),
+		Vcm::Mode::Combined, ThreadedTaskManager::DefaultConcurrency(), false, &expected));
+	ASSERT_TRUE(Examples::VertexConnectionMerging("CornellBoxStandard", recursive, 0.1f, real(2.0 / 3),
+		Vcm::Mode::Combined, ThreadedTaskManager::DefaultConcurrency(), false, &actual));
+	EXPECT_TRUE(actual.mSucceeded);
+	EXPECT_EQ(actual.mCameraSamples, expected.mCameraSamples);
+	EXPECT_EQ(actual.mPeakPhotons, expected.mPeakPhotons);
+	ExpectImage(reference.output);
+	ExpectImage(recursive.output);
+	const auto names = Examples::Names();
+	EXPECT_NE(std::find(names.begin(), names.end(), "veach-bidir-vcm-recursive"), names.end());
+}
+
 }

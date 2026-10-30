@@ -58,6 +58,9 @@
     <ClCompile Include="tests\VCMRendererTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>
+    <ClCompile Include="tests\VCMRecursiveTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
     <ClCompile Include="tests\HashGridTest.cpp">
       <Filter>tests</Filter>
     </ClCompile>

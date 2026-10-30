@@ -14,6 +14,8 @@ camera paths. The checking style follows Gyunity's own `BDPT.cpp`.
 | `VCM.h/.cpp` | Renderer: boundary checks, the iteration loop, `Connect`, `Merge`, film writes |
 | `VCMPath.h/.cpp` | Path densities, strategy enumeration, MIS weight and the primary merge estimate |
 | `VCMPhotonMap.h/.cpp` | Hash grid over the light vertices of one iteration |
+| `VCMRecursive.h/.cpp` | `RecursiveVertexConnectionMerging`: the same renderer with recursive MIS |
+| `VCMRecursiveMis.h/.cpp` | The report's dVCM/dVC/dVM recurrence, Eqs. (14)-(16) |
 
 One iteration reads top-down. Equation numbers refer to the formulas below and
 appear in the code comments as `Eq. (n)`.
@@ -46,6 +48,11 @@ VertexConnectionMerging vcm(sampler, maxDepth, iterations, initialRadius,
     ThreadedTaskManager::DefaultConcurrency(), useShadingNormals);
 bool success = vcm.RenderChecked(scene, camera);
 ```
+
+`RecursiveVertexConnectionMerging` takes the same arguments and produces the same image;
+only its MIS weights are evaluated differently (see [Recursive MIS](#recursive-mis)). The
+examples select it with `Options::recursiveMis`, and `--example veach-bidir-vcm-recursive`
+renders the SmallVCM comparison with it.
 
 `RenderChecked` never saves files; `RenderScene` saves only after success. VCM is
 reachable through `Examples::VertexConnectionMerging`; it is not in the CLI or the
@@ -216,6 +223,55 @@ $$\text{pdfFwd}[k+1] = m_{fwd}(x_k)\, G(x_k \to x_{k+1}), \qquad
 Continuous-path weights equal legacy BDPT's; singular weights may differ, by design.
 Point origins are position masses and cannot be hit by a camera path.
 
+## Recursive MIS
+
+`VertexConnectionMerging` evaluates Eq. (9) directly: every connection and every photon
+rebuilds both density arrays of the whole path and sums all strategies, O(n^2) with heap
+allocations. `RecursiveVertexConnectionMerging` returns the same weights through the report's
+recurrence ([report, Section 5](https://iliyan.com/publications/ImplementingVCM/ImplementingVCM_TechRep2012_rev2.pdf);
+SmallVCM's `vertexcm.hxx`), so each subpath is summarized once and each weight costs O(1).
+
+Both subpaths are summarized the same way, each in its own sampling order. For subpath vertex
+$i$, `along`$_i$ is its Eq. (6) density from its subpath predecessor (`pdfFwd` on a light
+subpath, `pdfPrev` on a camera subpath) and `against`$_i$ its density from its successor, both
+with the Eq. (11) delta masses. $c_i \in \{0, 1\}$ says the connection joining vertices $i-1$
+and $i$ is feasible and enabled (for $i = 0$: a light subpath's non-delta emitter, hit by the
+camera; a camera subpath has none), $m_i \in \{0, 1\}$ says a merge at $i$ is ($i \ge 1$, continuous),
+and $\eta = n_{VM}\,\pi r_i^2$, or 0 without merging:
+
+$$dVCM_i = \frac{c_i}{\text{along}_i}, \quad
+dVC_i = \frac{\eta\, m_{i-1} + dVCM_{i-1} + \text{against}_{i-2}\, dVC_{i-1}}{\text{along}_i}, \quad
+dVM_i = \frac{m_{i-1} + dVCM_{i-1}/\eta + \text{against}_{i-2}\, dVM_{i-1}}{\text{along}_i} \tag{14}$$
+
+with $dVC_0 = dVM_0 = 0$. $dVCM_i$ scores the connection ending at vertex $i$, and $dVC_i$
+every strategy further back, both relative to a connection at $i$; $dVM_i = dVC_i / \eta$ scores
+the same strategies relative to a merge at $i$.
+
+A **connection** $(s, t)$ of light end $y$ and camera end $z$ recomputes only its boundary
+densities (Eq. 6, as in `ComputeMisWeight`):
+
+$$w_{VC} = \frac{1}{1 + w_L + w_C}, \quad
+w_L = \text{pdfPrev}[s-1]\,\bigl(\eta\, m_y + dVCM_y + \text{pdfPrev}[s-2]\, dVC_y\bigr), \quad
+w_C = \text{pdfFwd}[s]\,\bigl(\eta\, m_z + dVCM_z + \text{pdfFwd}[s+1]\, dVC_z\bigr) \tag{15}$$
+
+Light tracing ($t = 1$) has $w_C = 0$ and an emitter hit ($s = 0$) has $w_L = 0$. For $s = 0$ the
+camera end $z$ is the light origin, so $m_z = 0$ and $dVCM_z$ uses connection $(1, t-1)$, which
+needs no continuous lobe at $z$.
+
+A **merge** of photon $y = y_{s-1}$ at camera vertex $x = z_{t-1}$ needs only the two Eq. (10)
+densities:
+
+$$w_{VM} = \frac{1}{1 + dVCM_y/\eta + \text{pdfPrev}[s-2]\, dVM_y + dVCM_x/\eta + \text{pdfFwd}[s]\, dVM_x} \tag{16}$$
+
+These are SmallVCM's updates (`dVC = cos/pdf * (dVC * revPdf + dVCM + eta)`, and `dVM`
+likewise) and weights (`ConnectVertices`, the merge query). SmallVCM works in solid angle and
+folds each cosine and squared distance into the next update; Gyunity's builders already record
+area densities, so Eqs. (10) and (11) carry over unchanged. SmallVCM also samples a fresh light
+for $s = 1$; here $s = 1$ connects to the light path's own origin and is one more connection.
+
+The summary is an O(n) pass after each subpath is traced. A connection then evaluates two to
+four `PdfPos` densities and a merge two BSDF densities; nothing is allocated.
+
 ## Photon map
 
 `PhotonMap::Build` stores `(light path index, vertex index)` records for every
@@ -258,6 +314,9 @@ main-checkout `Test` directory.
 - `VCMEstimator*`: the renderer's merge against independent Lambertian, manual
   joint-score and brute-force/report references (`estimator-generated.csv`).
 - `VCMPhotonMap*`: queries against an exhaustive oracle.
+- `VCMRecursive*`: every connection and merge weight of generated paths (closed and open
+  box, mirror and glass walls, area, point and environment origins, both normal modes, all
+  three modes) against `ComputeMisWeight`, and renders of both integrators.
 - `VCMRenderer*`: emission, splat and gather normalization, environment, specular,
   sampler streams, determinism, cancellation and boundary failures.
 - `MainExampleRenders.Vertex*`: the example over every surface scene and mode.
