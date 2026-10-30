@@ -28,7 +28,7 @@ bool Validate(const Options& options, bool allowZeroDepth = false) {
 			return Error("Cannot access example output directory '" + options.outputDirectory + "'.");
 	}
 	for (const auto value : {options.width, options.height, options.spp,
-		options.iterations, options.photonsPerStage}) {
+		options.iterations, options.photonsPerStage, options.stageFrequency}) {
 		if (value && *value <= 0) return Error("Explicit dimensions and sampling/depth budgets must be positive.");
 	}
 	if (options.maxDepth && *options.maxDepth < (allowZeroDepth ? 0 : 1))
@@ -181,8 +181,10 @@ bool VertexConnectionMerging(const std::string& scene, const Options& overrides,
 	if (statistics) *statistics = {};
 	const auto* selected = FindScene(scene);
 	if (!selected || selected->usesVolume) return Error("VCM requires a registered non-volume scene.");
+	// The per-iteration path count follows the resolution through stageFrequency, never an
+	// absolute photon budget.
 	if (overrides.spp || overrides.photonsPerStage)
-		return Error("VCM uses iterations, not spp or an independent photon budget.");
+		return Error("VCM uses iterations and a stage frequency, not spp or an independent photon budget.");
 	if (overrides.accelerator && *overrides.accelerator != SceneAccelerator::Bvh &&
 		*overrides.accelerator != SceneAccelerator::Kd)
 		return Error("VCM example requires BVH or KD acceleration.");
@@ -195,7 +197,8 @@ bool VertexConnectionMerging(const std::string& scene, const Options& overrides,
 	if (!Prepare(scene, settings, "CornellBoxVcm.hdr", options, 0, 0, true)) return false;
 	Gyunity::VertexConnectionMerging integrator(
 		std::make_shared<RandomSampler>(options.nativeScene ? options.nativeScene->seed : 123),
-		options.maxDepth, *settings.iterations, initialRadius, alpha, mode, concurrency, useShadingNormals);
+		options.maxDepth, *settings.iterations, initialRadius, alpha, mode, concurrency, useShadingNormals,
+		settings.stageFrequency.value_or(1));
 	const bool success = ::RenderScene(options, integrator);
 	if (statistics) *statistics = integrator.GetStatistics();
 	return success;
@@ -213,20 +216,22 @@ bool VeachBidir(const Options& options, SurfaceIntegrator integrator) {
 	return Native("veach-bidir", options, integrator);
 }
 
-// SmallVCM's veach-bidir comparison settings. Its radius is 0.003 times the scene AABB's
-// world-space half-diagonal; that half-diagonal is scene-specific and precomputed here, not
-// derived from the loaded scene.
+// SmallVCM's veach-bidir comparison settings, at 1024 iterations. Its radius is 0.003 times the
+// scene AABB's world-space half-diagonal; that half-diagonal is scene-specific and precomputed
+// here, not derived from the loaded scene.
 bool VeachBidirVcm(const Options& options, Gyunity::VertexConnectionMerging::Statistics* statistics) {
 	constexpr double sceneHalfDiagonal = 6.956186780406363;
 	auto settings = options;
 	if (!settings.width) settings.width = 1024;
 	if (!settings.height) settings.height = 1024;
-	if (!settings.iterations) settings.iterations = 512;
+	if (!settings.iterations) settings.iterations = 1024;
 	if (!settings.maxDepth) settings.maxDepth = 7;
 	if (settings.output.empty()) {
+		const auto frequency = settings.stageFrequency ?
+			"-freq" + std::to_string(*settings.stageFrequency) : std::string();
 		const auto filename = "veach-bidir-vcm-shading-" + std::to_string(*settings.width) + 'x' +
 			std::to_string(*settings.height) + "-iters" + std::to_string(*settings.iterations) +
-			"-depth" + std::to_string(*settings.maxDepth) + "-smallvcm-radius.exr";
+			"-depth" + std::to_string(*settings.maxDepth) + "-smallvcm-radius" + frequency + ".exr";
 		if (!OutputPath(filename, settings.output)) return false;
 	}
 	return VertexConnectionMerging("veach-bidir", settings, real(0.003 * sceneHalfDiagonal), real(0.75),
@@ -257,6 +262,7 @@ bool All(const Options& options) {
 }
 
 bool Named(const std::string& name, const Options& options) {
+	if (name == "veach-bidir-vcm") return VeachBidirVcm(options);
 	if (name == "all") return All(options);
 	if (name == "feature-scenes") return FeatureScenes(options);
 	for (const auto& example : legacyExamples)
@@ -270,6 +276,7 @@ std::vector<std::string> Names() {
 	std::vector<std::string> names;
 	for (const auto& example : legacyExamples) names.emplace_back(example.name);
 	for (const auto& scene : GetSceneRegistry()) if (scene.file) names.emplace_back(scene.name);
+	names.emplace_back("veach-bidir-vcm");
 	names.emplace_back("feature-scenes");
 	names.emplace_back("all");
 	return names;

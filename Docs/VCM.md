@@ -21,9 +21,9 @@ appear in the code comments as `Eq. (n)`.
 ```text
 RenderIteration
   radius r_i                                                      Eq. (1)
-  TraceLightPaths     GenerateLightPath, one attempt per pixel
+  TraceLightPaths     GenerateLightPath, nVm attempts
   BuildPhotonMap      all continuous light surface vertices (VM modes only)
-  TraceCameraPaths    per pixel: GenerateCameraPath, then for t = 1..nCamera
+  TraceCameraPaths    nVm samples: GenerateCameraSample, then for t = 1..nCamera
     Connect(t)        EvaluateConnection * weightVc / nVc         Eq. (2)
     Merge(t)          MergeEstimate * weightVm / nVm              Eq. (3), (4)
   WritePathContribution                                           Eq. (5)
@@ -31,7 +31,7 @@ RenderIteration
 
 `Connect` and `Merge` push weighted `Contribution`s into two `PathContribution`s.
 `WritePathContribution` splats the
-`t = 1` light-tracing records (already divided by `iterations`) and adds one camera
+`t = 1` light-tracing records (already scaled by `SplatScale`) and adds one camera
 sample: the VC sum plus the VM sum. Values are `Vector3d`; note that `Vector3d`
 scalar operators take `real`, so double factors are passed as `Vector3d(x)`.
 
@@ -75,9 +75,19 @@ extent the grid cannot index, and a current strategy whose density is zero.
 
 ## Sampling
 
-Each iteration traces `P = width * height` light paths and `P` camera paths. Pixel
-`k` pairs camera path `k` with light path `k` for VC. Sample indices are
-`2 * (iteration * P + pixel) + phase` (light 0, camera 1), independent of threads.
+With `P = width * height` and stage frequency `f` (taichi's `stage_frequency`,
+default 1), each iteration traces `nVm = ceil(P / f)` light paths and `nVm` camera
+paths, so one film pass of a camera path per pixel is split over `f` iterations.
+Camera sample `k` pairs with light path `k` for VC, so $n_{VC} = 1$ at any `f`, and
+iteration `i` places it in pixel `(k + i * nVm) mod P` with a uniform jitter. The `f`
+iterations of a pass therefore reach every pixel; rendering requires at least `f`
+iterations. With `f = 1` this is one camera path per pixel, as in the paper and
+SmallVCM. Sample indices are `2 * (iteration * nVm + k) + phase` (light 0, camera 1),
+independent of threads.
+
+`f` exists to bound per-iteration memory at large resolutions; it is not free.
+Merges see only the iteration's `nVm` light paths, and the same spp needs `f` times
+the iterations, so the radius of Eq. (1) shrinks further.
 Built-in Halton, Sobol and RegularHalton samplers are pure functions of
 (dimension, index) and are shared; other samplers get `CloneForPath(index)` per
 path. Paths read samples through BDPT's `RandomStateSequence`.
@@ -113,16 +123,26 @@ visibility ray or division by a full path pdf:
 
 $$C^{prim}_{VM}(s,t) = \frac{\beta_x\, f_x(\omega_x, \omega_y)\, \beta_y}{\pi r_i^2} \tag{3}$$
 
-$$C_{VM}(s,t) = \frac{w_{VM}(s,t)}{n_{VM}}\, C^{prim}_{VM}(s,t), \qquad n_{VM} = P \tag{4}$$
+$$C_{VM}(s,t) = \frac{w_{VM}(s,t)}{n_{VM}}\, C^{prim}_{VM}(s,t), \qquad n_{VM} = \lceil P / f \rceil \tag{4}$$
 
 $n_{VM}$ counts light-path **attempts**, including empty ones; it is neither the
 photon count nor the number of query hits.
 
-**Film.** Each camera path adds one sample; light tracing ($t = 1$) splats onto its
-projected pixel, already divided by the iteration count $N$:
+**Film.** Each camera path adds one filtered sample at its film position, which the
+film averages by the samples a pixel actually received; light tracing ($t = 1$) splats
+onto its projected pixel. The camera's importance is normalized over the whole film,
+so the $n_{VM}$ light paths of each of the $N$ iterations are read as a per-pixel
+average through $P / (n_{VM} N)$:
 
 $$I_{pixel} \mathrel{+}= \sum_{t \ge 2,\,s} C_{VC}(s,t) + \sum_{t,\,y} C_{VM}(s,t), \qquad
-I_{splat} \mathrel{+}= \frac{C_{VC}(s,1)}{N} \tag{5}$$
+I_{splat} \mathrel{+}= \frac{P}{n_{VM}\, N}\, C_{VC}(s,1) \tag{5}$$
+
+**Light-tracing MIS count.** Per pixel, the camera-side strategies are drawn
+$n_j$ times with $P$ times the film-normalized density, and light tracing $n_{VM}$
+times. Relative to the camera side its count is $n_{VM} / (n_j P)$, which is 1 in
+expectation because camera and light share the count: $E[n_j] = n_{VM} / P$. Eq. (9)
+therefore keeps $n_{VC} = 1$ for every connection, $t = 1$ included. Decoupling the
+two counts would make that factor $n_{light} / n_{camera}$.
 
 Products and sums are in double; each film value is converted to `real` once.
 
@@ -213,11 +233,11 @@ last query; each concurrent reader owns its result.
 
 ## Concurrency, cancellation and output
 
-Each phase is one `ThreadedTaskManager` group over pixels, limited to `concurrency`;
+Each phase is one `ThreadedTaskManager` group over the iteration's paths, limited to `concurrency`;
 the map build runs in a task arena with the same limit. Thread-local workers own
-the light and camera arenas. Camera arenas reset after each pixel; after the camera
+the light and camera arenas. Camera arenas reset before each camera sample; after the camera
 phase the map and paths are cleared before the light arenas reset.
-`RequestCancellation()` is polled once per pixel; all tasks drain before failure
+`RequestCancellation()` is polled once per path; all tasks drain before failure
 returns.
 
 `GetStatistics()` reports completed iterations, light attempts, camera samples, the

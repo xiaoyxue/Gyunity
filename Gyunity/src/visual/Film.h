@@ -73,10 +73,12 @@ public:
 	// Inspect only after all film writers have joined.
 	bool HasFiniteSamples() const {
 		for (const auto& pixel : mPixelBuffer) {
-			if (!std::isfinite(pixel.weight) || pixel.weight <= 0) return false;
-			for (int c = 0; c < 3; ++c)
+			if (!std::isfinite(pixel.weight) || pixel.weight < 0) return false;
+			for (int c = 0; c < 3; ++c) {
+				const real filtered = pixel.weight > 0 ? pixel.color[c] / pixel.weight : real(0);
 				if (!std::isfinite(pixel.color[c]) || !std::isfinite(pixel.splat[c]) ||
-					!std::isfinite(pixel.color[c] / pixel.weight + pixel.splat[c])) return false;
+					!std::isfinite(filtered + pixel.splat[c])) return false;
+			}
 		}
 		return true;
 	}
@@ -156,7 +158,9 @@ private:
 			for (int j = 0; j < mResX; ++j) {
 				int index = i * mResX + j;
 				Pixel &pixel = mPixelBuffer[index];
-				mImageBuffer[index] = pixel.color / pixel.weight + pixel.splat;
+				// A pixel that no camera sample has reached yet contributes only its splats;
+				// a budget below the pixel count leaves some uncovered in early iterations.
+				mImageBuffer[index] = (pixel.weight > 0 ? pixel.color / pixel.weight : Vec3()) + pixel.splat;
 			}
 		}
 	}
