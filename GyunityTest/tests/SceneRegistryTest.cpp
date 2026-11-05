@@ -141,6 +141,40 @@ TEST(SceneCommandLine, OverridesAreParsedIndependentlyOfOrder) {
 	EXPECT_EQ(options.output, "folder with spaces\\image.hdr");
 }
 
+TEST(SceneCommandLine, TextureBakingDefaultsAndOverridesAreOrderIndependent) {
+	const auto defaults = Parse({ "--bake-texture", "logo with spaces.png", "--out", "baked.png" });
+	EXPECT_EQ(defaults.command, SceneCommand::Bake);
+	EXPECT_EQ(defaults.baking.input, "logo with spaces.png");
+	EXPECT_EQ(defaults.baking.output, "baked.png");
+	EXPECT_EQ(defaults.baking.spp, 256);
+	EXPECT_EQ(defaults.baking.maxDepth, 5);
+	EXPECT_EQ(defaults.baking.roughness, 0.02f);
+	EXPECT_EQ(defaults.baking.accelerator, SceneAccelerator::Bvh);
+	const auto overrides = Parse({ "--out", "folder with spaces\\baked.png", "--roughness", "0.15",
+		"--spp", "8", "--accel", "kd", "--max-depth", "3", "--bake-texture", "logo.png" });
+	EXPECT_EQ(overrides.command, SceneCommand::Bake);
+	EXPECT_EQ(overrides.baking.spp, 8);
+	EXPECT_EQ(overrides.baking.maxDepth, 3);
+	EXPECT_EQ(overrides.baking.roughness, 0.15f);
+	EXPECT_EQ(overrides.baking.accelerator, SceneAccelerator::Kd);
+	EXPECT_EQ(overrides.baking.output, "folder with spaces\\baked.png");
+}
+
+TEST(SceneCommandLine, TextureBakingRejectsInvalidAndIncompatibleOptions) {
+	for (const auto* roughness : { "0", "-1", "nan", "inf", "1.01", "1e100", "1e-100", "0.1junk" })
+		EXPECT_FALSE(Parses({ "--bake-texture", "logo.png", "--roughness", roughness, "--out", "baked.png" }));
+	for (const auto& option : {
+		std::make_pair("--scene", "empty"), std::make_pair("--scene-file", "unused.json"),
+		std::make_pair("--convert", "unused.exr"), std::make_pair("--integrator", "bdpt"),
+		std::make_pair("--width", "32"), std::make_pair("--height", "32"),
+		std::make_pair("--tonemap", "aces"), std::make_pair("--iterations", "2") })
+		EXPECT_FALSE(Parses({ "--bake-texture", "logo.png", option.first, option.second, "--out", "baked.png" }));
+	EXPECT_FALSE(Parses({ "--bake-texture", "logo.png" }));
+	EXPECT_FALSE(Parses({ "--bake-texture", "logo.png", "--out", "baked.exr" }));
+	EXPECT_FALSE(Parses({ "--bake-texture", "logo.png", "--out", "baked.bmp" }));
+	EXPECT_FALSE(Parses({ "--scene", "empty", "--roughness", "0.1", "--out", "baked.png" }));
+}
+
 TEST(SceneCommandLine, VeachBidirDefaultsToBdptButAllowsAnExplicitPathOverride) {
 	const auto defaults = Parse({"--scene", "veach-bidir", "--out", "unused.png"});
 	EXPECT_EQ(defaults.render.integrator, "bdpt");

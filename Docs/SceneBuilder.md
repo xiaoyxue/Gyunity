@@ -61,6 +61,14 @@ Use `AddTriangle` for a different vertex order: even cyclic permutations can
 change floating-point results. Emitting quads register two area lights sharing
 the same shapes as their corresponding primitives.
 
+`AddTexturedQuad` uses the same triangle order with explicit corner UVs
+`(0,0), (1,0), (1,1), (0,1)`. The checked
+`CornellBoxScenes::TextureBaking(builder, image, roughness)` preset uses it to
+build a full-image plane and an eight-times-larger, matching-aspect area light.
+The image controls the GGX conductor's `k` parameter. See
+[texture baking](TextureBaking.md) for the alpha-preserving renderer, CLI,
+camera/material parameters and C++ examples.
+
 `ImageColor(path)` supplies an image texture to the `Diffuse(texture)` overload.
 The transformed `AddSphere(center, radius, material, objectToWorld)` overload
 retains the sphere's object-space texture mapping. `AddCornellSphereWalls`

@@ -6,6 +6,7 @@ Next plan is to implement the GPU based renderer and add more features like MCMC
 
 ## Features
 - PathTracing (PT)
+- Planar texture baking with alpha-preserving PNG output
 - Stochastic progressive photon mapping (SPPM)
 - LightTracing (LT)
 - Bidirectional PathTracing (BDPT)
@@ -133,6 +134,7 @@ See [INSTRUCTIONS.md](INSTRUCTIONS.md) for cmd.exe, Python/uv, PowerShell and SP
 |---|---|
 | [Scene authoring](Docs/SceneAuthoring.md) | Native Python/JSON, uv and Mitsuba/PBRT imports |
 | [Scene builder](Docs/SceneBuilder.md) | C++ construction API and legacy scene correspondence |
+| [Texture baking](Docs/TextureBaking.md) | Image-driven PT baking, proportional area lighting and RGBA output |
 | [Scenes](Docs/Scenes.md) | Named scene commands, Cornell/Veach data and Matpreview preparation |
 | [Examples](Docs/Examples.md) | C++ helpers, named examples and explicit batch rendering |
 | [Threaded task groups](Docs/ThreadedTaskManager.md) | Scoped TBB execution, cancellation, progress and statistics |

@@ -146,6 +146,12 @@ public:
 		mFilename = pFileName;
 	}
 
+	// Read only after all film writers have joined.
+	const std::vector<Vec3>& GetImage() {
+		WriteToPixelBuffer();
+		return mImageBuffer;
+	}
+
 	bool SaveImage();
 
 	// Low-dynamic-range output with pbrt's tone-mapping operators and 8-bit sRGB encoding.

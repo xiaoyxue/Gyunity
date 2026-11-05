@@ -1,6 +1,7 @@
 #include "../../GyunityApp/scenes/SceneBuilder.h"
 #include "../../GyunityApp/legacy/CornellBox.h"
 #include "../../GyunityApp/scenes/CornellBoxScenes.h"
+#include "../../GyunityApp/scenes/SceneRegistry.h"
 #include "accelerator/BVHAccel.h"
 #include "gtest/gtest.h"
 
@@ -127,6 +128,80 @@ void ExpectSceneEqual(Scene& actual, Scene& expected) {
 			}
 		}
 	}
+}
+
+TEST(CornellBoxScenes, TextureBakingPreservesAspectUvAndConductorParameters) {
+	for (const auto& size : { std::pair<int, int>(4, 2), std::pair<int, int>(2, 4) }) {
+		for (real roughness : { 0.02f, 0.15f }) {
+			const int width = size.first, height = size.second;
+			const real aspect = real(width) / height;
+			std::vector<Vec3> colors(width * height, Vec3(1));
+			colors[0] = Vec3(0);
+			auto image = std::make_shared<ImageTexture<Vec3>>(Array2D<Vec3>(colors, height, width));
+			auto scene = std::make_shared<Scene>();
+			SceneBuilder builder(scene);
+			ASSERT_TRUE(CornellBoxScenes::TextureBaking(builder, image, roughness));
+			ASSERT_EQ(scene->GetPrimitives().size(), 4u);
+			ASSERT_EQ(scene->GetLights().size(), 2u);
+			EXPECT_EQ(scene->GetEnvironmentLight(), nullptr);
+			for (size_t i = 0; i < 4; ++i) {
+				const auto bounds = scene->GetPrimitives()[i]->GetShape()->WorldBould();
+				const real scale = i < 2 ? 1.f : 8.f;
+				EXPECT_NEAR(bounds.minPoint.x, -scale * aspect, 1e-5f);
+				EXPECT_NEAR(bounds.maxPoint.x, scale * aspect, 1e-5f);
+				EXPECT_EQ(bounds.minPoint.y, -scale);
+				EXPECT_EQ(bounds.maxPoint.y, scale);
+				EXPECT_EQ(bounds.minPoint.z, i < 2 ? 1.f : 10.f);
+				EXPECT_EQ(bounds.maxPoint.z, bounds.minPoint.z);
+			}
+			for (const auto& light : scene->GetLights()) {
+				ASSERT_TRUE(light->IsAreaLight());
+				ExpectVectorEqual(light->Emission(), Vec3(7.5f));
+			}
+			scene->SetAccelerator(std::make_shared<BVHAccel>(scene->GetPrimitives()));
+			scene->Initialize();
+			auto camera = SceneCamera{}.Create(std::make_shared<Film>(width, height));
+			ASSERT_NE(camera, nullptr);
+			for (int x : { 0, width - 1 }) {
+				for (int y : { 0, height - 1 }) {
+					const Ray ray = camera->GenerateRay(x, y, Vec2(0.5f, 0.5f));
+					Intersection hit;
+					ASSERT_TRUE(scene->Intersect(ray, &hit));
+					scene->QueryIntersectionInfo(ray, &hit);
+					EXPECT_NEAR(hit.mUv.x, (x + 0.5f) / width, 1e-6f);
+					EXPECT_NEAR(hit.mUv.y, 1 - (y + 0.5f) / height, 1e-6f);
+					MemoryPool actualPool, expectedPool;
+					hit.ComputeScatteringFunction(actualPool);
+					Intersection expectedHit = hit;
+					RoughnessMaterial expected(SceneBuilder::ConstantColor(Vec3(1)),
+						SceneBuilder::ConstantValue(roughness), SceneBuilder::ConstantValue(roughness),
+						SceneBuilder::ConstantColor(Vec3(1.25f)),
+						SceneBuilder::ConstantColor(colors[(height - 1 - y) * width + x]));
+					expected.ComputeScatteringFunction(&expectedHit, expectedPool);
+					const Vec3 actual = hit.mBsdf->Evaluate(-ray.mDir, Vec3(0, 0, 1));
+					const Vec3 reference = expectedHit.mBsdf->Evaluate(-ray.mDir, Vec3(0, 0, 1));
+					for (int channel = 0; channel < 3; ++channel)
+						EXPECT_NEAR(actual[channel], reference[channel], 1e-5f);
+					EXPECT_GT(actual.x, 0);
+				}
+			}
+		}
+	}
+}
+
+TEST(CornellBoxScenes, TextureBakingRejectsInvalidInputsWithoutChangingTheScene) {
+	auto scene = std::make_shared<Scene>();
+	SceneBuilder builder(scene);
+	auto image = std::make_shared<ImageTexture<Vec3>>(
+		Array2D<Vec3>(std::vector<Vec3>(4, Vec3(1)), 2, 2));
+	EXPECT_FALSE(CornellBoxScenes::TextureBaking(builder, nullptr));
+	auto empty = std::make_shared<ImageTexture<Vec3>>(Array2D<Vec3>(std::vector<Vec3>{}, 0, 0));
+	EXPECT_FALSE(CornellBoxScenes::TextureBaking(builder, empty));
+	for (real roughness : { 0.f, -0.1f, 1.1f, std::numeric_limits<real>::infinity(),
+		std::numeric_limits<real>::quiet_NaN() })
+		EXPECT_FALSE(CornellBoxScenes::TextureBaking(builder, image, roughness));
+	EXPECT_TRUE(scene->GetPrimitives().empty());
+	EXPECT_TRUE(scene->GetLights().empty());
 }
 
 TEST(CornellBoxScenes, GlassBunnyMatchesOriginal) {

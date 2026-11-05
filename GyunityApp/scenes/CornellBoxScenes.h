@@ -2,9 +2,32 @@
 #include "SceneBuilder.h"
 #include "volume/Homogeneous.h"
 #include <array>
+#include <cmath>
+#include <limits>
 
 // Parallel versions of CornellBox.h scenes; the original classes remain available.
 namespace CornellBoxScenes {
+
+inline bool TextureBaking(SceneBuilder& builder, const std::shared_ptr<ImageTexture<Vec3>>& image,
+	real roughness = 0.02f) {
+	if (!image || !image->IsValid() || image->Width() <= 0 || image->Height() <= 0 ||
+		int64(image->Width()) * image->Height() > std::numeric_limits<int>::max() / 4 ||
+		!std::isfinite(roughness) || roughness <= 0 || roughness > 1) {
+		GetDefaultLogger()->Error("Texture baking requires a valid image and roughness in (0, 1].", false);
+		return false;
+	}
+	const real aspect = real(image->Width()) / image->Height();
+	auto roughnessTexture = builder.ConstantValue(roughness);
+	// The image controls the conductor's extinction coefficient k, not its reflectance multiplier.
+	auto material = std::make_shared<RoughnessMaterial>(
+		builder.ConstantColor(Vec3(1)), roughnessTexture, roughnessTexture,
+		builder.ConstantColor(Vec3(1.25f)), image);
+	builder.AddTexturedQuad(Vec3(-aspect, -1, 1), Vec3(aspect, -1, 1),
+		Vec3(aspect, 1, 1), Vec3(-aspect, 1, 1), Vec3(0, 0, 1), material);
+	builder.AddQuadLight(Vec3(-8 * aspect, -8, 10), Vec3(8 * aspect, -8, 10),
+		Vec3(8 * aspect, 8, 10), Vec3(-8 * aspect, 8, 10), Vec3(0, 0, -1), Vec3(7.5f));
+	return true;
+}
 
 inline void GlassBunny(SceneBuilder& builder) {
 	AddCornellBoxWalls(builder);

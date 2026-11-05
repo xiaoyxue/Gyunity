@@ -80,6 +80,17 @@ public:
 		AddTriangle(a, c, d, normal, material, medium);
 	}
 
+	// Maps (a, b, c, d) to (0,0), (1,0), (1,1), (0,1).
+	void AddTexturedQuad(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d,
+		const Vec3& normal, const std::shared_ptr<Material>& material) {
+		Vec2 uv0[] = { Vec2(0, 0), Vec2(1, 0), Vec2(1, 1) };
+		Vec2 uv1[] = { Vec2(0, 0), Vec2(1, 1), Vec2(0, 1) };
+		auto shape0 = std::make_shared<Triangle>(Transform(), Transform(), a, b, c, normal, uv0);
+		auto shape1 = std::make_shared<Triangle>(Transform(), Transform(), a, c, d, normal, uv1);
+		mScene->AddPrimitive(std::make_shared<Primitive>(shape0, material));
+		mScene->AddPrimitive(std::make_shared<Primitive>(shape1, material));
+	}
+
 	// An emitting quad: triangles (a, b, c) and (a, c, d), each with its own area light.
 	void AddQuadLight(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d, const Vec3& normal, const Vec3& emission) {
 		std::shared_ptr<Shape> shape0 = MakeTriangle(a, b, c, normal);

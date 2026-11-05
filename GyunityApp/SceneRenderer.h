@@ -25,6 +25,17 @@ struct SceneRenderOptions {
 	Gyunity::ToneMapSettings toneMap;
 };
 
+struct TextureBakingOptions {
+	std::string input, output;
+	Gyunity::real roughness = 0.02f;
+	int spp = 256;
+	int maxDepth = 5;
+	SceneAccelerator accelerator = SceneAccelerator::Bvh;
+};
+
+// Renders the full input canvas with PT and writes an RGBA PNG with the original alpha.
+bool RenderTextureBaking(const TextureBakingOptions& options);
+
 bool LoadSceneDefaults(SceneRenderOptions& options, const std::string& filename = {});
 bool RenderScene(const SceneRenderOptions& options);
 bool RenderScene(const SceneRenderOptions& options, Gyunity::Integrator& integrator);

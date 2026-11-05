@@ -64,7 +64,8 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 			option != "--spp" && option != "--max-depth" && option != "--out" &&
 			option != "--iterations" && option != "--photons-per-stage" &&
 			option != "--bdpt-normals" && option != "--bdpt-mis" && option != "--tonemap" && option != "--max-luminance" &&
-			option != "--tonemap-scale" && option != "--convert")
+			option != "--tonemap-scale" && option != "--convert" &&
+			option != "--bake-texture" && option != "--roughness")
 			return Error("Unknown option '" + option + "'. Use --help.");
 		if (!seen.insert(option).second) return Error("Duplicate option: " + option);
 		if (++i == argc || std::string(argv[i]).empty() || std::string(argv[i]).find("--") == 0)
@@ -107,7 +108,31 @@ bool ParseSceneCommandLine(int argc, const char* const* argv, SceneCommandLineOp
 		else if (option == "--max-luminance" && !ParsePositiveReal(option, value, options.toneMap.maxLuminance)) return false;
 		else if (option == "--tonemap-scale" && !ParsePositiveReal(option, value, options.toneMap.scale)) return false;
 		else if (option == "--convert") parsed.convertInput = value;
+		else if (option == "--bake-texture") parsed.baking.input = value;
+		else if (option == "--roughness") {
+			if (!ParsePositiveReal(option, value, parsed.baking.roughness)) return false;
+			if (parsed.baking.roughness <= 0 || parsed.baking.roughness > 1)
+				return Error("--roughness must be in (0, 1].");
+		}
 	}
+	if (seen.count("--bake-texture")) {
+		for (const auto& option : seen) {
+			if (option != "--bake-texture" && option != "--roughness" && option != "--spp" &&
+				option != "--max-depth" && option != "--accel" && option != "--out")
+				return Error("--bake-texture accepts only --roughness, --spp, --max-depth, --accel and --out; "
+					"the input image determines the resolution.");
+		}
+		if (options.output.size() < 4 || options.output.substr(options.output.size() - 4) != ".png")
+			return Error("--bake-texture requires a .png --out file.");
+		parsed.baking.output = options.output;
+		parsed.baking.accelerator = options.accelerator;
+		if (seen.count("--spp")) parsed.baking.spp = options.spp;
+		if (seen.count("--max-depth")) parsed.baking.maxDepth = options.maxDepth;
+		parsed.command = SceneCommand::Bake;
+		output = std::move(parsed);
+		return true;
+	}
+	if (seen.count("--roughness")) return Error("--roughness requires --bake-texture.");
 	const bool toneMapped = seen.count("--tonemap") || seen.count("--max-luminance") || seen.count("--tonemap-scale");
 	if (seen.count("--convert")) {
 		for (const auto& option : seen) {
@@ -182,6 +207,9 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 			"  --tonemap-scale S      Linear scale before tone mapping (default 1)\n"
 			"  --convert IN           Convert IN (.exr/.hdr/...) to the --out .png/.bmp with the\n"
 			"                         tone-mapping options and 8-bit sRGB encoding\n"
+			"  --bake-texture IN      PT bake an 8-bit image at its original size to RGBA PNG;\n"
+			"                         defaults: 256 spp, depth 5, BVH, no tone mapping\n"
+			"  --roughness R          Baking roughness in (0, 1] (default 0.02)\n"
 			"  --out FILE             Required .png, .bmp, .hdr or .exr output\n"
 			"Native scenes supply defaults; explicit flags override them.\n"
 			"Fog uses volume path tracing. Run from GyunityApp for named scene assets.\n"
@@ -199,6 +227,7 @@ int RunSceneCommandLine(int argc, const char* const* argv) {
 	if (options.command == SceneCommand::Render) return RenderScene(options.render) ? 0 : 1;
 	if (options.command == SceneCommand::Convert)
 		return ConvertImage(options.convertInput, options.render.output, options.render.toneMap) ? 0 : 1;
+	if (options.command == SceneCommand::Bake) return RenderTextureBaking(options.baking) ? 0 : 1;
 	Error("No scene command supplied.");
 	return 1;
 }

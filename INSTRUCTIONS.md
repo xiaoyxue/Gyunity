@@ -90,6 +90,20 @@ legacy integrator examples. These batches can take considerable time and are
 never run implicitly. No arguments still selects the original PT/environment
 demo. Use `--scene` flags or the C++ `Examples::Options` API for smaller budgets.
 
+## Planar texture baking
+
+For planar image baking, use the input image's original resolution and alpha:
+
+```powershell
+.\x64\Release\GyunityApp.exe --bake-texture "D:\Assets\logo.png" --roughness 0.02 --spp 256 --out "$TestRoot\logo-baked.png"
+```
+
+Run this command from the checkout/worktree root after defining `$TestRoot`
+above. It uses PT with a matching-aspect area light and writes an RGBA PNG.
+`--roughness` is specific to baking; resizing, scene selection and tone-mapping
+flags are not accepted in this mode. See [texture baking](Docs/TextureBaking.md)
+for all parameters, input restrictions and the C++ scene method.
+
 ## Windows Command Prompt (cmd.exe)
 
 Use Developer Command Prompt, starting in the checkout/worktree root.

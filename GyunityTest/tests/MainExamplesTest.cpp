@@ -1,4 +1,5 @@
 #include "stb/stb_image.h"
+#include "stb/stb_image_write.h"
 #include "gtest/gtest.h"
 #include <algorithm>
 #include <cmath>
@@ -135,6 +136,81 @@ TEST_F(MainExampleRenders, PathTracing) {
 	const auto output = Output("path-tracing.hdr");
 	ASSERT_TRUE(Examples::PathTracing(RenderOptions(output, 32, 24, 4)));
 	ExpectImage(output);
+}
+
+TEST_F(MainExampleRenders, TextureBakingPreservesAlphaAndIgnoresHiddenRgb) {
+	const int width = 8, height = 4;
+	std::vector<unsigned char> pixels(width * height * 4);
+	const unsigned char opacity[] = { 0, 64, 128, 255 };
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			const int pixel = (y * width + x) * 4;
+			pixels[pixel + 3] = opacity[(x + y) % 4];
+			if (pixels[pixel + 3] == 0) pixels[pixel + 1] = 255;
+		}
+	}
+	const auto input0 = Output("baking-hidden-green.png"), input1 = Output("baking-hidden-blue.png");
+	const auto output0 = Output("baking-cli.png"), output1 = Output("baking-api.png");
+	ASSERT_NE(stbi_write_png(input0.c_str(), width, height, 4, pixels.data(), width * 4), 0);
+	for (int i = 0; i < width * height; ++i) {
+		if (pixels[i * 4 + 3] == 0) {
+			pixels[i * 4 + 1] = 0;
+			pixels[i * 4 + 2] = 255;
+		}
+	}
+	ASSERT_NE(stbi_write_png(input1.c_str(), width, height, 4, pixels.data(), width * 4), 0);
+	const std::vector<std::string> arguments = {
+		"GyunityApp", "--bake-texture", input0, "--roughness", "0.15", "--spp", "8", "--out", output0
+	};
+	std::vector<const char*> argv;
+	for (const auto& argument : arguments) argv.push_back(argument.c_str());
+	ASSERT_EQ(RunSceneCommandLine(static_cast<int>(argv.size()), argv.data()), 0);
+	TextureBakingOptions options;
+	options.input = input1;
+	options.output = output1;
+	options.roughness = 0.15f;
+	options.spp = 8;
+	ASSERT_TRUE(RenderTextureBaking(options));
+	std::vector<unsigned char> previous;
+	for (const auto& filename : { output0, output1 }) {
+		int w = 0, h = 0, channels = 0;
+		std::unique_ptr<unsigned char, decltype(&stbi_image_free)> image(
+			stbi_load(filename.c_str(), &w, &h, &channels, 4), stbi_image_free);
+		ASSERT_NE(image, nullptr);
+		ASSERT_EQ(w, width);
+		ASSERT_EQ(h, height);
+		ASSERT_EQ(channels, 4);
+		for (int i = 0; i < width * height; ++i)
+			EXPECT_EQ(image.get()[i * 4 + 3], pixels[i * 4 + 3]);
+		EXPECT_GT(image.get()[3 * 4], 0);
+		const std::vector<unsigned char> actual(image.get(), image.get() + pixels.size());
+		if (!previous.empty()) EXPECT_EQ(actual, previous);
+		previous = actual;
+	}
+}
+
+TEST_F(MainExampleRenders, TextureBakingReportsInputAndOutputFailures) {
+	TextureBakingOptions options;
+	options.input = Output("missing-baking-source.png");
+	options.output = Output("baking-invalid.png");
+	options.spp = 1;
+	EXPECT_FALSE(RenderTextureBaking(options));
+	options.input = Output("baking-transparent.png");
+	const unsigned char transparent[4] = { 255, 0, 0, 0 };
+	ASSERT_NE(stbi_write_png(options.input.c_str(), 1, 1, 4, transparent, 4), 0);
+	EXPECT_FALSE(RenderTextureBaking(options));
+	const unsigned char opaque[4] = { 0, 0, 0, 255 };
+	ASSERT_NE(stbi_write_png(options.input.c_str(), 1, 1, 4, opaque, 4), 0);
+	options.roughness = 0;
+	EXPECT_FALSE(RenderTextureBaking(options));
+	options.roughness = 0.02f;
+	options.output = Output("missing-baking-directory\\baked.png");
+	EXPECT_FALSE(RenderTextureBaking(options));
+	options.output = Output("baking-invalid.png");
+	options.input = Output("baking-hdr-input.hdr");
+	const float hdr[3] = { 1, 1, 1 };
+	ASSERT_NE(stbi_write_hdr(options.input.c_str(), 1, 1, 3, hdr), 0);
+	EXPECT_FALSE(RenderTextureBaking(options));
 }
 
 TEST_F(MainExampleRenders, Sppm) {
